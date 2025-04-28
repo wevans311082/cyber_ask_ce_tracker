@@ -1,0 +1,78 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Admin Dashboard{% endblock %}
+
+{% block content %}
+<h2>Admin Dashboard</h2>
+<p>Welcome, {{ request.user.username }}!</p>
+
+ <div class="card mb-4">
+    <div class="card-header">Data Management</div>
+    <div class="card-body">
+
+
+  <a href="{% url 'tracker:cloud_service_definition_list' %}" class="btn btn-info">Manage Cloud Service Definitions</a>
+        <a href="{% url 'tracker:os_list' %}" class="btn btn-info">Manage Operating Systems</a>
+
+    </div>
+     </div>
+
+<div class="row mt-4">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Users</h5>
+                <p class="card-text">Total Users: {{ user_count }}</p>
+                <a href="{% url 'tracker:user_list' %}" class="btn btn-primary btn-sm">Manage Users</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Clients</h5>
+                <p class="card-text">Total Clients: {{ client_count }}</p>
+                <a href="{% url 'tracker:client_list' %}" class="btn btn-primary btn-sm">Manage Clients</a>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Assessments</h5>
+                <p class="card-text">Total Assessments: {{ assessment_count }}</p>
+                <a href="{% url 'tracker:admin_assessment_list' %}" class="btn btn-primary btn-sm">View Assessments</a>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <div class="col-md-4"> {# Or adjust layout #}
+    <div class="card {% if pending_approval_count > 0 %}border-warning{% endif %}">
+         <div class="card-header">Cloud Services</div>
+         <div class="card-body">
+            {% if pending_approval_count > 0 %}
+                 <p class="card-text text-warning">
+                     <i class="fa-solid fa-triangle-exclamation"></i>
+                     {{ pending_approval_count }} service{{ pending_approval_count|pluralize }} pending approval.
+                 </p>
+            {% else %}
+                 <p class="card-text text-success">
+                     <i class="fa-solid fa-check-circle"></i>
+                     All suggested services approved.
+                 </p>
+            {% endif %}
+            <a href="{% url 'tracker:cloud_service_definition_list' %}" class="btn btn-primary btn-sm">Manage Definitions</a>
+        </div>
+    </div>
+</div>
+
+<div class="mt-4">
+    <h4>Quick Actions</h4>
+    <a href="{% url 'tracker:assessment_create' %}" class="btn btn-success">Create New Assessment</a>
+    <a href="{% url 'tracker:client_create' %}" class="btn btn-success">Add New Client</a>
+    <a href="{% url 'tracker:user_create' %}" class="btn btn-success">Add New User</a>
+</div>
+
+
+{% endblock %}

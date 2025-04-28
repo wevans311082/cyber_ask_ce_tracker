@@ -1,0 +1,24 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Confirm Delete Target" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+
+{# Use context object name from view #}
+<p>Are you sure you want to delete the external scan target "<strong>{{ external_ip.ip_address_or_hostname }}</strong>"?</p>
+
+<p class="text-warning">This action cannot be undone.</p>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Yes, Delete Target</button>
+     {# Dynamic Cancel Link based on role #}
+    {% if user_role == 'Client' %}
+        <a href="{% url 'tracker:client_externalip_list' assessment_pk=assessment.pk %}" class="btn btn-secondary">Cancel</a>
+    {% else %} {# Assessor or Admin #}
+        <a href="{% url 'tracker:externalip_list' assessment_pk=assessment.pk %}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
+</form>
+{% endblock %}

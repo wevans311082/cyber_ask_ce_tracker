@@ -1,0 +1,181 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title|default:"Edit Scope Item" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+{# Ensure assessment and scoped_item (UpdateView's context_object_name) are passed #}
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+<p>Editing Item: <strong>{{ scoped_item.identifier|default:scoped_item.id }}</strong> (Type: {{ scoped_item.get_item_type_display }})</p>
+<hr>
+
+<form method="post" id="edit-scope-item-form" novalidate>
+    {% csrf_token %}
+
+    {# Display Non-Field Errors #}
+    {% if form.non_field_errors %}
+    <div class="alert alert-danger">
+        {% for error in form.non_field_errors %} {{ error }} {% endfor %}
+    </div>
+    {% endif %}
+
+    {# Render form fields using Bootstrap structure #}
+    {# Note: number_to_add field is NOT present in ScopedItemUpdateForm #}
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.item_type.id_for_label }}" class="form-label">{{ form.item_type.label }}*</label>
+            {{ form.item_type }}
+            {% if form.item_type.errors %}<div class="invalid-feedback d-block">{{ form.item_type.errors|join:", " }}</div>{% endif %}
+        </div>
+         <div class="col-md-6 mb-3">
+            <label for="{{ form.identifier.id_for_label }}" class="form-label">{{ form.identifier.label }}</label>
+            {{ form.identifier }}
+            {% if form.identifier.errors %}<div class="invalid-feedback d-block">{{ form.identifier.errors|join:", " }}</div>{% endif %}
+            {% if form.identifier.help_text %}<small class="form-text text-muted">{{ form.identifier.help_text }}</small>{% endif %}
+        </div>
+    </div>
+
+     <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.operating_system.id_for_label }}" class="form-label">{{ form.operating_system.label }}</label>
+            {# Ensure os_data_json is passed to context for JS filtering #}
+            {{ form.operating_system }}
+            {% if form.operating_system.errors %}<div class="invalid-feedback d-block">{{ form.operating_system.errors|join:", " }}</div>{% endif %}
+            {% if form.operating_system.help_text %}<small class="form-text text-muted">{{ form.operating_system.help_text }}</small>{% endif %}
+        </div>
+         <div class="col-md-6 mb-3">
+            <label for="{{ form.make_model.id_for_label }}" class="form-label">{{ form.make_model.label }}</label>
+            {{ form.make_model }}
+             {% if form.make_model.errors %}<div class="invalid-feedback d-block">{{ form.make_model.errors|join:", " }}</div>{% endif %}
+         </div>
+     </div>
+
+     <div class="mb-3">
+        <label for="{{ form.role_function.id_for_label }}" class="form-label">{{ form.role_function.label }}</label>
+        {{ form.role_function }}
+         {% if form.role_function.errors %}<div class="invalid-feedback d-block">{{ form.role_function.errors|join:", " }}</div>{% endif %}
+         {% if form.role_function.help_text %}<small class="form-text text-muted">{{ form.role_function.help_text }}</small>{% endif %}
+    </div>
+
+    <div class="row">
+         <div class="col-md-4 mb-3">
+            <label for="{{ form.owner.id_for_label }}" class="form-label">{{ form.owner.label }}</label>
+            {{ form.owner }}
+             {% if form.owner.errors %}<div class="invalid-feedback d-block">{{ form.owner.errors|join:", " }}</div>{% endif %}
+        </div>
+         <div class="col-md-4 mb-3">
+            <label for="{{ form.network.id_for_label }}" class="form-label">{{ form.network.label }}</label>
+            {{ form.network }}
+            {% if form.network.errors %}<div class="invalid-feedback d-block">{{ form.network.errors|join:", " }}</div>{% endif %}
+            {% if form.network.help_text %}<small class="form-text text-muted">{{ form.network.help_text }}</small>{% endif %}
+        </div>
+        <div class="col-md-4 mb-3">
+            <label for="{{ form.location.id_for_label }}" class="form-label">{{ form.location.label }}</label>
+            {{ form.location }}
+             {% if form.location.errors %}<div class="invalid-feedback d-block">{{ form.location.errors|join:", " }}</div>{% endif %}
+        </div>
+    </div>
+
+     <div class="mb-3">
+        <label for="{{ form.notes.id_for_label }}" class="form-label">{{ form.notes.label }}</label>
+        {{ form.notes }}
+         {% if form.notes.errors %}<div class="invalid-feedback d-block">{{ form.notes.errors|join:", " }}</div>{% endif %}
+    </div>
+
+    <hr>
+    <button type="submit" class="btn btn-success">Save Changes</button>
+    <a href="{% url 'tracker:client_scope_manage' assessment_pk=assessment.pk %}" class="btn btn-secondary">Cancel</a>
+</form>
+
+{% endblock %}
+
+
+{% block extra_js %}
+{# IMPORTANT: Include the same JS as scope_manage.html for dynamic OS filtering #}
+<script>
+    // Ensure os_data_json is passed from the ScopedItemUpdateView context
+    const osData = JSON.parse('{{ os_data_json|escapejs|default:"[]" }}'); // Add default empty array
+
+    const itemTypeToOsCategoryMap = {
+        'Laptop': ['Desktop'], 'Desktop': ['Desktop'], 'Server': ['Server'], 'Mobile': ['Mobile'],
+        'Firewall': ['Other'], 'Router': ['Other'], 'Switch': ['Other'],
+        'Other': ['Desktop', 'Server', 'Mobile', 'Other'],
+    };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Scope Item Edit JS loaded - OS Filtering Active.");
+
+        const itemTypeSelect = document.getElementById('{{ form.item_type.id_for_label }}');
+        const osSelect = document.getElementById('{{ form.operating_system.id_for_label }}');
+        // Get field containers reliably
+        const osFieldContainer = osSelect?.closest('.mb-3');
+        const makeModelFieldContainer = document.getElementById('{{ form.make_model.id_for_label }}')?.closest('.mb-3');
+        const ownerFieldContainer = document.getElementById('{{ form.owner.id_for_label }}')?.closest('.mb-3');
+
+
+        function updateScopeForm() {
+            if (!itemTypeSelect || !osSelect || !osFieldContainer || !makeModelFieldContainer || !ownerFieldContainer) {
+                console.warn("Edit Form: Could not find all expected form field elements.");
+                return;
+            }
+
+            const selectedType = itemTypeSelect.value;
+            const allowedCategories = itemTypeToOsCategoryMap[selectedType];
+            const currentlySelectedOsValue = osSelect.value; // Store current value
+
+            console.log(`--- updateScopeForm ---`);
+            console.log(`Item Type Selected: ${selectedType}`);
+            console.log(`Allowed OS Categories: ${allowedCategories}`);
+            console.log(`OS Value Before Clear: '${currentlySelectedOsValue}'`);
+
+            // --- 1. Toggle Field Visibility ---
+            const requiresOs = ['Laptop', 'Desktop', 'Server', 'Mobile'].includes(selectedType);
+            const usesMakeModel = ['Laptop', 'Desktop', 'Server', 'Mobile', 'Firewall', 'Router', 'Switch', 'Other'].includes(selectedType);
+            const usesOwner = ['Laptop', 'Desktop', 'Mobile'].includes(selectedType);
+
+            osFieldContainer.style.display = requiresOs ? '' : 'none';
+            makeModelFieldContainer.style.display = usesMakeModel ? '' : 'none';
+            ownerFieldContainer.style.display = usesOwner ? '' : 'none';
+
+            // --- 2. Filter OS Dropdown ---
+            let firstOption = osSelect.options[0]?.value === "" ? osSelect.options[0] : null;
+            osSelect.innerHTML = '';
+            if (firstOption) { osSelect.appendChild(firstOption); }
+
+            if (requiresOs && allowedCategories) {
+                osSelect.disabled = false;
+                osData.forEach(os => {
+                    if (allowedCategories.includes(os.category) || os.category === '') {
+                        const option = document.createElement('option');
+                        option.value = os.id;
+                        option.textContent = os.name;
+                        option.dataset.osCategory = os.category;
+                        osSelect.appendChild(option);
+                    }
+                });
+                // Try to reselect after repopulating
+                osSelect.value = currentlySelectedOsValue;
+                // If the value is no longer valid (e.g., user changed Item Type),
+                // it will automatically fallback to the blank option if it exists, or the first valid one.
+                 if (osSelect.value !== currentlySelectedOsValue && currentlySelectedOsValue !== "") {
+                    // This indicates the previous selection is no longer valid for the new item type
+                     console.log("Previous OS selection is not valid for the new item type.");
+                 }
+
+
+            } else {
+                 osSelect.disabled = true;
+                 osSelect.value = ""; // Reset selection if OS not applicable
+            }
+        }
+
+        if (itemTypeSelect) {
+            updateScopeForm(); // Run on initial load
+            itemTypeSelect.addEventListener('change', updateScopeForm); // Run on change
+        } else {
+            console.error("Edit Form: Item Type select element not found.");
+        }
+    });
+</script>
+{% endblock extra_js %}

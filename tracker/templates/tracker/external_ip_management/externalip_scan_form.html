@@ -1,0 +1,42 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Update Scan Status" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+<p>Target: <code>{{ external_ip.ip_address_or_hostname }}</code></p>
+
+<hr>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {# Render the scan status form fields #}
+    <div class="mb-3">
+        <label for="{{ form.scan_status.id_for_label }}" class="form-label">{{ form.scan_status.label }}*</label>
+        {{ form.scan_status }}
+        {% if form.scan_status.errors %}<div class="invalid-feedback d-block">{{ form.scan_status.errors }}</div>{% endif %}
+    </div>
+
+     <div class="mb-3">
+        <label for="{{ form.assessor_notes.id_for_label }}" class="form-label">{{ form.assessor_notes.label }}</label>
+        {{ form.assessor_notes }}
+        {% if form.assessor_notes.errors %}<div class="invalid-feedback d-block">{{ form.assessor_notes.errors }}</div>{% endif %}
+        {% if form.assessor_notes.help_text %}<small class="form-text text-muted">{{ form.assessor_notes.help_text }}</small>{% endif %}
+    </div>
+
+
+    <button type="submit" class="btn btn-primary">Save Scan Status</button>
+    {# Link back to the main assessor list view #}
+    <a href="{% url 'tracker:externalip_list' assessment_pk=assessment.pk %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

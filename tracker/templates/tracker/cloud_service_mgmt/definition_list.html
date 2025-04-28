@@ -1,0 +1,69 @@
+{# tracker/templates/tracker/cloud_service_mgmt/definition_list.html #}
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title|default:"Manage Cloud Service Definitions" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Manage the central list of known cloud services.</p>
+
+{# --- NEW: Pending approval alert --- #}
+{% if pending_approval_count > 0 %}
+<div class="alert alert-warning" role="alert">
+  <i class="fa-solid fa-triangle-exclamation me-2"></i> There {{ pending_approval_count|pluralize:"is,are" }} <strong>{{ pending_approval_count }}</strong> cloud service definition{{ pending_approval_count|pluralize }} suggested by users pending review and approval. They are highlighted below.
+</div>
+{% endif %}
+{# --- END NEW --- #}
+
+{# ... Add New Definition / Back buttons ... #}
+<div class="mb-3"> <a href="{% url 'tracker:cloud_service_definition_create' %}" class="btn btn-primary">Add New Definition</a> {% if request.user.userprofile.role == 'Admin' %} <a href="{% url 'tracker:admin_dashboard' %}" class="btn btn-secondary">Back to Admin Dashboard</a> {% else %} <a href="{% url 'tracker:assessor_dashboard' %}" class="btn btn-secondary">Back to Assessor Dashboard</a> {% endif %} </div>
+
+
+{% if definitions %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-bordered"> {# Added table-bordered #}
+        <thead class="table-light"> {# Light header #}
+            <tr>
+                <th>Name</th>
+                <th>Vendor</th>
+                <th>MFA Req?</th>
+                <th>Approved?</th>
+                <th>Suggested By</th> {# NEW Column #}
+                <th>Last Updated</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for definition in page_obj|default:definitions %}
+            {# --- NEW: Conditional row class --- #}
+            <tr class="{% if not definition.is_globally_approved %}table-warning{% endif %}">
+            {# --- END NEW --- #}
+                <td>{{ definition.name }}</td>
+                <td>{{ definition.vendor|default:"-" }}</td>
+                <td class="text-center">{% if definition.requires_mfa_for_ce %}<i class="fa-solid fa-check text-success"></i>{% else %}<i class="fa-solid fa-times text-secondary"></i>{% endif %}</td>
+                <td class="text-center">{% if definition.is_globally_approved %}<i class="fa-solid fa-check text-success"></i>{% else %}<i class="fa-solid fa-hourglass-half text-warning" title="Pending Approval"></i>{% endif %}</td>
+                {# --- NEW: Display creator --- #}
+                <td>{{ definition.created_by.username|default:"(System)" }}</td>
+                <td>{{ definition.updated_at|date:"Y-m-d H:i" }}</td>
+                <td class="action-buttons">
+                    <a href="{% url 'tracker:cloud_service_definition_update' definition.pk %}" class="btn btn-sm btn-outline-secondary">Edit/Approve</a> {# Changed text #}
+                    {# ... Delete button logic ... #}
+                     {% if request.user.userprofile.role == 'Admin' %} <form action="{% url 'tracker:cloud_service_definition_delete' definition.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete definition \'{{ definition.name }}\'? This might affect assessments using it if not handled carefully.');"> {% csrf_token %} <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Delete</button> </form> {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# Pagination Controls #}
+{% if is_paginated %}
+    {% include "tracker/partials/pagination.html" %}
+{% endif %}
+
+{% else %}
+<p>No cloud service definitions found.</p>
+{% endif %}
+
+{% endblock %}

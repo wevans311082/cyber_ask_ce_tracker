@@ -1,0 +1,16 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Confirm Delete Operating System{% endblock %}
+
+{% block content %}
+<h2>Confirm Delete Operating System</h2>
+
+<p>Are you sure you want to delete the Operating System "<strong>{{ os }}</strong>"?</p>
+<p class="text-warning">Existing scope items using this OS may have their OS field cleared (set to NULL) depending on model constraints.</p>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Yes, Delete</button>
+    <a href="{% url 'tracker:os_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -1,0 +1,151 @@
+{% extends "tracker/base.html" %}
+{% load static %} {# Load static if needed for CSS/JS later #}
+
+{% block title %}{{ page_title|default:"Confirm Companies House Update" }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Simple styling to highlight differences */
+    .data-diff {
+        background-color: #fff3cd; /* Bootstrap warning background */
+        border: 1px solid #ffe69c;
+        padding: 2px 5px;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+    .data-match {
+        color: #6c757d; /* Bootstrap secondary text color */
+    }
+    .detail-label {
+        font-weight: 600;
+        color: #495057; /* Bootstrap gray-700 */
+    }
+    .card-body dl dd {
+        margin-bottom: 0.75rem; /* Add some space between rows */
+    }
+</style>
+
+<h2>{{ page_title|default:"Confirm Companies House Update" }}</h2>
+<p>Please review the information fetched from Companies House for client <strong>{{ client.name }}</strong> (Number: {{ client.organization_number|default:'N/A' }}) and confirm if you want to update the client record.</p>
+
+<div class="row">
+    {# Current Client Data Card #}
+    <div class="col-md-6">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="fas fa-user-tie me-1"></i> Current Client Data
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4 detail-label">Name:</dt>
+                    <dd class="col-sm-8">{{ client.name|default:"-" }}</dd>
+
+                    <dt class="col-sm-4 detail-label">Org Number:</dt>
+                    <dd class="col-sm-8">{{ client.organization_number|default:"-" }}</dd>
+
+                    <dt class="col-sm-4 detail-label">Address:</dt>
+                    <dd class="col-sm-8">{{ client.address|default:"-"|linebreaksbr }}</dd>
+
+                    <dt class="col-sm-4 detail-label">Website:</dt>
+                    <dd class="col-sm-8">
+                        {% if client.website_address %}
+                            <a href="{{ client.website_address }}" target="_blank" rel="noopener noreferrer">{{ client.website_address }}</a>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+
+    {# Fetched Companies House Data Card #}
+    <div class="col-md-6">
+        <div class="card h-100 border-primary">
+            <div class="card-header bg-primary text-white">
+                 <i class="fas fa-building-columns me-1"></i> Companies House Data
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-sm-4 detail-label">Name:</dt>
+                    <dd class="col-sm-8">
+                        {% if client.name|lower != fetched_data.company_name|lower %}
+                            <span class="data-diff" title="Difference found">{{ fetched_data.company_name|default:"(Not Found)" }}</span>
+                        {% else %}
+                            <span class="data-match">{{ fetched_data.company_name|default:"(Not Found)" }}</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4 detail-label">Org Number:</dt>
+                    <dd class="col-sm-8">
+                         {% if client.organization_number != fetched_data.company_number %}
+                            <span class="data-diff" title="Difference found">{{ fetched_data.company_number|default:"(Not Found)" }}</span>
+                        {% else %}
+                            <span class="data-match">{{ fetched_data.company_number|default:"(Not Found)" }}</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4 detail-label">Address:</dt>
+                    <dd class="col-sm-8">
+                        {# Basic comparison - might need refinement if formatting differs significantly #}
+                        {% if client.address|slugify != fetched_data.address|slugify %}
+                             <span class="data-diff" title="Difference found">{{ fetched_data.address|default:"(Not Found)"|linebreaksbr }}</span>
+                        {% else %}
+                             <span class="data-match">{{ fetched_data.address|default:"(Not Found)"|linebreaksbr }}</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-4 detail-label">Website:</dt>
+                    <dd class="col-sm-8">
+                         {% if client.website_address != fetched_data.website_url %}
+                            <span class="data-diff" title="Difference found">
+                                {% if fetched_data.website_url %}
+                                    <a href="{{ fetched_data.website_url }}" target="_blank" rel="noopener noreferrer">{{ fetched_data.website_url }}</a>
+                                {% else %}
+                                    (Not Found)
+                                {% endif %}
+                            </span>
+                         {% else %}
+                             <span class="data-match">
+                                {% if fetched_data.website_url %}
+                                    <a href="{{ fetched_data.website_url }}" target="_blank" rel="noopener noreferrer">{{ fetched_data.website_url }}</a>
+                                {% else %}
+                                    (Not Found)
+                                {% endif %}
+                             </span>
+                         {% endif %}
+                    </dd>
+
+                     <dt class="col-sm-4 detail-label">Status:</dt>
+                    <dd class="col-sm-8">{{ fetched_data.company_status|default:"(Not Found)" }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<hr class="my-4">
+
+{# Confirmation Form #}
+<form action="{% url 'tracker:client_confirm_ch_update' client.pk %}" method="post">
+    {% csrf_token %}
+
+    {# Hidden fields to pass the fetched data to the confirmation view #}
+    <input type="hidden" name="confirmed_number" value="{{ fetched_data.company_number|default:'' }}">
+    <input type="hidden" name="confirmed_name" value="{{ fetched_data.company_name|default:'' }}">
+    <input type="hidden" name="confirmed_address" value="{{ fetched_data.address|default:'' }}">
+    <input type="hidden" name="confirmed_website" value="{{ fetched_data.website_url|default:'' }}">
+
+    <p class="text-center">Do you want to update the client record with the data fetched from Companies House?</p>
+
+    <div class="text-center">
+        <button type="submit" class="btn btn-success btn-lg mx-2">
+            <i class="fas fa-check me-1"></i> Confirm and Update Client
+        </button>
+        <a href="{% url 'tracker:client_list' %}" class="btn btn-secondary btn-lg mx-2">
+            <i class="fas fa-times me-1"></i> Cancel
+        </a>
+    </div>
+</form>
+
+{% endblock %}

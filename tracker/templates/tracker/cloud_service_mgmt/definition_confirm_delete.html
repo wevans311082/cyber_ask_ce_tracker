@@ -1,0 +1,16 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Confirm Delete Definition" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+
+<p>Are you sure you want to delete the Cloud Service Definition "<strong>{{ definition.name }}</strong>"?</p>
+<p class="text-danger">Warning: Deleting this definition might cause issues if assessments are currently linked to it (depending on `on_delete` settings - currently PROTECT).</p>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Yes, Delete Definition</button>
+    <a href="{% url 'tracker:cloud_service_definition_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

@@ -1,0 +1,82 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title|default:"Cloud Services for Assessment" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+
+{% if can_add_services %} {# Context variable from view #}
+<div class="mb-3">
+    {% if user_role == 'Client' %}
+    <a href="{% url 'tracker:client_assessment_cloud_service_add' assessment.pk %}" class="btn btn-primary">Add Cloud Service</a>
+    {% else %} {# Assessor or Admin #}
+    <a href="{% url 'tracker:assessment_cloud_service_add' assessment.pk %}" class="btn btn-primary">Add Cloud Service</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% if assessment_services %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Service Name</th>
+                <th>Vendor</th>
+                <th>Admin MFA Verified?</th>
+                <th>User MFA Verified?</th>
+                <th>Overall Compliant?</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for service in assessment_services %}
+            <tr>
+                <td>{{ service.cloud_service_definition.name }}</td>
+                <td>{{ service.cloud_service_definition.vendor|default:"-" }}</td>
+                <td class="text-center">{% if service.mfa_admin_verified %}<i class="fa-solid fa-check text-success"></i>{% else %}<i class="fa-solid fa-times text-danger"></i>{% endif %}</td>
+                <td class="text-center">{% if service.mfa_user_verified %}<i class="fa-solid fa-check text-success"></i>{% else %}<i class="fa-solid fa-times text-danger"></i>{% endif %}</td>
+                <td class="text-center">{% if service.is_compliant %}<i class="fa-solid fa-check text-success"></i>{% else %}<i class="fa-solid fa-times text-danger"></i>{% endif %}</td>
+                <td class="action-buttons">
+                    {# Link to update view (used for both proof upload and verification) #}
+                    {% if user_role == 'Client' %}
+                        <a href="{% url 'tracker:client_assessment_cloud_service_update' assessment.pk service.pk %}" class="btn btn-sm btn-outline-secondary">View / Upload Proof</a>
+                    {% else %} {# Assessor/Admin #}
+                         {# Consider separate 'Verify' link later if needed #}
+                        <a href="{% url 'tracker:assessment_cloud_service_update' assessment.pk service.pk %}" class="btn btn-sm btn-outline-secondary">View / Verify</a>
+                    {% endif %}
+
+                    {# Delete button (if assessment not complete) #}
+                    {% if not assessment.status|slice:":8" == 'Complete' %}
+                        {% if user_role == 'Client' %}
+                        <form action="{% url 'tracker:client_assessment_cloud_service_delete' assessment.pk service.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to remove service \'{{ service.cloud_service_definition.name }}\' from this assessment?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Remove</button>
+                        </form>
+                        {% else %} {# Assessor/Admin #}
+                        <form action="{% url 'tracker:assessment_cloud_service_delete' assessment.pk service.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to remove service \'{{ service.cloud_service_definition.name }}\' from this assessment?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Remove</button>
+                        </form>
+                        {% endif %}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p>No cloud services have been added to this assessment yet.</p>
+{% endif %}
+
+<hr>
+{# Dynamic Back Link #}
+{% if user_role == 'Client' %}
+    <a href="{% url 'tracker:client_assessment_detail' assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% else %} {# Assessor or Admin #}
+    <a href="{% url 'tracker:assessor_assessment_detail' assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% endif %}
+
+{% endblock %}

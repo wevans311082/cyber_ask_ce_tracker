@@ -1,0 +1,26 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Confirm Delete Assessment{% endblock %}
+
+{% block content %}
+<h2>Confirm Delete Assessment</h2>
+
+{# Use 'assessment' as context object name, matching the view #}
+<p>Are you sure you want to delete Assessment #<strong>{{ assessment.id }}</strong> for client "<strong>{{ assessment.client.name }}</strong>"?</p>
+
+<div class="alert alert-danger" role="alert">
+  <h4 class="alert-heading">Warning!</h4>
+  <p>This action cannot be undone. Deleting this assessment will also permanently delete:</p>
+  <ul>
+      <li>All associated Scope Items.</li>
+      <li>All uploaded Evidence files.</li>
+      <li>All Assessment Logs.</li>
+  </ul>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Yes, Delete Assessment</button>
+    <a href="{% url 'tracker:admin_assessment_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

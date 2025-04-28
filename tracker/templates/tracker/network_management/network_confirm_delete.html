@@ -1,0 +1,17 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Confirm Delete Network" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+
+<p>Are you sure you want to delete the network "<strong>{{ network.name }}</strong>"?</p>
+<p class="text-warning">Scoped items currently associated with this network will have their network link removed (set to null).</p>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Yes, Delete Network</button>
+    <a href="{% url 'tracker:network_list' assessment.pk %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

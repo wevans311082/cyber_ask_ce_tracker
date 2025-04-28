@@ -1,0 +1,123 @@
+{% extends "tracker/base.html" %}
+{% load static %} {# Optional: If you use static files here #}
+
+{% block title %}{{ page_title|default:"External Scan Targets" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+{# Ensure assessment object is passed in context #}
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+
+{# Conditionally show Add button based on view context variable 'can_edit' #}
+{# Ensure 'can_edit' is passed from ExternalIPListView context #}
+{% if can_edit %}
+<div class="mb-3">
+    {# Use correct URL name based on user role accessing this page #}
+    {# Ensure 'user_role' is passed from ExternalIPListView context #}
+    {% if user_role == 'Client' %}
+        <a href="{% url 'tracker:client_externalip_create' assessment_pk=assessment.pk %}" class="btn btn-primary">Add New Target</a>
+    {% else %} {# Assessor or Admin #}
+        <a href="{% url 'tracker:externalip_create' assessment_pk=assessment.pk %}" class="btn btn-primary">Add New Target</a>
+    {% endif %}
+</div>
+{% elif user_role != 'Client' %}
+{# Show informative message if user is Assessor/Admin but Client cannot edit #}
+{# This message might need refinement based on exact permissions #}
+<div class="alert alert-warning small" role="alert">
+  Clients cannot add/edit targets as the assessment status is not 'Scoping (Client Input)'. Current status: <strong>{{ assessment.get_status_display }}</strong>. Assessors/Admins may still be able to update scan status.
+</div>
+{% else %}
+{# Message specifically for the client when they cannot edit #}
+ <div class="alert alert-warning small" role="alert">
+  Adding/editing external targets is only allowed when the assessment status is 'Scoping (Client Input)'. Current status: <strong>{{ assessment.get_status_display }}</strong>.
+</div>
+{% endif %}
+
+{# Ensure 'external_ips' context object name matches the view #}
+{% if external_ips %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover table-sm"> {# Added table-sm #}
+        <thead class="table-light"> {# Added header style #}
+            <tr>
+                <th>IP Address / Hostname</th>
+                <th>Description</th>
+                <th>Consent Provided?</th>
+                <th>Scan Status</th>
+                <th>Added</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for ip in external_ips %} {# Loop through the correct context variable #}
+            <tr>
+                <td><code>{{ ip.ip_address_or_hostname }}</code></td>
+                <td>{{ ip.description|default:"-" }}</td>
+                <td>
+                    {% if ip.consent_given %}
+                        <i class="fa-solid fa-check text-success" title="Consent Given"></i>
+                        {% if ip.consented_by %}
+                           <small class="text-muted d-block">({{ ip.consented_by.username }} {{ ip.consent_timestamp|date:"Y-m-d" }})</small> {# Simplified date #}
+                        {% endif %}
+                    {% else %}
+                        <i class="fa-solid fa-times text-danger" title="Consent Not Given"></i>
+                    {% endif %}
+                </td>
+                <td> {# Display Scan Status with badges #}
+                   {% if ip.scan_status == 'ScannedOK' %} <span class="badge bg-success">{{ ip.get_scan_status_display }}</span>
+                   {% elif ip.scan_status == 'ScannedIssues' %} <span class="badge bg-danger">{{ ip.get_scan_status_display }}</span>
+                   {% elif ip.scan_status == 'Remediated' %} <span class="badge bg-info text-dark">{{ ip.get_scan_status_display }}</span>
+                   {% elif ip.scan_status == 'Excluded' %} <span class="badge bg-secondary">{{ ip.get_scan_status_display }}</span>
+                   {% else %} <span class="badge bg-light text-dark border">{{ ip.get_scan_status_display }}</span> {% endif %}
+                   {% if ip.last_scanned_at %}<small class="text-muted d-block">{{ ip.last_scanned_at|date:"Y-m-d" }}</small>{% endif %}
+                </td>
+                <td>{{ ip.added_at|date:"Y-m-d H:i" }}</td>
+                <td class="action-buttons">
+                    {# Client links - show only if client user AND they have edit permissions #}
+                    {% if user_role == 'Client' %}
+                        {% if can_edit %}
+                        <a href="{% url 'tracker:client_externalip_update' assessment_pk=assessment.pk pk=ip.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                        <form action="{% url 'tracker:client_externalip_delete' assessment_pk=assessment.pk pk=ip.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete target \'{{ ip.ip_address_or_hostname }}\'?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+                        </form>
+                        {% else %}
+                            <span class="text-muted small fst-italic">Locked</span>
+                        {% endif %}
+                    {# Assessor / Admin links - Assume they can always interact unless assessment complete #}
+                    {% elif user_role == 'Assessor' or user_role == 'Admin' %}
+                         {# Link to edit IP/Desc/Consent #}
+                         <a href="{% url 'tracker:externalip_update' assessment_pk=assessment.pk pk=ip.pk %}" class="btn btn-sm btn-outline-secondary" title="Edit Target Details">Edit Details</a>
+                         {# Link to Scan Update View - Assessor/Admin only #}
+                         <a href="{% url 'tracker:externalip_update_scan' assessment_pk=assessment.pk pk=ip.pk %}" class="btn btn-sm btn-outline-info" title="Update Scan Status/Notes">Update Scan</a>
+                         {# Delete button - Assessor/Admin can delete #}
+                         <form action="{% url 'tracker:externalip_delete' assessment_pk=assessment.pk pk=ip.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete target \'{{ ip.ip_address_or_hostname }}\'?');">
+                            {% csrf_token %}
+                            <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+                        </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{# Include pagination if using it in the view #}
+{# Ensure 'is_paginated' and 'page_obj' are passed from ExternalIPListView context #}
+{% if is_paginated %}
+    {% include "tracker/partials/pagination.html" %}
+{% endif %}
+
+{% else %}
+<p>No external IP addresses or hostnames have been added for this assessment yet.</p>
+{% endif %}
+
+<hr>
+{# Dynamic Back Link based on role #}
+{% if user_role == 'Client' %}
+    <a href="{% url 'tracker:client_assessment_detail' assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% else %} {# Assessor or Admin #}
+    <a href="{% url 'tracker:assessor_assessment_detail' assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% endif %}
+
+{% endblock %}

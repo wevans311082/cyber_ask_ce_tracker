@@ -1,0 +1,57 @@
+{# tracker/templates/tracker/partials/pagination.html #}
+{# Reusable pagination controls based on os_list.html #}
+
+{% if is_paginated %} {# Check if pagination is needed #}
+<nav aria-label="Page navigation" class="mt-4">
+  <ul class="pagination justify-content-center">
+
+    {# Previous Button #}
+    {% if page_obj.has_previous %}
+      <li class="page-item">
+        {# Use '?' to preserve other query parameters if any #}
+        <a class="page-link" href="?page={{ page_obj.previous_page_number }}" aria-label="Previous">
+          <span aria-hidden="true">&laquo;</span>
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link" aria-hidden="true">&laquo;</span>
+      </li>
+    {% endif %}
+
+    {# Page Numbers #}
+    {% for i in paginator.page_range %}
+      {% if page_obj.number == i %}
+        <li class="page-item active" aria-current="page"><span class="page-link">{{ i }}</span></li>
+      {% elif i > page_obj.number|add:'-3' and i < page_obj.number|add:'3' %}
+         {# Show nearby pages #}
+         <li class="page-item"><a class="page-link" href="?page={{ i }}">{{ i }}</a></li>
+      {% elif i == 1 or i == paginator.num_pages %}
+         {# Ellipsis logic for gaps #}
+          {% if i > page_obj.number|add:'3' and page_obj.number < paginator.num_pages|add:'-3' and i == paginator.num_pages %}
+            <li class="page-item disabled"><span class="page-link">...</span></li>
+          {% endif %}
+           {# Always show first and last page links #}
+           <li class="page-item"><a class="page-link" href="?page={{ i }}">{{ i }}</a></li>
+           {% if i < page_obj.number|add:'-3' and page_obj.number > 4 and i == 1 %}
+             <li class="page-item disabled"><span class="page-link">...</span></li>
+           {% endif %}
+      {% endif %}
+    {% endfor %}
+
+    {# Next Button #}
+    {% if page_obj.has_next %}
+      <li class="page-item">
+        <a class="page-link" href="?page={{ page_obj.next_page_number }}" aria-label="Next">
+          <span aria-hidden="true">&raquo;</span>
+        </a>
+      </li>
+    {% else %}
+      <li class="page-item disabled">
+        <span class="page-link" aria-hidden="true">&raquo;</span>
+      </li>
+    {% endif %}
+
+  </ul>
+</nav>
+{% endif %}

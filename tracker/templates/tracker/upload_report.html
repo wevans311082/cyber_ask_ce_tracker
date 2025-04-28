@@ -1,0 +1,71 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Upload and Extract CE Report{% endblock %}
+
+{% block content %}
+<h2>Upload Cyber Essentials Report PDF</h2>
+
+<p>Upload a completed Cyber Essentials self-assessment report PDF to extract key information.</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="post" enctype="multipart/form-data" novalidate>
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+            {% endif %}
+
+            <div class="mb-3">
+                <label for="{{ form.report_file.id_for_label }}" class="form-label">{{ form.report_file.label }}</label>
+                {{ form.report_file }}
+                {% if form.report_file.errors %}<div class="invalid-feedback d-block">{{ form.report_file.errors }}</div>{% endif %}
+                {% if form.report_file.help_text %}<small class="form-text text-muted">{{ form.report_file.help_text }}</small>{% endif %}
+            </div>
+
+            <button type="submit" class="btn btn-primary">Upload and Extract</button>
+        </form>
+    </div>
+</div>
+
+{% if uploaded_report %}
+<hr>
+<h3>Extraction Results for: {{ uploaded_report.filename }}</h3>
+<p>Status: <span class="badge {% if 'error' in uploaded_report.extraction_status|lower %}bg-danger{% elif 'success' in uploaded_report.extraction_status|lower %}bg-success{% else %}bg-warning text-dark{% endif %}">{{ uploaded_report.extraction_status }}</span></p>
+
+    {% if extraction_errors %} {# Check for errors passed separately #}
+        <div class="alert alert-warning">
+            <strong>Extraction completed with issues:</strong>
+            <ul>
+                {% for error in extraction_errors %}
+                    <li>{{ error }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
+    {% if extracted_data %} {# Check if there's data to display #}
+        <h4>Extracted Data:</h4>
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm">
+                <tbody>
+                    {# This loop iterates through ALL key-value pairs in the dictionary #}
+                    {% for key, value in extracted_data.items %}
+                        <tr>
+                            {# The key is displayed (already formatted by the view) #}
+                            <th style="width: 30%;">{{ key }}</th>
+                            {# The value is displayed, showing '(Not found)' if None/empty #}
+                            <td>{{ value|default:"<span class='text-muted'>(Not found)</span>"|safe }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% elif 'Error' in uploaded_report.extraction_status %}
+         <div class="alert alert-danger">
+             Could not extract data. {{ uploaded_report.extraction_status }}
+         </div>
+    {% endif %}
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,55 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"External Scan Target Form" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {# Render form fields manually for better control #}
+    <div class="mb-3">
+        <label for="{{ form.ip_address_or_hostname.id_for_label }}" class="form-label">{{ form.ip_address_or_hostname.label }}*</label>
+        {{ form.ip_address_or_hostname }}
+        {% if form.ip_address_or_hostname.errors %}<div class="invalid-feedback d-block">{{ form.ip_address_or_hostname.errors }}</div>{% endif %}
+        {% if form.ip_address_or_hostname.help_text %}<small class="form-text text-muted">{{ form.ip_address_or_hostname.help_text }}</small>{% endif %}
+    </div>
+
+     <div class="mb-3">
+        <label for="{{ form.description.id_for_label }}" class="form-label">{{ form.description.label }}</label>
+        {{ form.description }}
+        {% if form.description.errors %}<div class="invalid-feedback d-block">{{ form.description.errors }}</div>{% endif %}
+        {% if form.description.help_text %}<small class="form-text text-muted">{{ form.description.help_text }}</small>{% endif %}
+    </div>
+
+    <hr>
+
+    {# Consent Checkbox #}
+    <div class="mb-3 form-check">
+        {{ form.confirm_consent }}
+        <label for="{{ form.confirm_consent.id_for_label }}" class="form-check-label">{{ form.confirm_consent.label }}*</label>
+        {% if form.confirm_consent.errors %}<div class="invalid-feedback d-block">{{ form.confirm_consent.errors }}</div>{% endif %}
+        {% if form.confirm_consent.help_text %}<small class="form-text text-muted d-block">{{ form.confirm_consent.help_text }}</small>{% endif %}
+    </div>
+
+
+    <button type="submit" class="btn btn-success">{% if object %}Save Changes{% else %}Add Target{% endif %}</button>
+
+    {# Dynamic Cancel Link based on role #}
+    {% if user_role == 'Client' %}
+        <a href="{% url 'tracker:client_externalip_list' assessment_pk=assessment.pk %}" class="btn btn-secondary">Cancel</a>
+    {% else %} {# Assessor or Admin #}
+        <a href="{% url 'tracker:externalip_list' assessment_pk=assessment.pk %}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
+</form>
+{% endblock %}

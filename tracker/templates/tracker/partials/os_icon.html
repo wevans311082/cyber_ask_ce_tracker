@@ -1,0 +1,23 @@
+{# tracker/templates/tracker/partials/os_icon.html #}
+{# Expects os_name and vendor_hint variables from the parent template #}
+
+{% load static %} {# Load static if you were using static image files #}
+
+{# Map OS names/vendors to Font Awesome classes #}
+{% if "windows" in os_name|lower or "windows" in vendor_hint %}
+    <i class="fa-brands fa-windows os-icon" title="{{ os_name }}"></i>
+{% elif "macos" in os_name|lower or "apple" in vendor_hint or "ios" in os_name|lower or "ipados" in os_name|lower %}
+    <i class="fa-brands fa-apple os-icon" title="{{ os_name }}"></i>
+{% elif "ubuntu" in os_name|lower or "debian" in os_name|lower or "linux" in os_name|lower or "centos" in os_name|lower or "rhel" in os_name|lower or "alma" in os_name|lower or "rocky" in os_name|lower %}
+    <i class="fa-brands fa-linux os-icon" title="{{ os_name }}"></i>
+{% elif "android" in os_name|lower %}
+    <i class="fa-brands fa-android os-icon" title="{{ os_name }}"></i>
+{% elif "esxi" in os_name|lower or "vmware" in vendor_hint %}
+    {# No specific VMware brand icon in FA free, use generic server/cube #}
+     <i class="fa-solid fa-server os-icon" title="{{ os_name }}"></i>
+{% elif "unknown" in os_name|lower %}
+     <i class="fa-solid fa-question-circle os-icon text-muted" title="{{ os_name }}"></i>
+{% else %}
+    {# Default icon for others (e.g., network devices, cloud) #}
+    <i class="fa-solid fa-laptop-code os-icon" title="{{ os_name }}"></i>
+{% endif %}

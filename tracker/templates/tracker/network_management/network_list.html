@@ -1,0 +1,58 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Manage Networks" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Client: {{ assessment.client.name }}</p>
+
+<div class="mb-3">
+    <a href="{% url 'tracker:network_create' assessment.pk %}" class="btn btn-primary">Add New Network</a>
+</div>
+
+{% if networks %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Description</th>
+                <th>IP Range / Subnet</th>
+                <th>VLAN ID</th>
+                <th>Notes</th>
+                <th>Last Updated</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for network in networks %}
+            <tr>
+                <td>{{ network.name }}</td>
+                <td>{{ network.description|default:"-" }}</td>
+                <td>{{ network.ip_range|default:"-" }}</td>
+                <td>{{ network.vlan_id|default:"-" }}</td>
+                <td>{{ network.notes|default:"-" }}</td>
+                <td>{{ network.updated_at|date:"Y-m-d H:i" }}</td>
+                <td class="action-buttons">
+                    <a href="{% url 'tracker:network_update' assessment.pk network.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                    <form action="{% url 'tracker:network_delete' assessment.pk network.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete network \'{{ network.name }}\'?');">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-sm btn-outline-danger ms-1">Delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p>No networks have been defined for this assessment yet.</p>
+{% endif %}
+
+<hr>
+{% if user_role == 'Client' %}
+    <a href="{% url 'tracker:client_assessment_detail' assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% else %} {# Assessor or Admin #}
+    <a href="{% url 'tracker:assessor_assessment_detail' assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% endif %}
+{% endblock %}

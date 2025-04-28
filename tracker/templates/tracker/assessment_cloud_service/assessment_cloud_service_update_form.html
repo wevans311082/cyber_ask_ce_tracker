@@ -1,0 +1,303 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Update Cloud Service Usage{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Update Cloud Service Usage</h2>
+    {# Link back to Assessment Detail Page - Uses object.assessment #}
+    {% if object and object.assessment %}
+    <p>Assessment:
+        <a href="{% if user_role == 'Client' %}{% url 'tracker:client_assessment_detail' object.assessment.pk %}{% else %}{% url 'tracker:assessor_assessment_detail' object.assessment.pk %}{% endif %}"></a>
+            {{ object.assessment }}
+        </a>
+    </p>
+    {% endif %}
+
+    {# Display existing service info #}
+    {% if object %}
+        <h4 class="mb-3">Service: {{ object.cloud_service_definition.name }} {% if object.cloud_service_definition.vendor %}({{ object.cloud_service_definition.vendor }}){% endif %}</h4>
+        {% if object.cloud_service_definition.service_url %}
+            <p><a href="{{ object.cloud_service_definition.service_url }}" target="_blank" class="btn btn-sm btn-outline-info mb-3">Service Info/Login <i class="fa-solid fa-arrow-up-right-from-square fa-xs"></i></a></p>
+        {% endif %}
+    {% else %}
+         {# This part should ideally not be reached in an update view, but included for robustness #}
+         <p class="alert alert-danger">Error: No cloud service instance provided for update.</p>
+         {# Provide a sensible default link if assessment context is lost #}
+         <a href="{% url 'tracker:assessment_list' %}" class="btn btn-secondary">Back to Assessments</a>
+         {% comment %} Consider adding logic here to prevent form rendering if object is truly required {% endcomment %}
+    {% endif %}
+
+    {# Only render form if object exists #}
+    {% if object %}
+    <form method="post" enctype="multipart/form-data" novalidate>
+        {% csrf_token %}
+
+        {# --- Non-Field Errors --- #}
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger">
+                {% for error in form.non_field_errors %}
+                    {{ error }}<br>
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        {# --- Client Notes --- #}
+        {# Editable for Client, read-only for Assessor #}
+        <div class="mb-3">
+            <label class="form-label">{% if form.client_notes %}{{ form.client_notes.label }}{% else %}Client Notes{% endif %}</label>
+            {% if is_client_user %}
+                {# Assumes AssessmentCloudServiceUpdateForm has client_notes #}
+                {% if form.client_notes %}
+                     {# Add form-control class via widget attrs in forms.py #}
+                     {{ form.client_notes }}
+                     {% if form.client_notes.errors %}
+                         <div class="invalid-feedback d-block">{% for error in form.client_notes.errors %} {{ error }} {% endfor %}</div>
+                     {% endif %}
+                      {% if form.client_notes.help_text %}<small class="form-text text-muted">{{ form.client_notes.help_text }}</small>{% endif %}
+                {% else %}
+                    <p class="alert alert-warning">Client notes field missing from client update form.</p>
+                {% endif %}
+            {% else %} {# Assessor/Admin read-only view #}
+                 <div class="form-control-plaintext bg-light border rounded p-2" style="min-height: 70px;">
+                     {% if object.client_notes %}{{ object.client_notes|linebreaksbr }}{% else %}<em class="text-muted">(None provided)</em>{% endif %}
+                 </div>
+                 {# Help text might still be relevant even if read-only #}
+                 {% if form.client_notes.help_text %}<small class="form-text text-muted">{{ form.client_notes.help_text }}</small>{% endif %}
+            {% endif %}
+        </div>
+
+        {# --- MFA Proof Section --- #}
+        {# Define allowed extensions once for reuse within this template scope #}
+        {% with allowed_extensions=".png,.jpg,.jpeg,.gif,.bmp,.webp" %}
+
+            {% if is_client_user %}
+                 {# Client Editable Upload Fields - Assumes AssessmentCloudServiceUpdateForm has these #}
+                 {% if form.mfa_admin_proof and form.mfa_user_proof %}
+                     {# Admin MFA Proof #}
+                     <div class="border p-3 mb-4 rounded bg-light">
+                         <h6 class="mb-3">{{ form.mfa_admin_proof.label|default:"Admin MFA Proof" }}</h6>
+                         <div class="row align-items-center">
+                             <div class="col-md-7 mb-2 mb-md-0">
+                                 {# Add form-control class via widget attrs in forms.py #}
+                                 {{ form.mfa_admin_proof }} {# Renders file input and clear checkbox #}
+                                  {% if form.mfa_admin_proof.errors %}
+                                     <div class="invalid-feedback d-block mt-1">{% for error in form.mfa_admin_proof.errors %} {{ error }} {% endfor %}</div>
+                                 {% endif %}
+                                 {% if form.mfa_admin_proof.help_text %}<small class="form-text text-muted d-block mt-1">{{ form.mfa_admin_proof.help_text }}</small>{% endif %}
+                             </div>
+                             <div class="col-md-5 text-center"> {# Preview side #}
+                                 {% if object.mfa_admin_proof %}
+                                     <p class="mb-1 small text-muted">Current File Preview</p>
+                                     <a href="{{ object.mfa_admin_proof.url }}" target="_blank" title="View current file">
+                                         {# --- Corrected Preview Logic --- #}
+                                         {% with filename_lower=object.mfa_admin_proof.name|lower %}
+                                             {% if filename_lower|slice:"-4:" in allowed_extensions or filename_lower|slice:"-5:" in allowed_extensions %}
+                                                 <img src="{{ object.mfa_admin_proof.url }}" alt="Admin MFA Proof Preview" class="img-thumbnail" style="max-height: 150px; object-fit: contain;">
+                                             {% else %}
+                                                 <i class="fas fa-file-alt fa-3x text-secondary"></i><br><small>{{ object.mfa_admin_proof.name|cut:"mfa_proof/" }}</small>
+                                             {% endif %}
+                                         {% endwith %}
+                                         {# --- End Corrected Preview Logic --- #}
+                                     </a>
+                                 {% else %}
+                                     <div class="text-center text-muted p-3 border rounded" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                                         <small>No file uploaded</small>
+                                     </div>
+                                 {% endif %}
+                             </div>
+                         </div>
+                     </div>
+                     {# User MFA Proof #}
+                     <div class="border p-3 mb-4 rounded bg-light">
+                         <h6 class="mb-3">{{ form.mfa_user_proof.label|default:"User MFA Proof" }}</h6>
+                         <div class="row align-items-center">
+                             <div class="col-md-7 mb-2 mb-md-0">
+                                {# Add form-control class via widget attrs in forms.py #}
+                                {{ form.mfa_user_proof }} {# Renders file input and clear checkbox #}
+                                 {% if form.mfa_user_proof.errors %}
+                                     <div class="invalid-feedback d-block mt-1">{% for error in form.mfa_user_proof.errors %} {{ error }} {% endfor %}</div>
+                                 {% endif %}
+                                  {% if form.mfa_user_proof.help_text %}<small class="form-text text-muted d-block mt-1">{{ form.mfa_user_proof.help_text }}</small>{% endif %}
+                             </div>
+                             <div class="col-md-5 text-center"> {# Preview side #}
+                                  {% if object.mfa_user_proof %}
+                                     <p class="mb-1 small text-muted">Current File Preview</p>
+                                     <a href="{{ object.mfa_user_proof.url }}" target="_blank" title="View current file">
+                                         {# --- Corrected Preview Logic --- #}
+                                          {% with filename_lower=object.mfa_user_proof.name|lower %}
+                                             {% if filename_lower|slice:"-4:" in allowed_extensions or filename_lower|slice:"-5:" in allowed_extensions %}
+                                                 <img src="{{ object.mfa_user_proof.url }}" alt="User MFA Proof Preview" class="img-thumbnail" style="max-height: 150px; object-fit: contain;">
+                                             {% else %}
+                                                 <i class="fas fa-file-alt fa-3x text-secondary"></i><br><small>{{ object.mfa_user_proof.name|cut:"mfa_proof/" }}</small>
+                                             {% endif %}
+                                         {% endwith %}
+                                         {# --- End Corrected Preview Logic --- #}
+                                     </a>
+                                 {% else %}
+                                     <div class="text-center text-muted p-3 border rounded" style="height: 150px; display: flex; align-items: center; justify-content: center;">
+                                         <small>No file uploaded</small>
+                                     </div>
+                                 {% endif %}
+                             </div>
+                         </div>
+                     </div>
+                {% else %}
+                     <p class="alert alert-warning">MFA proof fields missing from client update form.</p>
+                {% endif %}
+
+            {% elif is_assessor_or_admin %}
+                 {# Assessor/Admin Read-only view of proof #}
+                 <div class="border p-3 mb-4 rounded">
+                     <h6 class="mb-3">MFA Proof Submitted by Client</h6>
+                     <div class="row">
+                         <div class="col-md-6 mb-2 mb-md-0"> {# Admin Proof Read-only #}
+                             <p class="mb-1"><strong>Admin Proof:</strong></p>
+                             {% if object.mfa_admin_proof %}
+                                 <a href="{{ object.mfa_admin_proof.url }}" target="_blank" class="btn btn-outline-primary btn-sm me-2">View File</a>
+                                 {# --- Corrected Preview Logic --- #}
+                                 {% with filename_lower=object.mfa_admin_proof.name|lower %}
+                                     {% if filename_lower|slice:"-4:" in allowed_extensions or filename_lower|slice:"-5:" in allowed_extensions %}
+                                         <img src="{{ object.mfa_admin_proof.url }}" alt="Admin Proof Preview" class="img-thumbnail align-middle" style="max-height: 75px; object-fit: contain;">
+                                     {% else %}
+                                         <i class="fas fa-file-alt fa-lg text-secondary align-middle"></i>
+                                     {% endif %}
+                                 {% endwith %}
+                                 {# --- End Corrected Preview Logic --- #}
+                             {% else %}
+                                 <em class="text-muted">None Submitted</em>
+                             {% endif %}
+                         </div>
+                         <div class="col-md-6"> {# User Proof Read-only #}
+                              <p class="mb-1"><strong>User Proof:</strong></p>
+                              {% if object.mfa_user_proof %}
+                                 <a href="{{ object.mfa_user_proof.url }}" target="_blank" class="btn btn-outline-primary btn-sm me-2">View File</a>
+                                 {# --- Corrected Preview Logic --- #}
+                                  {% with filename_lower=object.mfa_user_proof.name|lower %}
+                                     {% if filename_lower|slice:"-4:" in allowed_extensions or filename_lower|slice:"-5:" in allowed_extensions %}
+                                         <img src="{{ object.mfa_user_proof.url }}" alt="User Proof Preview" class="img-thumbnail align-middle" style="max-height: 75px; object-fit: contain;">
+                                     {% else %}
+                                         <i class="fas fa-file-alt fa-lg text-secondary align-middle"></i>
+                                     {% endif %}
+                                 {% endwith %}
+                                 {# --- End Corrected Preview Logic --- #}
+                              {% else %}
+                                 <em class="text-muted">None Submitted</em>
+                              {% endif %}
+                         </div>
+                     </div>
+                </div>
+            {% endif %} {# End client/assessor conditional for previews #}
+
+        {% endwith %} {# End of allowed_extensions scope #}
+
+
+        {# --- Assessor Verification Section --- #}
+        {# Only show and make editable for Assessor/Admin #}
+        {% if is_assessor_or_admin %}
+            <div class="border p-3 mb-4 rounded bg-warning-subtle">
+                <h5 class="mb-3">Assessor Verification</h5>
+                {# Assumes AssessmentCloudServiceAssessorForm contains these fields #}
+
+                 {% if form.mfa_admin_verified %}
+                     <div class="form-check mb-2">
+                         {# Add form-check-input class via widget attrs #}
+                         {{ form.mfa_admin_verified }}
+                         <label class="form-check-label" for="{{ form.mfa_admin_verified.id_for_label }}">
+                             {{ form.mfa_admin_verified.label }}
+                         </label>
+                         {% if form.mfa_admin_verified.errors %}<div class="invalid-feedback d-block">{% for error in form.mfa_admin_verified.errors %} {{ error }} {% endfor %}</div>{% endif %}
+                    </div>
+                 {% endif %}
+
+                 {% if form.mfa_user_verified %}
+                     <div class="form-check mb-2">
+                        {# Add form-check-input class via widget attrs #}
+                        {{ form.mfa_user_verified }}
+                         <label class="form-check-label" for="{{ form.mfa_user_verified.id_for_label }}">
+                             {{ form.mfa_user_verified.label }}
+                         </label>
+                          {% if form.mfa_user_verified.errors %}<div class="invalid-feedback d-block">{% for error in form.mfa_user_verified.errors %} {{ error }} {% endfor %}</div>{% endif %}
+                    </div>
+                 {% endif %}
+
+                 {% if form.is_compliant %}
+                     <div class="form-check mb-3">
+                        {# Add form-check-input class via widget attrs #}
+                        {{ form.is_compliant }}
+                         <label class="form-check-label" for="{{ form.is_compliant.id_for_label }}">
+                             {{ form.is_compliant.label }}
+                         </label>
+                          {% if form.is_compliant.errors %}<div class="invalid-feedback d-block">{% for error in form.is_compliant.errors %} {{ error }} {% endfor %}</div>{% endif %}
+                    </div>
+                 {% endif %}
+
+                 {% if form.assessor_notes %}
+                     <div class="mb-3">
+                        <label for="{{ form.assessor_notes.id_for_label }}" class="form-label">{{ form.assessor_notes.label }}</label>
+                        {# Add form-control class via widget attrs #}
+                        {{ form.assessor_notes }}
+                        {% if form.assessor_notes.errors %}<div class="invalid-feedback d-block">{% for error in form.assessor_notes.errors %} {{ error }} {% endfor %}</div>{% endif %}
+                        {% if form.assessor_notes.help_text %}<small class="form-text text-muted">{{ form.assessor_notes.help_text }}</small>{% endif %}
+                    </div>
+                {% endif %}
+
+                {# Display verification info if available #}
+                 {% if object.verified_by %}
+                    <p class="small text-muted mt-3 mb-0">Last verified by {{ object.verified_by.get_full_name|default:object.verified_by.username }} on {{ object.last_verified_at|date:"Y-m-d H:i" }}</p>
+                 {% endif %}
+            </div>
+        {% endif %}
+        {# --- END Assessor Verification Section --- #}
+
+        <hr>
+        <div class="mt-3">
+            <button type="submit" class="btn btn-success">Save Changes</button>
+            {# Use the correct, original cancel links based on role #}
+            {% if user_role == 'Client' %}
+                 <a href="{% url 'tracker:client_assessment_cloud_service_list' object.assessment.pk %}" class="btn btn-secondary">Cancel</a>
+            {% else %} {# Assessor or Admin #}
+                 <a href="{% url 'tracker:assessment_cloud_service_list' object.assessment.pk %}" class="btn btn-secondary">Cancel</a>
+            {% endif %}
+         </div>
+    </form>
+    {% endif %} {# End of if object #}
+</div> {# End of container #}
+{% endblock %}
+
+{% block extra_js %}
+{# Add any necessary JavaScript here. #}
+<script>
+    // Minimal JS needed for manual forms unless you add specific interactions.
+    document.addEventListener('DOMContentLoaded', function() {
+        // Example: Add styling hook for Bootstrap file inputs if needed
+        document.querySelectorAll('input[type="file"]').forEach(function(fileInput) {
+            fileInput.addEventListener('change', function(e) {
+                // You could update a label to show the selected filename, for example
+                 // console.log('File selected:', e.target.files[0]?.name);
+             });
+        });
+
+         // Example: Basic styling for the ClearableFileInput checkbox's label
+         // This might be needed if Django renders the clear checkbox without Bootstrap classes
+         document.querySelectorAll('input[type="checkbox"][name$="-clear"]').forEach(function(checkbox) {
+             const label = checkbox.nextElementSibling;
+             if (label && label.tagName === 'LABEL') {
+                 // Ensure it looks somewhat like a form-check-label if needed
+                 // This might involve wrapping them in a div with class="form-check"
+                 // if Django's default rendering doesn't do it.
+                 // Example wrapper (use carefully):
+                 // if (!checkbox.parentElement.classList.contains('form-check')) {
+                 //    const wrapper = document.createElement('div');
+                 //    wrapper.classList.add('form-check', 'mt-1');
+                 //    checkbox.classList.add('form-check-input');
+                 //    label.classList.add('form-check-label');
+                 //    checkbox.parentNode.insertBefore(wrapper, checkbox);
+                 //    wrapper.appendChild(checkbox);
+                 //    wrapper.appendChild(label);
+                 // }
+             }
+        });
+    });
+</script>
+{% endblock extra_js %}

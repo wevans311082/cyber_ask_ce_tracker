@@ -1,0 +1,66 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}Manage Users{% endblock %}
+
+{% block content %}
+<h2>Manage Users</h2>
+
+<div class="mb-3">
+    <a href="{% url 'tracker:user_create' %}" class="btn btn-primary">Add New User</a>
+</div>
+
+{% if users %}
+<div class="table-responsive">
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Full Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Client (if applicable)</th>
+                <th>Staff Status</th>
+                <th>Active</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td>{{ u.username }}</td>
+                <td>{{ u.get_full_name|default:"-" }}</td>
+                <td>{{ u.email|default:"-" }}</td>
+                <td>
+                    {% if u.userprofile %}
+                        {{ u.userprofile.get_role_display }}
+                    {% else %}
+                        <span class="text-muted">No Profile</span>
+                    {% endif %}
+                </td>
+                <td>
+                    {% if u.userprofile and u.userprofile.role == 'Client' and u.userprofile.client %}
+                        {{ u.userprofile.client.name }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td>{% if u.is_staff %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td>
+                <td>{% if u.is_active %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-danger">No</span>{% endif %}</td>
+                <td class="action-buttons">
+                     <a href="{% url 'tracker:user_update' u.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                     {# Add Delete User view/url if needed #}
+                     {# <a href="#" class="btn btn-sm btn-outline-danger">Delete</a> #}
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="8">No users found.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<p>No users found.</p>
+{% endif %}
+{% endblock %}

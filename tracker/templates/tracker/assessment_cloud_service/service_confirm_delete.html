@@ -1,0 +1,22 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Confirm Remove Cloud Service" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title }}</h2>
+<p>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</p>
+
+<p>Are you sure you want to remove the cloud service "<strong>{{ assessment_service.cloud_service_definition.name }}</strong>" from this assessment?</p>
+<p class="text-warning">This will delete the link to the assessment and any uploaded MFA proof for this specific instance.</p>
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Yes, Remove Service</button>
+     {# Dynamic Cancel Link #}
+    {% if user_role == 'Client' %}
+        <a href="{% url 'tracker:client_assessment_cloud_service_list' assessment.pk %}" class="btn btn-secondary">Cancel</a>
+    {% else %} {# Assessor or Admin #}
+        <a href="{% url 'tracker:assessment_cloud_service_list' assessment.pk %}" class="btn btn-secondary">Cancel</a>
+    {% endif %}
+</form>
+{% endblock %}

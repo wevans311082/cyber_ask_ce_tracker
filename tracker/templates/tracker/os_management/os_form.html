@@ -1,0 +1,71 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Operating System Form" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title|default:"Operating System Form" }}</h2>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {{ form.non_field_errors }}
+        </div>
+    {% endif %}
+
+    {# Example of rendering fields manually for better control #}
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}*</label>
+            {{ form.name }}
+            {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.version.id_for_label }}" class="form-label">{{ form.version.label }}</label>
+            {{ form.version }}
+             {% if form.version.errors %}<div class="invalid-feedback d-block">{{ form.version.errors }}</div>{% endif %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.vendor.id_for_label }}" class="form-label">{{ form.vendor.label }}</label>
+            {{ form.vendor }}
+             {% if form.vendor.errors %}<div class="invalid-feedback d-block">{{ form.vendor.errors }}</div>{% endif %}
+        </div>
+         <div class="col-md-6 mb-3">
+            <label for="{{ form.vendor_website.id_for_label }}" class="form-label">{{ form.vendor_website.label }}</label>
+            {{ form.vendor_website }}
+             {% if form.vendor_website.errors %}<div class="invalid-feedback d-block">{{ form.vendor_website.errors }}</div>{% endif %}
+        </div>
+    </div>
+
+     <div class="row">
+         <div class="col-md-6 mb-3">
+            <label for="{{ form.end_of_life_date.id_for_label }}" class="form-label">{{ form.end_of_life_date.label }}</label>
+            {{ form.end_of_life_date }}
+             {% if form.end_of_life_date.errors %}<div class="invalid-feedback d-block">{{ form.end_of_life_date.errors }}</div>{% endif %}
+             {% if form.end_of_life_date.help_text %}<small class="form-text text-muted">{{ form.end_of_life_date.help_text }}</small>{% endif %}
+        </div>
+        <div class="col-md-6 mb-3 pt-4"> {# Align checkbox #}
+             <div class="form-check">
+                {{ form.is_supported }}
+                <label for="{{ form.is_supported.id_for_label }}" class="form-check-label">{{ form.is_supported.label }}</label>
+             </div>
+             {% if form.is_supported.errors %}<div class="invalid-feedback d-block">{{ form.is_supported.errors }}</div>{% endif %}
+        </div>
+     </div>
+
+     <div class="mb-3">
+        <label for="{{ form.notes.id_for_label }}" class="form-label">{{ form.notes.label }}</label>
+        {{ form.notes }}
+         {% if form.notes.errors %}<div class="invalid-feedback d-block">{{ form.notes.errors }}</div>{% endif %}
+    </div>
+
+
+    <button type="submit" class="btn btn-primary">Save Operating System</button>
+    <a href="{% url 'tracker:os_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+
+{% endblock %}

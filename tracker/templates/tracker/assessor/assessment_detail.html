@@ -1,0 +1,634 @@
+{% extends "tracker/base.html" %}
+{% load static %} {# Ensure static is loaded for os_icon partial if used elsewhere #}
+
+{% block title %}Assessment Details - {{ assessment.id }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Add some basic styling for the help icon */
+    .help-icon {
+        cursor: pointer;
+        color: #0d6efd; /* Bootstrap primary blue */
+        font-size: 1.1rem;
+        vertical-align: middle;
+    }
+</style>
+
+<h2>Assessment Details: #{{ assessment.id }} - {{ assessment.client.name }}</h2>
+<p>Type: {{ assessment.get_assessment_type_display }}</p>
+
+{# --- Status Alerts --- #}
+{% if needs_scope_review %} {# Make sure 'needs_scope_review' is passed from view #}
+<div class="alert alert-warning" role="alert">
+  <strong>Action Required:</strong> The client has submitted the scope. Please review the items below and update the assessment status once complete.
+</div>
+{% endif %}
+
+{# --- Assessment Workflow Visual --- #}
+<div class="card mb-4">
+    <div class="card-header">Workflow Progress</div>
+    <div class="card-body">
+        {% if workflow_steps %}
+        <style>
+            .workflow-map { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 10px 0; }
+            .workflow-map-step {
+                border: 1px solid #ccc; padding: 5px 10px; border-radius: 15px; /* Pill shape */
+                text-align: center; font-size: 0.8rem; background-color: #f8f9fa; color: #6c757d;
+                position: relative; flex-shrink: 0; min-width: 30px; /* Ensure number fits */
+            }
+            .workflow-map-step.complete { background-color: #d1e7dd; border-color: #a3cfbb; color: #0a3622; }
+            .workflow-map-step.current { background-color: #cff4fc; border-color: #9eeaf9; color: #055160; font-weight: bold; }
+            .workflow-map-step.help-needed { background-color: #fff3cd; border-color: #ffe69c; color: #664d03; }
+            .workflow-map-step.skipped { background-color: #e2e3e5; border-color: #d3d6d8; color: #41464b; text-decoration: line-through;}
+            .workflow-map-connector { flex-grow: 1; height: 2px; background-color: #ccc; min-width: 20px; margin: 0 -2px; }
+            .workflow-map-step.complete + .workflow-map-connector { background-color: #a3cfbb; }
+            .workflow-map-step.current::after { /* Triangle marker */
+                 content: ''; position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%);
+                 width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent;
+                 border-top: 8px solid #055160; /* Match current text color */
+            }
+             .workflow-map-step.help-needed::before {
+                 font-family: "Font Awesome 6 Free"; font-weight: 900; content: "\f071"; /* Exclamation Triangle */
+                 position: absolute; top: -12px; left: 50%; transform: translateX(-50%); color: #ffc107; /* Warning color */
+                 font-size: 0.8em; background-color: white; border-radius: 50%; padding: 1px 2px;
+            }
+        </style>
+        <div class="workflow-map">
+            {% for step in workflow_steps %}
+                <div class="workflow-map-step
+                    {% if step.status == 'Complete' %}complete{% endif %}
+                    {% if step == current_step and step.status != 'HelpNeeded' %}current{% endif %}
+                    {% if step.status == 'Skipped' %}skipped{% endif %}
+                    {% if step.status == 'HelpNeeded' %}help-needed{% endif %}"
+                    title="{{ step.step_definition.step_order }}. {{ step.step_definition.name }} ({{ step.get_status_display }})">
+                    {{ step.step_definition.step_order }}
+                </div>
+                {% if not forloop.last %}
+                    <div class="workflow-map-connector"></div>
+                {% endif %}
+            {% endfor %}
+        </div>
+         {% if current_step %}
+             <p class="mt-3 mb-0 text-center {% if current_step.step_definition.assignee_type == 'Assessor' or current_step.step_definition.assignee_type == 'Both' %}text-primary fw-bold{% else %}text-muted{% endif %}">
+                <strong>
+                     {% if current_step.status == 'HelpNeeded' %}<span class="text-warning">Step Needing Help</span>
+                     {% else %}Current Step{% endif %}
+                     {% if current_step.step_definition.assignee_type == 'Assessor' or current_step.step_definition.assignee_type == 'Both' %} (Action: You){% else %} (Action: {{ current_step.step_definition.get_assignee_type_display }}){% endif %}:
+                </strong>
+                {{ current_step.step_definition.step_order }}. {{ current_step.step_definition.name }}
+             </p>
+        {% elif workflow_steps and workflow_steps.0.status == 'Complete' %}
+             <p class="mt-3 mb-0 text-center text-success"><strong><i class="fa-solid fa-check-circle me-1"></i>Workflow Complete!</strong></p>
+        {% endif %}
+        {% else %}
+        <p class="text-muted">Workflow steps not yet available.</p>
+        {% endif %}
+    </div>
+</div>
+{# --- END Workflow Visual --- #}
+
+{# --- Assessment Workflow Checklist --- #}
+<div class="card mb-4">
+    <div class="card-header">Assessment Workflow Checklist</div>
+    <div class="card-body">
+        {% if workflow_steps %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th style="width: 5%;">Step</th>
+                        <th style="width: 40%;">Requirement</th>
+                        <th style="width: 15%;">Assigned To</th>
+                        <th style="width: 15%;">Status</th>
+                        <th style="width: 25%;">Actions / Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for step in workflow_steps %}
+                    <tr id="workflow-step-row-{{ step.pk }}" class="{% if step == current_step and step.status != 'HelpNeeded' %}table-info{% elif step.status == 'HelpNeeded' %}table-warning{% endif %}">
+                        <td>{{ step.step_definition.step_order }}</td>
+                        <td>{{ step.step_definition.description|linebreaksbr }}</td>
+                        <td>{{ step.step_definition.get_assignee_type_display }}</td>
+                        <td id="workflow-status-{{ step.pk }}">
+                            <span class="badge
+                                {% if step.status == 'Complete' %}bg-success
+                                {% elif step.status == 'InProgress' %}bg-info text-dark
+                                {% elif step.status == 'HelpNeeded' %}bg-warning text-dark
+                                {% elif step.status == 'Skipped' %}bg-secondary
+                                {% else %}bg-light text-dark border{% endif %}">
+                                {% if step.status == 'HelpNeeded' %}<i class="fa-solid fa-triangle-exclamation me-1"></i>{% endif %}
+                                {{ step.get_status_display }}
+                            </span>
+                            {% if step.completed_by %}
+                            <small class="d-block text-muted mt-1" id="workflow-completion-{{ step.pk }}">
+                                by {{ step.completed_by.username }}
+                                {% if step.completed_at %}on {{ step.completed_at|date:"Y-m-d" }}{% endif %}
+                            </small>
+                            {% else %}
+                             <small class="d-block text-muted mt-1" id="workflow-completion-{{ step.pk }}"></small>
+                            {% endif %}
+                        </td>
+                        {# --- ACTION CELL - UPDATED --- #}
+                        <td id="workflow-actions-{{ step.pk }}">
+                            {% if step.can_update %} {# Use the variable from the view #}
+                            <div class="btn-group btn-group-sm workflow-action-group" role="group" aria-label="Workflow Step Actions for {{ step.step_definition.step_order }}">
+                                {# === Assessor Buttons === #}
+                                {# Show 'Done' button if not Complete #}
+                                {% if step.status != 'Complete' %}
+                                <button type="button" class="btn btn-outline-success btn-sm workflow-status-change-btn" data-status="Complete" data-step-pk="{{ step.pk }}" data-assessment-pk="{{ assessment.pk }}" title="Mark as Complete">
+                                    <i class="fas fa-check"></i> Done
+                                </button>
+                                {% endif %}
+
+                                {# Show 'Reset' button if In Progress or Help Needed #}
+                                {% if step.status == 'InProgress' or step.status == 'HelpNeeded' %}
+                                 <button type="button" class="btn btn-outline-secondary btn-sm workflow-status-change-btn" data-status="NotStarted" data-step-pk="{{ step.pk }}" data-assessment-pk="{{ assessment.pk }}" title="Reset to Not Started">
+                                     <i class="fas fa-undo"></i> Reset
+                                 </button>
+                                {% endif %}
+
+                                {# Show 'Reopen' button if Complete #}
+                                {% if step.status == 'Complete' %}
+                                 <button type="button" class="btn btn-outline-secondary btn-sm workflow-status-change-btn" data-status="InProgress" data-step-pk="{{ step.pk }}" data-assessment-pk="{{ assessment.pk }}" title="Reopen (Set In Progress)">
+                                     <i class="fas fa-pencil-alt"></i> Reopen
+                                 </button>
+                                {% endif %}
+                                {# Add other assessor-specific buttons like 'Skip' if needed #}
+                            </div>
+                            {# Spinner/Success containers for the JS #}
+                            <div class="spinner-container mt-1" style="display: none; font-size: 0.8em;">
+                               <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Updating...
+                           </div>
+                           <div class="update-success-msg text-success small mt-1" style="display: none;">
+                               <i class="fas fa-check-circle"></i> Status Updated!
+                           </div>
+
+                            {% elif step.status == 'Complete' %}
+                                <span class="text-success"><i class="fa-solid fa-check-circle me-1"></i>Completed</span>
+                            {% else %}
+                                <span class="text-muted fst-italic small">Pending {{ step.step_definition.get_assignee_type_display }}</span>
+                            {% endif %}
+                             {# Notes display #}
+                            {% if step.notes %}
+                                <p class="mt-2 mb-0"><small><strong>Notes:</strong> {{ step.notes|linebreaksbr }}</small></p>
+                            {% endif %}
+                        </td>
+                         {# --- END ACTION CELL --- #}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">Workflow steps not yet generated for this assessment.</p>
+        {% endif %}
+    </div>
+</div>
+{# --- END Workflow Checklist --- #}
+
+
+{# --- RESTORED: Assessment Information Card --- #}
+<div class="card mb-4">
+    <div class="card-header">Assessment Information</div>
+    <div class="card-body">
+        <dl class="row">
+            <dt class="col-sm-3">Client</dt><dd class="col-sm-9">{{ assessment.client.name }}</dd>
+            <dt class="col-sm-3">Assessor</dt><dd class="col-sm-9">{{ assessment.assessor.username|default:"-" }}</dd>
+            <dt class="col-sm-3">Status</dt><dd class="col-sm-9"><span class="badge bg-primary">{{ assessment.get_status_display }}</span></dd>
+            <dt class="col-sm-3">Scope Type</dt><dd class="col-sm-9">{{ assessment.get_scope_type_display }}</dd>
+            <dt class="col-sm-3">Scope Description</dt><dd class="col-sm-9">{{ assessment.scope_description|default:"-"|linebreaksbr }}</dd>
+            <dt class="col-sm-3">CE Self-Assessment Ref</dt><dd class="col-sm-9">{{ assessment.ce_self_assessment_ref|default:"-" }}</dd>
+            <dt class="col-sm-3">Final Outcome</dt>
+            <dd class="col-sm-9">
+                 {% if assessment.final_outcome == 'Pass' %}<span class="badge bg-success">{{ assessment.get_final_outcome_display }}</span>
+                {% elif assessment.final_outcome == 'Fail' %}<span class="badge bg-danger">{{ assessment.get_final_outcome_display }}</span>
+                {% else %}<span class="text-muted">Pending</span>{% endif %}
+            </dd>
+        </dl>
+        <h5>Key Dates</h5>
+         <dl class="row">
+            <dt class="col-sm-3">Start Date</dt><dd class="col-sm-9">{{ assessment.date_start|date:"Y-m-d"|default:"-" }}</dd>
+            <dt class="col-sm-3">Target End Date</dt><dd class="col-sm-9">{{ assessment.date_target_end|date:"Y-m-d"|default:"-" }}</dd>
+            <dt class="col-sm-3">Actual End Date</dt><dd class="col-sm-9">{{ assessment.date_actual_end|date:"Y-m-d"|default:"-" }}</dd>
+            <dt class="col-sm-3">Certificate Issued</dt><dd class="col-sm-9">{{ assessment.date_cert_issued|date:"Y-m-d"|default:"-" }}</dd>
+            <dt class="col-sm-3">Certificate Expiry</dt><dd class="col-sm-9">{{ assessment.date_cert_expiry|date:"Y-m-d"|default:"-" }}</dd>
+            <dt class="col-sm-3">Created</dt><dd class="col-sm-9">{{ assessment.created_at|date:"Y-m-d H:i" }}</dd>
+            <dt class="col-sm-3">Last Updated</dt><dd class="col-sm-9">{{ assessment.updated_at|date:"Y-m-d H:i" }}</dd>
+        </dl>
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+{# --- RESTORED: Update Status / Outcome Card --- #}
+<div class="card mb-4">
+    <div class="card-header">Update Status / Outcome</div>
+    <div class="card-body">
+        {# Ensure status_update_form is passed in context from AssessorAssessmentDetailView #}
+        <form action="{% url 'tracker:assessment_update_status' assessment.pk %}" method="post" novalidate>
+            {% csrf_token %}
+            {{ status_update_form.as_p }}
+            <button type="submit" class="btn btn-primary">Update Assessment</button>
+        </form>
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+{# --- RESTORED: Defined Networks Card --- #}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Defined Networks</span>
+        {# Use the correct assessor URL name #}
+        <a href="{% url 'tracker:network_list' assessment.pk %}" class="btn btn-outline-primary btn-sm">Manage Networks</a>
+    </div>
+    <div class="card-body">
+        {# Include network list rendering logic here if needed, or rely on Manage link #}
+         {% if assessment.networks.exists %}
+             <ul>
+                 {% for network in assessment.networks.all|slice:":5" %} {# Show first 5 #}
+                     <li>{{ network.name }} {% if network.ip_range %}({{ network.ip_range }}){% endif %}</li>
+                 {% endfor %}
+                 {% if assessment.networks.count > 5 %}
+                     <li>... and {{ assessment.networks.count|add:"-5" }} more.</li>
+                 {% endif %}
+             </ul>
+         {% else %}
+             <p class="text-muted">No networks defined yet.</p>
+         {% endif %}
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+{# --- RESTORED: Cloud Services Card --- #}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Cloud Services in Scope</span>
+         {# Use the correct assessor URL name #}
+        <a href="{% url 'tracker:assessment_cloud_service_list' assessment.pk %}" class="btn btn-outline-primary btn-sm">Manage Cloud Services</a>
+    </div>
+    <div class="card-body">
+         {# Include cloud service list preview logic here #}
+         {% with assessment.assessment_cloud_services.all as services %}
+             {% if services.exists %}
+             <ul>
+                 {% for service in services|slice:":5" %} {# Show first 5 #}
+                     <li>{{ service.cloud_service_definition.name }} {% if not service.is_compliant %}<span class="badge bg-danger">MFA Check Needed</span>{% endif %}</li>
+                 {% endfor %}
+                 {% if services.count > 5 %}
+                     <li>... and {{ services.count|add:"-5" }} more.</li>
+                 {% endif %}
+             </ul>
+            {% else %}
+             <p class="text-muted">No cloud services added yet.</p>
+             {% endif %}
+         {% endwith %}
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+{# --- RESTORED: Scope Items Card --- #}
+<div class="card mb-4">
+    <div class="card-header">Scope Items</div>
+    <div class="card-body">
+        {# Include scope item table/summary logic here #}
+        {# Example: Basic count #}
+        <p>Total Scope Items: {{ assessment.scoped_items.count }}</p>
+        {# Add link to a separate management page if needed, or display table here #}
+         <p><small>Scope item management might be done via the Client view or Django Admin currently.</small></p>
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+    <div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>External Scan Targets (IPs/Hostnames)</span>
+        {# Use the assessor/admin URL name #}
+        <a href="{% url 'tracker:externalip_list' assessment.pk %}" class="btn btn-outline-primary btn-sm">Manage Targets</a>
+    </div>
+    <div class="card-body">
+        {# Optional: Display a summary/count here #}
+         {% with assessment.external_ips.all as targets %}
+             {% if targets.exists %}
+             <p><small>Currently listed targets:</small></p>
+             <ul>
+                 {% for target in targets|slice:":5" %} {# Show first 5 #}
+                     <li><code>{{ target.ip_address_or_hostname }}</code> {% if not target.consent_given %}<span class="badge bg-warning text-dark ms-1" title="Consent record missing/not provided by client">Consent Needed</span>{% endif %} <span class="badge bg-secondary ms-1">{{ target.get_scan_status_display }}</span></li>
+                 {% endfor %}
+                 {% if targets.count > 5 %}
+                     <li>... and {{ targets.count|add:"-5" }} more.</li>
+                 {% endif %}
+             </ul>
+            {% else %}
+             <p class="text-muted">No external targets added yet.</p>
+             {% endif %}
+         {% endwith %}
+    </div>
+</div>
+
+{# --- RESTORED: CE+ Sample Selection Card --- #}
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>CE+ Sample Selection</span>
+         <i class="fas fa-question-circle help-icon" data-bs-toggle="modal" data-bs-target="#samplingHelpModal" title="Sampling Rules Help"></i>
+    </div>
+    <div class="card-body">
+         {% if assessment.assessment_type == 'CE+' %}
+            <div class="mb-3">
+                <form action="{% url 'tracker:calculate_save_sample' assessment.pk %}" method="post" class="d-inline" onsubmit="return confirm('Recalculate sample based on current scope? This will overwrite the current selection.');">
+                     {% csrf_token %}
+                     <button type="submit" class="btn btn-primary btn-sm">Calculate/Recalculate Sample</button>
+                </form>
+            </div>
+            <hr>
+            {# Ensure stored_sample_items and sample_summary are passed from view #}
+            {% if stored_sample_items %}
+                 <p><strong>Currently Selected Sample Items ({{ sample_summary.total_selected_items }}):</strong></p>
+                  <div class="table-responsive">
+                     <table class="table table-sm table-bordered">
+                         <thead>
+                             <tr><th>Type</th><th>Identifier</th><th>OS / Version</th><th>Make/Model</th><th>Network</th></tr>
+                         </thead>
+                         <tbody>
+                         {% for item in stored_sample_items %}
+                             <tr>
+                                 <td>{{ item.get_item_type_display }}</td>
+                                 <td>{{ item.identifier|default:'-' }}</td>
+                                 <td>{{ item.operating_system|default:'N/A' }}</td>
+                                 <td>{{ item.make_model|default:'-' }}</td>
+                                 <td>{{ item.network.name|default:'-' }}</td>
+                             </tr>
+                         {% endfor %}
+                         </tbody>
+                     </table>
+                 </div>
+            {% else %}
+                 <p class="text-muted">No sample calculated yet.</p>
+            {% endif %}
+        {% else %}
+             <p class="text-muted">Sample selection only applicable for CE+.</p>
+        {% endif %}
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+{# --- RESTORED: Evidence Files Card --- #}
+<div class="card mb-4">
+    <div class="card-header">Evidence Files</div>
+    <div class="card-body">
+         <h5>Upload New Evidence</h5>
+         {# Ensure evidence_form passed in context from AssessorAssessmentDetailView #}
+        <form action="{% url 'tracker:evidence_upload' assessment.pk %}" method="post" enctype="multipart/form-data" class="mb-3" novalidate>
+            {% csrf_token %}
+            {{ evidence_form.as_p }}
+            <button type="submit" class="btn btn-success btn-sm">Upload File</button>
+        </form>
+        <hr>
+        <h5>Uploaded Files</h5>
+        {% with assessment.evidence_files.all as evidence_list %}
+            {% if evidence_list %}
+                <ul class="list-group">
+                    {% for evidence in evidence_list %}
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <a href="{% url 'tracker:download_evidence' evidence.pk %}" title="Download {{ evidence.filename }}">
+                                <i class="fa-solid fa-download me-2"></i>{{ evidence.description }}
+                            </a>
+                            <small class="d-block text-muted">({{ evidence.filename }}) - Uploaded by {{ evidence.uploaded_by.username|default:'Unknown' }} on {{ evidence.uploaded_at|date:"Y-m-d H:i" }}</small>
+                        </div>
+                        {# Add delete button if needed #}
+                    </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-muted">No evidence files uploaded yet.</p>
+            {% endif %}
+        {% endwith %}
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+{# --- RESTORED: Assessment Log Card --- #}
+<div class="card mb-4">
+    <div class="card-header">Assessment Log</div>
+    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+        {# Ensure logs are passed in context from AssessorAssessmentDetailView #}
+        {% if logs %}
+            <ul class="list-unstyled">
+                {% for log in logs %}
+                <li class="mb-2 border-bottom pb-1">
+                    <small class="text-muted">{{ log.timestamp|date:"Y-m-d H:i:s" }} - {% firstof log.user.username 'System' %}:</small><br>
+                    {{ log.event }}
+                </li>
+                {% endfor %}
+            </ul>
+        {% else %}
+            <p class="text-muted">No log entries yet.</p>
+        {% endif %}
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+{# --- RESTORED: Sampling Help Modal --- #}
+<div class="modal fade" id="samplingHelpModal" tabindex="-1" aria-labelledby="samplingHelpModalLabel" aria-hidden="true">
+   <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="samplingHelpModalLabel">CE+ Sampling Rules</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>The number of items sampled depends on the number of items of a similar type and build in scope:</p>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr><th>Number of items in group</th><th>Sample size</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>1</td><td>1</td></tr>
+                        <tr><td>2-5</td><td>2</td></tr>
+                        <tr><td>6-19</td><td>3</td></tr>
+                        <tr><td>20-60</td><td>4</td></tr>
+                        <tr><td>61+</td><td>5</td></tr>
+                    </tbody>
+                </table>
+                <p>Groups are typically defined by Operating System & Version (e.g., all Windows 11 23H2 Laptops form a group, all iOS 17 iPhones form another).</p>
+                <p>Clicking 'Calculate/Recalculate Sample' will apply these rules to the current scope items and randomly select the required number from each group, overwriting any previous selection.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+{# --- END RESTORED --- #}
+
+<hr>
+<a href="{% url 'tracker:assessor_assessment_list' %}" class="btn btn-secondary">Back to List</a>
+
+{% endblock %}
+
+
+{# --- CORRECTED JavaScript Block --- #}
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // --- Helper Function to Rebuild Buttons ---
+    function rebuildActionButtons(actionCell, newStatus, stepPk, assessmentPk) {
+        const actionGroup = actionCell.querySelector('.workflow-action-group');
+        if (!actionGroup) return;
+
+        actionGroup.innerHTML = ''; // Clear existing
+        actionGroup.style.display = 'flex'; // Ensure visible
+
+        // --- Add buttons based on newStatus (Adjust for Assessor) ---
+        if (newStatus === 'NotStarted') {
+            actionGroup.innerHTML = `
+                <button type="button" class="btn btn-outline-success btn-sm workflow-status-change-btn" data-status="Complete" data-step-pk="${stepPk}" data-assessment-pk="${assessmentPk}" title="Mark as Complete">
+                    <i class="fas fa-check"></i> Done
+                </button>
+                 <button type="button" class="btn btn-outline-secondary btn-sm workflow-status-change-btn" data-status="InProgress" data-step-pk="${stepPk}" data-assessment-pk="${assessmentPk}" title="Mark as In Progress">
+                    <i class="fas fa-play"></i> Start
+                </button>
+                {# Assessor might skip 'Help' button? Add if needed #}
+            `;
+        } else if (newStatus === 'InProgress' || newStatus === 'HelpNeeded') {
+             actionGroup.innerHTML = `
+                <button type="button" class="btn btn-outline-success btn-sm workflow-status-change-btn" data-status="Complete" data-step-pk="${stepPk}" data-assessment-pk="${assessmentPk}" title="Mark as Complete">
+                    <i class="fas fa-check"></i> Done
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm workflow-status-change-btn" data-status="NotStarted" data-step-pk="${stepPk}" data-assessment-pk="${assessmentPk}" title="Reset to Not Started">
+                    <i class="fas fa-undo"></i> Reset
+                </button>
+             `;
+        } else if (newStatus === 'Complete') {
+             actionGroup.innerHTML = `
+                 <button type="button" class="btn btn-outline-secondary btn-sm workflow-status-change-btn" data-status="InProgress" data-step-pk="${stepPk}" data-assessment-pk="${assessmentPk}" title="Reopen (Set In Progress)">
+                     <i class="fas fa-pencil-alt"></i> Reopen
+                 </button>
+             `;
+        } // Add else if for 'Skipped' if needed
+
+        // Re-attach event listeners
+        actionGroup.querySelectorAll('.workflow-status-change-btn').forEach(newButton => {
+             newButton.addEventListener('click', handleStatusChangeClick);
+        });
+    }
+
+    // --- Named Handler Function for Clicks ---
+    function handleStatusChangeClick(event) {
+        event.preventDefault();
+        const buttonEl = event.currentTarget;
+        const targetStatus = buttonEl.dataset.status;
+        const stepPk = buttonEl.dataset.stepPk;
+        const assessmentPk = buttonEl.dataset.assessmentPk;
+        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
+        const actionCell = buttonEl.closest('td');
+        const spinnerContainer = actionCell.querySelector('.spinner-container');
+        const successMsgContainer = actionCell.querySelector('.update-success-msg');
+        const actionGroup = actionCell.querySelector('.workflow-action-group');
+
+        // Confirmation Message
+        const stepNumberText = buttonEl.closest('tr')?.querySelector('td:first-child')?.innerText || 'this step';
+        let confirmMsg = `Change status for step ${stepNumberText} to "${targetStatus}"?`;
+        if (targetStatus === 'HelpNeeded') confirmMsg = `Mark step ${stepNumberText} as needing help?`; // Should not be triggered if Assessor cannot mark Help Needed
+        if (!confirm(confirmMsg)) {
+             return;
+        }
+
+        // URL Construction
+        const url = "{% url 'tracker:update_workflow_step_status' assessment_pk=0 step_pk=0 %}".replace('0/workflow/step/0', `${assessmentPk}/workflow/step/${stepPk}`);
+
+        // Show loading state
+        if (spinnerContainer) spinnerContainer.style.display = 'block';
+        if (actionGroup) actionGroup.style.display = 'none';
+        if (successMsgContainer) successMsgContainer.style.display = 'none';
+
+        // Fetch request
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': csrfToken,
+                'Accept': 'application/json'
+            },
+            body: `status=${targetStatus}`
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(errData => { throw new Error(errData.error || `Request failed: ${response.status}`); });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // UI Updates (Badge, Completion Info, Row Highlighting)
+                const statusCell = document.getElementById(`workflow-status-${stepPk}`);
+                const completionCell = document.getElementById(`workflow-completion-${stepPk}`);
+                const row = document.getElementById(`workflow-step-row-${stepPk}`);
+
+                if (statusCell) {
+                     let badgeClass = 'bg-light text-dark border'; let iconPrefix = '';
+                     if (data.new_status === 'Complete') badgeClass = 'bg-success';
+                     else if (data.new_status === 'InProgress') badgeClass = 'bg-info text-dark';
+                     else if (data.new_status === 'HelpNeeded') { badgeClass = 'bg-warning text-dark'; iconPrefix = '<i class="fa-solid fa-triangle-exclamation me-1"></i>'; }
+                     else if (data.new_status === 'Skipped') badgeClass = 'bg-secondary';
+                     statusCell.innerHTML = `<span class="badge ${badgeClass}">${iconPrefix}${data.new_status_display || ''}</span>`;
+                 }
+                if (completionCell) {
+                    let completionText = '';
+                    if (data.completed_by) completionText += `by ${data.completed_by} `;
+                    if (data.completed_at) { const d = new Date(data.completed_at); completionText += `on ${d.toLocaleDateString()}`; }
+                    completionCell.innerHTML = completionText;
+                 }
+                 if(row) {
+                     row.classList.remove('table-info', 'table-warning');
+                     if (data.new_status === 'HelpNeeded') row.classList.add('table-warning');
+                 }
+
+                // Hide spinner, show success message
+                if (spinnerContainer) spinnerContainer.style.display = 'none';
+                if (successMsgContainer) {
+                    successMsgContainer.style.display = 'block';
+                    setTimeout(() => { successMsgContainer.style.display = 'none'; }, 2500);
+                }
+                // Rebuild action buttons
+                rebuildActionButtons(actionCell, data.new_status, stepPk, assessmentPk);
+                setTimeout(() => { window.location.reload(); }, 750);
+
+            } else {
+                 throw new Error(data.error || 'Update failed.');
+            }
+        })
+        .catch(error => {
+            console.error('Error updating workflow step:', error);
+            if (spinnerContainer) spinnerContainer.style.display = 'none';
+            if (actionGroup) actionGroup.style.display = 'flex';
+            alert(`An error occurred: ${error.message}`);
+        });
+    }
+
+    // --- Initial Setup: Attach event listeners ---
+    // Ensure ALL buttons intended for JS status change have the correct class OR update selector
+     document.querySelectorAll('.workflow-status-change-btn, .workflow-step-complete-btn').forEach(button => {
+         // Add necessary data attributes if missing from original buttons
+         if (!button.dataset.status && button.classList.contains('workflow-step-complete-btn')) {
+             button.dataset.status = 'Complete'; // Assume this button marks as complete
+         }
+         // Ensure all buttons have pk attributes (should be set in HTML loop)
+         if (button.dataset.status && button.dataset.stepPk && button.dataset.assessmentPk) {
+             button.addEventListener('click', handleStatusChangeClick);
+         } else {
+             console.warn('Workflow button missing required data attributes:', button);
+         }
+     });
+
+     // --- Add event listener for the modal help icon if not handled by Bootstrap automatically ---
+    const helpIcon = document.querySelector('.help-icon[data-bs-target="#samplingHelpModal"]');
+    if (helpIcon && typeof bootstrap !== 'undefined') {
+         // If Bootstrap JS is loaded, it should handle the modal toggle automatically via data attributes.
+         // If not, you might need manual initialization:
+         // const helpModal = new bootstrap.Modal(document.getElementById('samplingHelpModal'));
+         // helpIcon.addEventListener('click', () => helpModal.show());
+    }
+
+});
+</script>
+{% endblock extra_js %}

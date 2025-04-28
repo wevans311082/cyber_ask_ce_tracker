@@ -1,0 +1,146 @@
+
+{% extends "tracker/base.html" %}
+
+{% block title %}{% if object %}Edit User{% else %}Create User{% endif %}{% endblock %}
+
+{% block content %}
+<h2>{% if object %}Edit User: {{ object.username }}{% else %}Create New User{% endif %}</h2>
+
+
+
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger">
+        {% for error in form.non_field_errors %}
+          <p>{{ error }}</p>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {# ... Render other fields like username ... #}
+    <div class="mb-3">
+        <label for="{{ form.username.id_for_label }}" class="form-label">{{ form.username.label }}</label>
+        {{ form.username }} {# Assuming username is rendered ok #}
+        {% if form.username.errors %}<div class="invalid-feedback d-block">{{ form.username.errors }}</div>{% endif %}
+        {% if form.username.help_text %}<small class="form-text text-muted">{{ form.username.help_text }}</small>{% endif %}
+    </div>
+
+
+    {# --- PASSWORD SECTION --- #}
+    {% if not object %}
+
+        <div class="mb-3"> {# DIV FOR THE MAIN PASSWORD FIELD #}
+            <label for="{{ form.password1.id_for_label }}" class="form-label">{{ form.password1.label }}</label>
+            {{ form.password1 }} {# <<< The field itself #}
+            {% if form.password1.errors %}<div class="invalid-feedback d-block">{{ form.password1.errors }}</div>{% endif %}
+            {% if form.password1.help_text %}<small class="form-text text-muted">{{ form.password1.help_text|safe }}</small>{% endif %}
+        </div>
+
+         {# DIV FOR PASSWORD CONFIRMATION #}
+         {% if form.password2 %}
+         <div class="mb-3">
+            <label for="{{ form.password2.id_for_label }}" class="form-label">{{ form.password2.label }}</label>
+            {{ form.password2 }}
+            {% if form.password2.errors %}<div class="invalid-feedback d-block">{{ form.password2.errors }}</div>{% endif %}
+        </div>
+        {% endif %} {# End if form.password2 #}
+
+    {% else %}
+         <p><a href="{% url 'password_change' %}">Change Password</a> (Requires current password)</p>
+    {% endif %}
+    {# --- END PASSWORD SECTION --- #}
+
+    {# ... Render other fields like first_name, last_name etc ... #}
+     <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.first_name.id_for_label }}" class="form-label">{{ form.first_name.label }}</label>
+            {{ form.first_name }}
+            {% if form.first_name.errors %}<div class="invalid-feedback d-block">{{ form.first_name.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.last_name.id_for_label }}" class="form-label">{{ form.last_name.label }}</label>
+            {{ form.last_name }}
+            {% if form.last_name.errors %}<div class="invalid-feedback d-block">{{ form.last_name.errors }}</div>{% endif %}
+        </div>
+    </div>
+     {# ... etc for email, role, client ... #}
+     <div class="mb-3">
+        <label for="{{ form.email.id_for_label }}" class="form-label">{{ form.email.label }}</label>
+        {{ form.email }}
+        {% if form.email.errors %}<div class="invalid-feedback d-block">{{ form.email.errors }}</div>{% endif %}
+    </div>
+     <hr>
+    <h4>Profile & Permissions</h4>
+ <div class="mb-3">
+    <label for="{{ form.role.id_for_label }}" class="form-label">{{ form.role.label }}</label>
+    {{ form.role }} {# Renders the Role dropdown #}
+    {% if form.role.errors %}<div class="invalid-feedback d-block">{{ form.role.errors }}</div>{% endif %}
+</div>
+    {# ... Client field logic ... #}
+<div class="mb-3" id="client-field-container" style="display: none;"> {# Hide by default #}
+    <label for="{{ form.client.id_for_label }}" class="form-label">{{ form.client.label }}</label>
+    {{ form.client }} {# Renders the Client dropdown/selector #}
+    {% if form.client.errors %}<div class="invalid-feedback d-block">{{ form.client.errors }}</div>{% endif %}
+    {% if form.client.help_text %}<small class="form-text text-muted">{{ form.client.help_text }}</small>{% endif %}
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="form-check">
+            {{ form.is_active }}
+            <label class="form-check-label" for="{{ form.is_active.id_for_label }}">
+                {{ form.is_active.label }}
+            </label>
+            {% if form.is_active.help_text %}<small class="form-text text-muted d-block">{{ form.is_active.help_text }}</small>{% endif %}
+            {% if form.is_active.errors %}<div class="invalid-feedback d-block">{{ form.is_active.errors }}</div>{% endif %}
+        </div>
+    </div>
+    <div class="col-md-6">
+         <div class="form-check">
+            {{ form.is_staff }}
+            <label class="form-check-label" for="{{ form.is_staff.id_for_label }}">
+                 {{ form.is_staff.label }}
+            </label>
+             {% if form.is_staff.help_text %}<small class="form-text text-muted d-block">{{ form.is_staff.help_text }}</small>{% endif %}
+             {% if form.is_staff.errors %}<div class="invalid-feedback d-block">{{ form.is_staff.errors }}</div>{% endif %}
+        </div>
+    </div>
+</div>
+
+    <button type="submit" class="btn btn-success">{% if object %}Save Changes{% else %}Create User{% endif %}</button>
+    <a href="{% url 'tracker:user_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const roleSelect = document.getElementById('{{ form.role.id_for_label }}'); // Get the Role select element
+        const clientContainer = document.getElementById('client-field-container'); // Get the container DIV for the Client field
+        const clientSelect = document.getElementById('{{ form.client.id_for_label }}'); // Get the Client select element itself
+
+        function toggleClientField() {
+            if (roleSelect && clientContainer) {
+                if (roleSelect.value === 'Client') {
+                    clientContainer.style.display = 'block'; // Show the client field
+                } else {
+                    clientContainer.style.display = 'none'; // Hide the client field
+                    if (clientSelect) {
+                        clientSelect.value = ''; // Clear the selection if role is not Client
+                    }
+                }
+            }
+        }
+
+        // Run on page load to set initial state
+        toggleClientField();
+
+        // Add event listener to run when role changes
+        if (roleSelect) {
+            roleSelect.addEventListener('change', toggleClientField);
+        }
+    });
+</script>
+{% endblock extra_js %}

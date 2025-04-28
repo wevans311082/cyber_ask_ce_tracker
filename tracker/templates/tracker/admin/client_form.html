@@ -1,0 +1,73 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{% if object %}Edit Client{% else %}Create Client{% endif %}{% endblock %}
+
+{% block content %}
+<h2>{% if object %}Edit Client: {{ object.name }}{% else %}Create New Client{% endif %}</h2>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+
+    {# Display Non-Field Errors if any #}
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">
+            {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {# Manually render fields using Bootstrap structure #}
+
+    <div class="mb-3">
+        <label for="{{ form.name.id_for_label }}" class="form-label">{{ form.name.label }}*</label>
+        {{ form.name }} {# Render the field widget #}
+        {% if form.name.errors %}<div class="invalid-feedback d-block">{{ form.name.errors|join:", " }}</div>{% endif %}
+        {% if form.name.help_text %}<small class="form-text text-muted">{{ form.name.help_text }}</small>{% endif %}
+    </div>
+
+     <div class="mb-3">
+        <label for="{{ form.address.id_for_label }}" class="form-label">{{ form.address.label }}</label>
+        {{ form.address }} {# Render the field widget #}
+        {% if form.address.errors %}<div class="invalid-feedback d-block">{{ form.address.errors|join:", " }}</div>{% endif %}
+        {% if form.address.help_text %}<small class="form-text text-muted">{{ form.address.help_text }}</small>{% endif %}
+    </div>
+
+     <div class="row">
+        <div class="col-md-6 mb-3">
+             <label for="{{ form.contact_person.id_for_label }}" class="form-label">{{ form.contact_person.label }}*</label>
+            {{ form.contact_person }} {# Render the field widget #}
+            {% if form.contact_person.errors %}<div class="invalid-feedback d-block">{{ form.contact_person.errors|join:", " }}</div>{% endif %}
+            {% if form.contact_person.help_text %}<small class="form-text text-muted">{{ form.contact_person.help_text }}</small>{% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+             <label for="{{ form.contact_email.id_for_label }}" class="form-label">{{ form.contact_email.label }}*</label>
+            {{ form.contact_email }} {# Render the field widget #}
+            {% if form.contact_email.errors %}<div class="invalid-feedback d-block">{{ form.contact_email.errors|join:", " }}</div>{% endif %}
+            {% if form.contact_email.help_text %}<small class="form-text text-muted">{{ form.contact_email.help_text }}</small>{% endif %}
+        </div>
+    </div>
+
+    {# NEW FIELDS ADDED HERE #}
+    <div class="row">
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.organization_number.id_for_label }}" class="form-label">{{ form.organization_number.label }}</label>
+            {{ form.organization_number }} {# Render the field widget #}
+            {% if form.organization_number.errors %}<div class="invalid-feedback d-block">{{ form.organization_number.errors|join:", " }}</div>{% endif %}
+            {% if form.organization_number.help_text %}<small class="form-text text-muted">{{ form.organization_number.help_text }}</small>{% endif %}
+        </div>
+        <div class="col-md-6 mb-3">
+            <label for="{{ form.website_address.id_for_label }}" class="form-label">{{ form.website_address.label }}</label>
+            {{ form.website_address }} {# Render the field widget #}
+            {% if form.website_address.errors %}<div class="invalid-feedback d-block">{{ form.website_address.errors|join:", " }}</div>{% endif %}
+            {% if form.website_address.help_text %}<small class="form-text text-muted">{{ form.website_address.help_text }}</small>{% endif %}
+        </div>
+    </div>
+    {# END OF NEW FIELDS #}
+
+    <hr> {# Add a separator before buttons #}
+
+    <button type="submit" class="btn btn-success">{% if object %}Save Changes{% else %}Create Client{% endif %}</button>
+    <a href="{% url 'tracker:client_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+{% endblock %}

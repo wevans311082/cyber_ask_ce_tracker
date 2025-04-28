@@ -1,0 +1,242 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}Manage Scope - Assessment {{ assessment.id }}{% endblock %}
+
+{% block content %}
+<style>
+    .scope-item-table td, .scope-item-table th { vertical-align: middle; padding-top: 0.5rem; padding-bottom: 0.5rem; font-size: 0.9em; }
+    .item-actions form, .item-actions a { margin-bottom: 0; white-space: nowrap; }
+    .card-header span.badge { font-size: 0.9em; }
+    .card-header .add-link { margin-left: 8px; font-size: 1.1em; color: var(--bs-success); text-decoration: none; }
+    .card-header .add-link:hover { color: var(--bs-success-dark); }
+    .action-buttons .btn { padding: 0.15rem 0.4rem; font-size: 0.8em; }
+</style>
+
+<h2>Manage Scope Items</h2>
+<h4>Assessment #{{ assessment.id }} for {{ assessment.client.name }}</h4>
+
+{% if not can_edit %}
+<div class="alert alert-warning" role="alert"> Scope editing is only allowed when the assessment status is 'Scoping (Client Input)'. Current status: <strong>{{ assessment.get_status_display }}</strong>.</div>
+{% endif %}
+
+<div class="mb-4 mt-3">
+    <strong class="me-2">Manage Related Items:</strong>
+    <a href="{% url 'tracker:client_network_list' assessment_pk=assessment.pk %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-network-wired me-1"></i>Networks</a>
+    <a href="{% url 'tracker:client_externalip_list' assessment_pk=assessment.pk %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-globe me-1"></i>External IPs</a>
+    <a href="{% url 'tracker:client_assessment_cloud_service_list' assessment_pk=assessment.pk %}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-cloud me-1"></i>Cloud Services</a>
+</div>
+
+{# --- User Devices Section --- #}
+<div class="card mb-4">
+    <div class="card-header"> <i class="fas fa-laptop me-1"></i>User Devices (Laptops, Desktops, Mobiles) <span class="badge bg-secondary rounded-pill float-end">{{ counts.user_devices|default:0 }}</span> {% if can_edit %}<a href="#add-item-form-section" class="add-link float-end" title="Add User Device"><i class="fas fa-plus-circle"></i></a>{% endif %}</div>
+    <div class="card-body p-0">
+        {% if user_devices_list %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover scope-item-table mb-0">
+                    <thead><tr><th>Type</th><th>Identifier</th><th>OS / Version</th><th>Make/Model</th><th>Owner</th><th>Network</th>{% if can_edit %}<th>Actions</th>{% endif %}</tr></thead>
+                    <tbody>
+                        {% for item in user_devices_list %}
+                        <tr>
+                            <td>{{ item.get_item_type_display }}</td>
+                            <td>{{ item.identifier|default:'-' }}</td>
+                            <td> {% if item.operating_system %}{% include "tracker/partials/os_icon.html" with os_name=item.operating_system.name vendor_hint=item.operating_system.vendor %} {{ item.operating_system }}{% elif item.item_type in 'Laptop,Desktop,Server,Mobile' %}<span class="text-danger" title="OS is required for this item type!"><i class="fas fa-exclamation-triangle"></i> Missing OS!</span>{% else %} - {% endif %} </td>
+                            <td>{{ item.make_model|default:'-' }}</td>
+                            <td>{{ item.get_owner_display|default:'-' }}</td>
+                            <td>{{ item.network.name|default:'-' }}</td>
+                            {% if can_edit %}<td class="item-actions text-end"><a href="{% url 'tracker:client_scope_item_edit' assessment_pk=assessment.pk pk=item.pk %}" class="btn btn-secondary btn-sm me-1" title="Edit Item {{ item.id }}"><i class="fas fa-pencil-alt"></i> <span class="d-none d-md-inline">Edit</span></a> <form action="{% url 'tracker:client_scope_item_delete' assessment_pk=assessment.pk item_pk=item.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete scope item ID {{ item.id }} {{ item.identifier|default:"" }}?');">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm" title="Delete Item {{ item.id }}"><i class="fas fa-trash-alt"></i> <span class="d-none d-md-inline">Delete</span></button></form></td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %} <p class="text-muted p-3 mb-0">No User Devices added yet.</p> {% endif %}
+    </div>
+</div>
+
+{# --- Servers Section --- #}
+<div class="card mb-4">
+    <div class="card-header"> <i class="fas fa-server me-1"></i>Servers <span class="badge bg-secondary rounded-pill float-end">{{ counts.servers|default:0 }}</span> {% if can_edit %}<a href="#add-item-form-section" class="add-link float-end" title="Add Server"><i class="fas fa-plus-circle"></i></a>{% endif %}</div>
+    <div class="card-body p-0">
+        {% if servers_list %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover scope-item-table mb-0">
+                     <thead><tr><th>Identifier</th><th>OS / Version</th><th>Make/Model</th><th>Role/Function</th><th>Network</th>{% if can_edit %}<th>Actions</th>{% endif %}</tr></thead>
+                    <tbody>
+                        {% for item in servers_list %}
+                         <tr>
+                            <td>{{ item.identifier|default:'-' }}</td>
+                            <td> {% if item.operating_system %}{% include "tracker/partials/os_icon.html" with os_name=item.operating_system.name vendor_hint=item.operating_system.vendor %} {{ item.operating_system }}{% elif item.item_type in 'Laptop,Desktop,Server,Mobile' %}<span class="text-danger" title="OS is required for this item type!"><i class="fas fa-exclamation-triangle"></i> Missing OS!</span>{% else %} - {% endif %} </td>
+                            <td>{{ item.make_model|default:'-' }}</td>
+                            <td>{{ item.role_function|truncatechars:50|default:'-' }}</td>
+                            <td>{{ item.network.name|default:'-' }}</td>
+                            {% if can_edit %}<td class="item-actions text-end"><a href="{% url 'tracker:client_scope_item_edit' assessment_pk=assessment.pk pk=item.pk %}" class="btn btn-secondary btn-sm me-1" title="Edit Item {{ item.id }}"><i class="fas fa-pencil-alt"></i> <span class="d-none d-md-inline">Edit</span></a> <form action="{% url 'tracker:client_scope_item_delete' assessment_pk=assessment.pk item_pk=item.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete scope item ID {{ item.id }} {{ item.identifier|default:"" }}?');">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm" title="Delete Item {{ item.id }}"><i class="fas fa-trash-alt"></i> <span class="d-none d-md-inline">Delete</span></button></form></td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %} <p class="text-muted p-3 mb-0">No Servers added yet.</p> {% endif %}
+    </div>
+</div>
+
+{# --- Network Devices & IPs Section --- #}
+<div class="card mb-4">
+    <div class="card-header"> <i class="fas fa-network-wired me-1"></i>Network Devices & IPs <span class="badge bg-secondary rounded-pill float-end">{{ counts.network_devices|default:0 }}</span> {% if can_edit %}<a href="#add-item-form-section" class="add-link float-end" title="Add Network Device/IP"><i class="fas fa-plus-circle"></i></a>{% endif %}</div>
+     <div class="card-body p-0">
+         {% if network_devices_list %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover scope-item-table mb-0">
+                     <thead><tr><th>Type</th><th>Identifier (IP/Name)</th><th>Make/Model</th><th>Role/Function</th><th>Network</th>{% if can_edit %}<th>Actions</th>{% endif %}</tr></thead>
+                    <tbody>
+                        {% for item in network_devices_list %}
+                         <tr>
+                             <td>{{ item.get_item_type_display }}</td>
+                             <td>{{ item.identifier|default:'-' }}</td>
+                             <td>{{ item.make_model|default:'-' }}</td>
+                             <td>{{ item.role_function|truncatechars:50|default:'-' }}</td>
+                             <td>{{ item.network.name|default:'-' }}</td>
+                            {% if can_edit %}<td class="item-actions text-end"><a href="{% url 'tracker:client_scope_item_edit' assessment_pk=assessment.pk pk=item.pk %}" class="btn btn-secondary btn-sm me-1" title="Edit Item {{ item.id }}"><i class="fas fa-pencil-alt"></i> <span class="d-none d-md-inline">Edit</span></a> <form action="{% url 'tracker:client_scope_item_delete' assessment_pk=assessment.pk item_pk=item.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete scope item ID {{ item.id }} {{ item.identifier|default:"" }}?');">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm" title="Delete Item {{ item.id }}"><i class="fas fa-trash-alt"></i> <span class="d-none d-md-inline">Delete</span></button></form></td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+         {% else %} <p class="text-muted p-3 mb-0">No Network Devices or IPs added yet.</p> {% endif %}
+    </div>
+</div>
+
+{# --- Cloud Services Section --- #}
+<div class="card mb-4">
+    <div class="card-header"> <i class="fas fa-cloud me-1"></i>Cloud Services (SaaS, PaaS, IaaS) <span class="badge bg-secondary rounded-pill float-end">{{ counts.cloud_services|default:0 }}</span> {% if can_edit %}<a href="#add-item-form-section" class="add-link float-end" title="Add Cloud Service"><i class="fas fa-plus-circle"></i></a>{% endif %}</div>
+    <div class="card-body p-0">
+         {% if cloud_services_list %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover scope-item-table mb-0">
+                     <thead><tr><th>Type</th><th>Identifier (Service Name)</th><th>Role/Function</th>{% if can_edit %}<th>Actions</th>{% endif %}</tr></thead>
+                    <tbody>
+                        {% for item in cloud_services_list %}
+                         <tr>
+                             <td>{{ item.get_item_type_display }}</td>
+                             <td>{{ item.identifier|default:'-' }}</td>
+                             <td>{{ item.role_function|truncatechars:50|default:'-' }}</td>
+                             {% if can_edit %}<td class="item-actions text-end"><a href="{% url 'tracker:client_scope_item_edit' assessment_pk=assessment.pk pk=item.pk %}" class="btn btn-secondary btn-sm me-1" title="Edit Item {{ item.id }}"><i class="fas fa-pencil-alt"></i> <span class="d-none d-md-inline">Edit</span></a> <form action="{% url 'tracker:client_scope_item_delete' assessment_pk=assessment.pk item_pk=item.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete scope item ID {{ item.id }} {{ item.identifier|default:"" }}?');">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm" title="Delete Item {{ item.id }}"><i class="fas fa-trash-alt"></i> <span class="d-none d-md-inline">Delete</span></button></form></td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+         {% else %} <p class="text-muted p-3 mb-0">No Cloud Services added yet.</p> {% endif %}
+    </div>
+</div>
+
+{# --- Other Items Section --- #}
+<div class="card mb-4">
+    <div class="card-header"> <i class="fas fa-question-circle me-1"></i>Other Items <span class="badge bg-secondary rounded-pill float-end">{{ counts.other_items|default:0 }}</span> {% if can_edit %}<a href="#add-item-form-section" class="add-link float-end" title="Add Other Item"><i class="fas fa-plus-circle"></i></a>{% endif %}</div>
+     <div class="card-body p-0">
+        {% if other_items_list %}
+            <div class="table-responsive">
+                <table class="table table-striped table-hover scope-item-table mb-0">
+                     <thead><tr><th>Identifier</th><th>OS / Version</th><th>Make/Model</th><th>Role/Function</th><th>Network</th>{% if can_edit %}<th>Actions</th>{% endif %}</tr></thead>
+                    <tbody>
+                        {% for item in other_items_list %}
+                         <tr>
+                            <td>{{ item.identifier|default:'-' }}</td>
+                             <td> {% if item.operating_system %}{% include "tracker/partials/os_icon.html" with os_name=item.operating_system.name vendor_hint=item.operating_system.vendor %} {{ item.operating_system }}{% else %} - {% endif %} </td>
+                            <td>{{ item.make_model|default:'-' }}</td>
+                            <td>{{ item.role_function|truncatechars:50|default:'-' }}</td>
+                            <td>{{ item.network.name|default:'-' }}</td>
+                             {% if can_edit %}<td class="item-actions text-end"><a href="{% url 'tracker:client_scope_item_edit' assessment_pk=assessment.pk pk=item.pk %}" class="btn btn-secondary btn-sm me-1" title="Edit Item {{ item.id }}"><i class="fas fa-pencil-alt"></i> <span class="d-none d-md-inline">Edit</span></a> <form action="{% url 'tracker:client_scope_item_delete' assessment_pk=assessment.pk item_pk=item.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to delete scope item ID {{ item.id }} {{ item.identifier|default:"" }}?');">{% csrf_token %}<button type="submit" class="btn btn-danger btn-sm" title="Delete Item {{ item.id }}"><i class="fas fa-trash-alt"></i> <span class="d-none d-md-inline">Delete</span></button></form></td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %} <p class="text-muted p-3 mb-0">No 'Other' items added yet.</p> {% endif %}
+    </div>
+</div>
+
+
+{# --- Add New Scope Item Form (Card) --- #}
+{% if can_edit %}
+<div class="card mb-4" id="add-item-form-section">
+    <div class="card-header">Add New Scope Item(s)</div>
+    <div class="card-body">
+         {# Form rendering structure #}
+         <form method="post" id="add-scope-item-form" action="{% url 'tracker:client_scope_manage' assessment_pk=assessment.pk %}" novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="alert alert-danger">{% for error in form.non_field_errors %} {{ error }} {% endfor %}</div>{% endif %}<div class="row"><div class="col-md-2 mb-3"><label for="{{ form.number_to_add.id_for_label }}" class="form-label">{{ form.number_to_add.label }}*</label>{{ form.number_to_add }}{% if form.number_to_add.errors %}<div class="invalid-feedback d-block">{{ form.number_to_add.errors|join:", " }}</div>{% endif %}{% if form.number_to_add.help_text %}<small class="form-text text-muted">{{ form.number_to_add.help_text }}</small>{% endif %}</div><div class="col-md-4 mb-3"><label for="{{ form.item_type.id_for_label }}" class="form-label">{{ form.item_type.label }}*</label>{{ form.item_type }}{% if form.item_type.errors %}<div class="invalid-feedback d-block">{{ form.item_type.errors|join:", " }}</div>{% endif %}</div><div class="col-md-6 mb-3"><label for="{{ form.identifier.id_for_label }}" class="form-label">{{ form.identifier.label }}</label>{{ form.identifier }}{% if form.identifier.errors %}<div class="invalid-feedback d-block">{{ form.identifier.errors|join:", " }}</div>{% endif %}{% if form.identifier.help_text %}<small class="form-text text-muted">{{ form.identifier.help_text }}</small>{% endif %}</div></div><div class="row"><div class="col-md-6 mb-3"><label for="{{ form.operating_system.id_for_label }}" class="form-label">{{ form.operating_system.label }}</label>{{ form.operating_system }}{% if form.operating_system.errors %}<div class="invalid-feedback d-block">{{ form.operating_system.errors|join:", " }}</div>{% endif %}{% if form.operating_system.help_text %}<small class="form-text text-muted">{{ form.operating_system.help_text }}</small>{% endif %}</div><div class="col-md-6 mb-3"><label for="{{ form.make_model.id_for_label }}" class="form-label">{{ form.make_model.label }}</label>{{ form.make_model }}{% if form.make_model.errors %}<div class="invalid-feedback d-block">{{ form.make_model.errors|join:", " }}</div>{% endif %}</div></div><div class="mb-3"><label for="{{ form.role_function.id_for_label }}" class="form-label">{{ form.role_function.label }}</label>{{ form.role_function }}{% if form.role_function.errors %}<div class="invalid-feedback d-block">{{ form.role_function.errors|join:", " }}</div>{% endif %}{% if form.role_function.help_text %}<small class="form-text text-muted">{{ form.role_function.help_text }}</small>{% endif %}</div><div class="row"><div class="col-md-4 mb-3"><label for="{{ form.owner.id_for_label }}" class="form-label">{{ form.owner.label }}</label>{{ form.owner }}{% if form.owner.errors %}<div class="invalid-feedback d-block">{{ form.owner.errors|join:", " }}</div>{% endif %}</div><div class="col-md-4 mb-3"><label for="{{ form.network.id_for_label }}" class="form-label">{{ form.network.label }}</label>{{ form.network }}{% if form.network.errors %}<div class="invalid-feedback d-block">{{ form.network.errors|join:", " }}</div>{% endif %}{% if form.network.help_text %}<small class="form-text text-muted">{{ form.network.help_text }}</small>{% endif %}</div><div class="col-md-4 mb-3"><label for="{{ form.location.id_for_label }}" class="form-label">{{ form.location.label }}</label>{{ form.location }}{% if form.location.errors %}<div class="invalid-feedback d-block">{{ form.location.errors|join:", " }}</div>{% endif %}</div></div><div class="mb-3"><label for="{{ form.notes.id_for_label }}" class="form-label">{{ form.notes.label }}</label>{{ form.notes }}{% if form.notes.errors %}<div class="invalid-feedback d-block">{{ form.notes.errors|join:", " }}</div>{% endif %}</div><button type="submit" class="btn btn-success"><i class="fas fa-plus me-1"></i>Add Item(s)</button></form>
+    </div>
+</div>
+{% endif %}
+
+
+{# --- Submit Scope Button --- #}
+{% if can_submit %}
+<div class="mt-4 text-center">
+    <form action="{% url 'tracker:client_scope_submit' assessment.pk %}" method="post" onsubmit="return confirm('Are you sure you have added all required scope items? You will not be able to edit the scope after submitting.');">
+         {% csrf_token %}
+        <button type="submit" class="btn btn-primary btn-lg">Submit Scope for Review</button>
+    </form>
+    <p class="text-muted mt-2"><small>Once submitted, the scope will be locked for review by the assessor.</small></p>
+</div>
+{% elif can_edit and counts.total == 0 %}
+ <div class="alert alert-info">Add at least one scope item before you can submit the scope for review.</div>
+{% endif %}
+
+
+<hr>
+<a href="{% url 'tracker:client_assessment_detail' assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+
+{% endblock %}
+
+
+{% block extra_js %}
+{# Keep the JavaScript block for OS Filtering and field hiding #}
+<script>
+    const osData = JSON.parse('{{ os_data_json|escapejs|default:"[]" }}');
+    const itemTypeToOsCategoryMap = { /* ... keep map ... */
+        'Laptop': ['Desktop'], 'Desktop': ['Desktop'], 'Server': ['Server'], 'Mobile': ['Mobile'],
+        'Firewall': ['Other'], 'Router': ['Other'], 'Switch': ['Other'],
+        'Other': ['Desktop', 'Server', 'Mobile', 'Other'],
+    };
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log("Scope Manage JS loaded - Categorized View Active.");
+        const itemTypeSelect = document.getElementById('{{ form.item_type.id_for_label }}');
+        const osSelect = document.getElementById('{{ form.operating_system.id_for_label }}');
+        const osFieldContainer = osSelect?.closest('.mb-3');
+        const makeModelFieldContainer = document.getElementById('{{ form.make_model.id_for_label }}')?.closest('.mb-3');
+        const ownerFieldContainer = document.getElementById('{{ form.owner.id_for_label }}')?.closest('.mb-3');
+
+        function updateScopeForm() {
+            if (!itemTypeSelect || !osSelect || !osFieldContainer || !makeModelFieldContainer || !ownerFieldContainer) { return; }
+            const selectedType = itemTypeSelect.value;
+            const allowedCategories = itemTypeToOsCategoryMap[selectedType];
+            const currentlySelectedOsValue = osSelect.value;
+            const requiresOs = ['Laptop', 'Desktop', 'Server', 'Mobile'].includes(selectedType);
+            const usesMakeModel = ['Laptop', 'Desktop', 'Server', 'Mobile', 'Firewall', 'Router', 'Switch', 'Other'].includes(selectedType);
+            const usesOwner = ['Laptop', 'Desktop', 'Mobile'].includes(selectedType);
+            osFieldContainer.style.display = requiresOs ? '' : 'none';
+            makeModelFieldContainer.style.display = usesMakeModel ? '' : 'none';
+            ownerFieldContainer.style.display = usesOwner ? '' : 'none';
+            let firstOption = osSelect.options[0]?.value === "" ? osSelect.options[0] : null;
+            osSelect.innerHTML = '';
+            if (firstOption) { osSelect.appendChild(firstOption); }
+            if (requiresOs && allowedCategories) {
+                osSelect.disabled = false;
+                let foundOriginalValue = false;
+                osData.forEach(os => {
+                    if (allowedCategories.includes(os.category) || os.category === '') {
+                        const option = document.createElement('option');
+                        option.value = os.id; option.textContent = os.name; option.dataset.osCategory = os.category;
+                        osSelect.appendChild(option);
+                        if (String(os.id) === String(currentlySelectedOsValue)) { foundOriginalValue = true; }
+                    }
+                });
+                osSelect.value = currentlySelectedOsValue;
+                if (osSelect.value !== currentlySelectedOsValue && currentlySelectedOsValue !== "") { console.warn("Reselection failed."); }
+            } else { osSelect.disabled = true; osSelect.value = ""; }
+        }
+        if (itemTypeSelect) { updateScopeForm(); itemTypeSelect.addEventListener('change', updateScopeForm); }
+         else { console.error("Item Type select element not found."); }
+    });
+</script>
+{% endblock extra_js %}
