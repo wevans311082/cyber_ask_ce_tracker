@@ -1,0 +1,20 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Confirm Removal" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title|default:"Confirm Removal" }}</h2>
+
+<p>Are you sure you want to remove the unavailability block for <strong>{{ availability.unavailable_date|date:"l, F j, Y" }}</strong>?</p>
+
+{% if availability.reason %}
+<p>Reason given: {{ availability.reason }}</p>
+{% endif %}
+
+<form method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-danger">Yes, Remove Block</button>
+    <a href="{% url 'tracker:assessor_availability_list' %}" class="btn btn-secondary">Cancel</a>
+</form>
+
+{% endblock %}

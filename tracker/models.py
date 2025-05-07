@@ -20,8 +20,6 @@ def mfa_proof_upload_path(instance, filename):
     return os.path.join(*path_components)
     # --- Previously it might have missed the service_def_id folder ---
     # return f'mfa_proof/assessment_{assessment_id}/{unique_filename}' # Old version?
-
-
 def ce_report_upload_path(instance, filename):
     # Generates a path like: ce_reports/assessment_123/some_random_uuid_filename.pdf
     assessment_id = instance.assessment.id if instance.assessment else 'unlinked'
@@ -104,6 +102,16 @@ class Client(models.Model):
     # Internal fields to track data used for validation check
     validated_name = models.CharField(max_length=200, blank=True, null=True, editable=False, help_text="Internal: Name used for last validation.")
     validated_number = models.CharField(max_length=20, blank=True, null=True, editable=False, help_text="Internal: Number used for last validation.")
+    tenable_tag_uuid = models.CharField(
+        max_length=36,  # UUIDs are typically 36 chars as string
+        null=True,
+        blank=True,
+        help_text="Tenable.io Tag Value UUID for this client's assets",
+        verbose_name="Tenable Tag UUID"
+    )
+    tenable_agent_group_id = models.IntegerField(null=True, blank=True, help_text=_(
+        "Numeric ID of the corresponding agent group in Tenable.io"))
+
 
     def __str__(self): return self.name
 class UserProfile(models.Model):
@@ -128,11 +136,80 @@ class Assessment(models.Model):
     date_actual_end = models.DateField(null=True, blank=True, verbose_name="Actual End Date")
     date_cert_issued = models.DateField(null=True, blank=True, verbose_name="Certificate Issued Date")
     date_cert_expiry = models.DateField(null=True, blank=True, verbose_name="Certificate Expiry Date")
+    date_ce_passed = models.DateField(null=True, blank=True, verbose_name="CE Self-Assessment Pass Date", help_text="Date the basic Cyber Essentials self-assessment was passed (for CE+ window).")
     ce_self_assessment_ref = models.CharField(max_length=100, blank=True, verbose_name="CE Self-Assessment Ref")
     final_outcome = models.CharField(max_length=4, choices=OUTCOME_CHOICES, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenable_scan_uuid = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=False,  # Can re-launch / create new scans for same assessment
+        verbose_name="Tenable Scan UUID",
+        help_text="UUID of the last launched Tenable scan for this assessment"
+    )
+
     def __str__(self): return f"{self.client.name} - {self.get_assessment_type_display()} ({self.id})"
+
+    @property
+    def ce_plus_window_end_date(self):
+        if self.assessment_type == 'CE+' and self.date_ce_passed:
+            try:
+                # Calculate 90 days from the CE pass date
+                return self.date_ce_passed + timezone.timedelta(days=90)
+            except TypeError:  # Handle potential None or invalid date
+                return None
+        return None
+
+    def can_launch_ce_plus_scan(self) -> dict:
+        """
+        Checks if conditions are met to enable the 'Launch Scan' button for CE+.
+        Returns a dictionary: {'can_launch': bool, 'reason': str}
+        """
+        print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Checking for Assessment {self.id}")  # DEBUG
+
+        if self.assessment_type != 'CE+':
+            print("[DEBUG Assessment.can_launch_ce_plus_scan] Result: False (Not CE+)")  # DEBUG
+            return {'can_launch': False, 'reason': _("Scan launch is only applicable for CE+ assessments.")}
+
+        # Get relevant sampled items (prefetching might optimize this if called often)
+        # Using related name 'scoped_items' from ScopedItem model
+        sampled_items = self.scoped_items.filter(is_in_ce_plus_sample=True)
+
+        if not sampled_items.exists():
+            print("[DEBUG Assessment.can_launch_ce_plus_scan] Result: False (No sample items)")  # DEBUG
+            return {'can_launch': False, 'reason': _("No items found in the CE+ sample.")}
+
+        # Identify item types that require agent linking for scanning
+        item_types_requiring_link = ['Laptop', 'Desktop', 'Server']
+        items_requiring_link = sampled_items.filter(item_type__in=item_types_requiring_link)
+
+        if not items_requiring_link.exists():
+            # If no laptops/desktops/servers are in the sample, scan can technically proceed
+            # (e.g., sample only contains mobile devices or network devices)
+            print(
+                "[DEBUG Assessment.can_launch_ce_plus_scan] Result: True (No sample items require agent linking)")  # DEBUG
+            return {'can_launch': True, 'reason': _("Scan can be launched (no sampled items require agent linking).")}
+
+        # Check if ALL items requiring a link actually have one
+        all_items_linked = items_requiring_link.filter(
+            linked_tenable_agent_uuid__isnull=False).count() == items_requiring_link.count()
+
+        if not all_items_linked:
+            unlinked_count = items_requiring_link.filter(linked_tenable_agent_uuid__isnull=True).count()
+            reason = _(
+                "Cannot launch scan: {count} sampled device(s) (Laptop/Desktop/Server) still need a Tenable Agent linked.").format(
+                count=unlinked_count)
+            print(
+                f"[DEBUG Assessment.can_launch_ce_plus_scan] Result: False ({unlinked_count} items not linked)")  # DEBUG
+            return {'can_launch': False, 'reason': reason}
+
+        # All checks passed
+        print("[DEBUG Assessment.can_launch_ce_plus_scan] Result: True (All checks passed)")  # DEBUG
+        return {'can_launch': True, 'reason': _("Ready to launch scan.")}
+    # CHANGES END
+
+
 class Evidence(models.Model):
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='evidence_files')
     file = models.FileField(upload_to='evidence/%Y/%m/%d/')
@@ -209,6 +286,13 @@ class ScopedItem(models.Model):
         related_name='scoped_items',
         verbose_name="Associated Network"
     )
+    linked_tenable_agent_uuid = models.UUIDField(
+        null=True,
+        blank=True,
+        # unique=True, # Decided against unique=True for now, might be too restrictive.
+        help_text="UUID of the Tenable Nessus Agent linked to this item (if applicable)"
+    )
+
     # --- END NEW FIELD ---
 
     def __str__(self):
@@ -453,4 +537,80 @@ class UploadedReport(models.Model):
     @property
     def filename(self):
         return os.path.basename(self.report_file.name) if self.report_file else None
+class NessusAgentURL(models.Model):
+    os_name = models.CharField(max_length=50, help_text="e.g., Windows, Debian, CentOS, macOS")
+    architecture = models.CharField(max_length=20, help_text="e.g., x64, amd64, arm64")
+    os_version_details = models.CharField(max_length=100, blank=True, help_text="e.g., 10 / 11, 11 / 12, 7 / 8 / 9") # Store details from page if available
+    agent_version = models.CharField(max_length=30, blank=True, help_text="e.g., 10.7.1")
+    download_url = models.URLField(max_length=1024, unique=True)
+    file_name = models.CharField(max_length=255, blank=True) # Store filename if easily parsable
+    last_scraped = models.DateTimeField(default=timezone.now)
+    last_validated = models.DateTimeField(null=True, blank=True)
+    is_valid = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ['os_name', 'architecture', '-agent_version'] # Show latest versions first
+        verbose_name = "Nessus Agent Download URL"
+        verbose_name_plural = "Nessus Agent Download URLs"
+        indexes = [
+            models.Index(fields=['os_name', 'architecture']),
+        ]
+
+
+    def __str__(self):
+        return f"{self.os_name} ({self.architecture}) - {self.agent_version or 'Unknown Version'} - {'Valid' if self.is_valid else 'Invalid'}"
+class AssessmentDateOption(models.Model):
+    class Status(models.TextChoices):
+        SUGGESTED = 'Suggested', _('Suggested')
+        CLIENT_PREFERRED = 'ClientPreferred', _('Client Preferred')
+        CONFIRMED = 'Confirmed', _('Confirmed by Assessor')
+        REJECTED = 'Rejected', _('Rejected')
+
+    assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='date_options')
+    proposed_date = models.DateField()
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.SUGGESTED)
+    proposed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, # Keep the record even if user is deleted
+        null=True, blank=True,
+        related_name='proposed_dates'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['assessment', 'proposed_date']
+        # Prevent proposing the exact same date for the same assessment twice
+        unique_together = ('assessment', 'proposed_date')
+        verbose_name = "Assessment Date Option"
+        verbose_name_plural = "Assessment Date Options"
+
+    def __str__(self):
+        proposer = f" by {self.proposed_by.username}" if self.proposed_by else ""
+        return f"{self.proposed_date.strftime('%Y-%m-%d')} ({self.get_status_display()}){proposer} for Assessment {self.assessment.id}"
+class AssessorAvailability(models.Model):
+    assessor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE, # If assessor user deleted, their availability is gone
+        related_name='unavailable_dates',
+        limit_choices_to={'userprofile__role': 'Assessor'} # Ensure only assessors are selected
+    )
+    unavailable_date = models.DateField(verbose_name="Date Unavailable")
+    reason = models.CharField(max_length=255, blank=True, help_text="Optional reason (e.g., Holiday, Training)")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['assessor', 'unavailable_date']
+        # Assessor can only block a specific date once
+        unique_together = ('assessor', 'unavailable_date')
+        verbose_name = "Assessor Unavailable Date"
+        verbose_name_plural = "Assessor Unavailable Dates"
+
+    def __str__(self):
+        return f"Assessor {self.assessor.username} unavailable on {self.unavailable_date.strftime('%Y-%m-%d')}"
+
+
+
+
 

@@ -37,6 +37,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'constance',
+    'constance.backends.database',
+    'django_celery_results',
     'tracker.apps.TrackerConfig',
 ]
 
@@ -136,3 +139,120 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 COMPANIES_HOUSE_API_KEY = '70a9e104-b7cd-45c2-8292-0773ae537430'
+
+TENABLE_CLIENT_TAG_CATEGORY = 'Client'
+TENABLE_DOWNLOADS_URL = 'https://www.tenable.com/downloads/nessus-agents'
+TENABLE_AGENT_DOWNLOADS_PAGE_URL = 'https://www.tenable.com/downloads/nessus-agents'
+# --- END ADD ---
+
+CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
+CONSTANCE_CONFIG = {
+    'TENABLE_ACCESS_KEY': ('1b328bd0d6706bef7c3ce087d6c16e8e17c19f59d703e968d8d193605e5aeb3a', 'Tenable.io Access Key', str),
+    'TENABLE_SECRET_KEY': ('08b8b578b50c61e5aaca26e5205eefcceacc78a335a4698fa38ebd59f35c8c56', 'Tenable.io Secret Key', str),
+    'TENABLE_LINKING_KEY': ('87f948be386683b2fa17e960af85e24a683d9142a2ef53c97c8919b54747e777', 'Nessus Agent Linking Key (--key)', str),
+    'TENABLE_CLIENT_TAG_CATEGORY' : ('AssessmentPlatformClients','Tenable.io Client Tag Category', str),
+    'TENABLE_SCAN_POLICY_UUID': ('2e7d8b44-7b38-733c-2ff3-15cc4956d494f632d534fffed23c', 'UUID of the Tenable Scan Policy/Template to use for agent scans', str),
+    'TENABLE_SCAN_POLICY_ID': ('71','ID of the Tenable SCan Policy/Template to use for agent scans', int),
+    'TENABLE_SCANNER_UUID': ('2e7d8b44-7b38-733c-2ff3-15cc4956d494f632d534fffed23c', 'UUID of the Tenable Scanner/Group to use (Default is Cloud Scanner)', str),
+    # CHANGES END
+    # Add Tenable API URL if not default cloud.tenable.com
+     'TENABLE_URL': ('https://cloud.tenable.com', 'Tenable Instance URL', str)
+}
+# Optional: Hide sensitive keys slightly in admin
+CONSTANCE_CONFIG_FIELDSETS = {
+    'Tenable API Settings': ('TENABLE_URL', 'TENABLE_ACCESS_KEY', 'TENABLE_SECRET_KEY', 'TENABLE_LINKING_KEY',
+                             "TENABLE_CLIENT_TAG_CATEGORY",'TENABLE_SCAN_POLICY_UUID',
+        'TENABLE_SCANNER_UUID', "TENABLE_SCAN_POLICY_ID"),
+}
+
+
+
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False, # Keep existing Django loggers
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'dev': { # Formatter for console output during development
+             'format': '[{asctime}] {levelname} [{name}:{lineno}] {message}',
+             'style': '{',
+             'datefmt': '%Y-%m-%d %H:%M:%S',
+        },
+    },
+    'handlers': {
+        'console': {
+            'level': 'DEBUG', # Show DEBUG level messages and higher on console
+            'class': 'logging.StreamHandler',
+            'formatter': 'dev', # Use the 'dev' formatter for console
+        },
+        # Optional: Add file handler later if needed
+        # 'file': {
+        #     'level': 'INFO',
+        #     'class': 'logging.FileHandler',
+        #     'filename': BASE_DIR / 'logs/django.log', # Create logs directory
+        #     'formatter': 'verbose',
+        # },
+    },
+    'loggers': {
+        'django': { # Configure Django's internal loggers
+            'handlers': ['console'], # Send Django's logs to console too
+            'level': 'INFO', # Or 'WARNING' to reduce Django noise
+            'propagate': False, # Don't pass Django logs to root logger
+        },
+        'tracker': { # Configure logging for your 'tracker' app
+            'handlers': ['console'],
+            'level': 'DEBUG', # Capture DEBUG messages from your app
+            'propagate': False, # Don't pass to root logger if handled here
+        },
+        # Optional: Configure other specific app loggers
+        # 'celery': {
+        #     'handlers': ['console'],
+        #     'level': 'INFO',
+        #     'propagate': False,
+        # },
+        # Optional: Root logger (catches everything not handled above)
+        # '': {
+        #     'handlers': ['console'],
+        #     'level': 'WARNING', # Set a higher level for root to avoid excessive noise
+        # },
+    }
+}
+
+
+
+
+
+CELERY_BROKER_URL = 'redis://10.0.0.131:30036/0'
+CELERY_RESULT_BACKEND = 'django-db'
+# OR use Redis as backend: CELERY_RESULT_BACKEND = 'redis://localhost:6379/1'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'Europe/London' # Set to your timezone
+
+# django-celery-results configuration (if using 'django-db' backend)
+CELERY_RESULT_EXTENDED = True # Optional: Provides more task metadata
+
+
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'scrape-nessus-urls-daily': {
+        'task': 'tracker.tasks.scrape_nessus_agent_urls',
+        # Run daily at 3:05 AM (adjust time as needed)
+        'schedule': crontab(hour=3, minute=5),
+    },
+     'validate-nessus-urls-daily': {
+        'task': 'tracker.tasks.validate_agent_urls',
+         # Run daily at 4:05 AM (after scraping)
+        'schedule': crontab(hour=4, minute=5),
+    },
+     # ... other scheduled tasks ...
+}

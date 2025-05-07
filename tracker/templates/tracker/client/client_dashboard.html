@@ -6,6 +6,60 @@
 <h2>Client Dashboard</h2>
 <p>Welcome, {{ request.user.username }} from <strong>{{ client.name }}</strong>.</p>
 
+
+<div class="card mb-4">
+    <div class="card-header">
+        <i class="fa-solid fa-satellite-dish me-1"></i> Nessus Agent Status Overview
+    </div>
+    <div class="card-body">
+        {% if tenable_error %}
+            <div class="alert alert-danger" role="alert">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i> Error retrieving agent status: {{ tenable_error }}
+            </div>
+        {% elif agent_status_summary is not None %}
+            {% with total=agent_status_summary.total|default:0 on=agent_status_summary.on|default:0 off=agent_status_summary.off|default:0 never=agent_status_summary.never_connected|default:0 unknown=agent_status_summary.unknown|default:0 %}
+                {% if total > 0 %}
+                    <p>Summary of agents associated with your Tenable group ('{{ client.name }}'):</p>
+                    <div class="d-flex justify-content-around flex-wrap">
+                        <div class="text-center p-2">
+                            <span class="fs-4 fw-bold">{{ total }}</span><br>
+                            <span class="text-muted small">Total Agents</span>
+                        </div>
+                        <div class="text-center p-2">
+                            <span class="fs-4 fw-bold text-success">{{ on }}</span><br>
+                            <span class="text-muted small">Online</span>
+                        </div>
+                        <div class="text-center p-2">
+                            <span class="fs-4 fw-bold text-danger">{{ off }}</span><br>
+                            <span class="text-muted small">Offline</span>
+                        </div>
+                        {# Optionally show other statuses like 'never_connected' if needed #}
+                        {% if never > 0 %}
+                        <div class="text-center p-2">
+                            <span class="fs-4 fw-bold text-secondary">{{ never }}</span><br>
+                            <span class="text-muted small">Never Connected</span>
+                        </div>
+                        {% endif %}
+                         {% if unknown > 0 %}
+                        <div class="text-center p-2">
+                            <span class="fs-4 fw-bold text-secondary">{{ unknown }}</span><br>
+                            <span class="text-muted small">Unknown Status</span>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {# Add link to full detail view if needed/possible for clients #}
+                    {# <p class="text-center mt-3"><a href="#" class="btn btn-sm btn-outline-info">View Full Agent List</a></p> #}
+                {% else %}
+                    <p class="text-muted">No agents found in the Tenable group '{{ client.name }}'. Please ensure agents are installed and correctly grouped.</p>
+                {% endif %}
+            {% endwith %}
+        {% else %}
+             <p class="text-muted">Agent status information is currently unavailable.</p>
+        {% endif %}
+    </div>
+</div>
+
+
 <h4 class="mt-4">Your Assessments</h4>
 {% if assessments %}
 <div class="table-responsive">

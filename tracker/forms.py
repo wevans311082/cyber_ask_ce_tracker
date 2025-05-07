@@ -4,10 +4,11 @@ from django.contrib.auth.models import User
 # Ensure ValidationError is imported if needed, though forms.ValidationError works
 # from django.core.exceptions import ValidationError
 import ipaddress
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 from .models import (
     Client, UserProfile, Assessment, ScopedItem, Evidence, AssessmentLog,
-    OperatingSystem, Network, CloudServiceDefinition, AssessmentCloudService, ExternalIP, UploadedReport  # Ensure this is imported
+    OperatingSystem, Network, CloudServiceDefinition, AssessmentCloudService, ExternalIP, UploadedReport, AssessmentDateOption, AssessorAvailability  # Ensure this is imported
 )
 
 # --- User/Profile Forms ---
@@ -543,33 +544,6 @@ class AssessmentCloudServiceForm(forms.ModelForm):
 
         return cleaned_data
 
-class AssessmentCloudServiceAssessorForm(forms.ModelForm):
-    class Meta:
-        model = AssessmentCloudService
-        # Include fields relevant for assessor verification
-        fields = [
-            # Client fields might be included as readonly or excluded
-            # 'client_notes', # Maybe show read-only?
-            'mfa_admin_verified',
-            'mfa_user_verified',
-            'is_compliant',
-            'assessor_notes',
-        ]
-        widgets = {
-            # Use checkboxes for boolean fields
-            'mfa_admin_verified': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'mfa_user_verified': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'is_compliant': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
-            'assessor_notes': forms.Textarea(attrs={'rows': 4, 'class': 'form-control'}),
-            # Widget for client_notes if included as readonly
-            # 'client_notes': forms.Textarea(attrs={'readonly': 'readonly', 'rows': 3, 'class': 'form-control-plaintext'}),
-        }
-        labels = {
-            'mfa_admin_verified': "Admin MFA Verified by Assessor?",
-            'mfa_user_verified': "User MFA Verified by Assessor?",
-            'is_compliant': "Overall Service Compliant?",
-            'assessor_notes': "Assessor Verification Notes",
-        }
 
 class ExternalIPForm(forms.ModelForm):
     """
@@ -660,3 +634,89 @@ class UploadReportForm(forms.ModelForm):
         labels = {
             'report_file': 'Select CE Report PDF to Upload',
         }
+
+# --- NEW Assessment Date Option Form ---
+class AssessmentDateOptionForm(forms.ModelForm):
+    proposed_date = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        label="Suggest Assessment Date"
+    )
+
+    class Meta:
+        model = AssessmentDateOption
+        fields = ['proposed_date', 'notes'] # Include the notes field
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 2, 'class': 'form-control', 'placeholder': 'Optional: Add a reason for this date suggestion'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        # Pop assessment from kwargs to store it on the form instance
+        self.assessment = kwargs.pop('assessment', None)
+        super().__init__(*args, **kwargs)
+        if not self.assessment:
+            # This should ideally not happen if the view passes it correctly
+            print("Warning: AssessmentDateOptionForm initialized without assessment object.")
+
+    def clean_proposed_date(self):
+        """Validate the proposed date."""
+        proposed_date = self.cleaned_data.get('proposed_date')
+        today = timezone.now().date()
+
+        if not proposed_date:
+            # Let required=True handle this, but double-check
+            return proposed_date # Skip further checks if no date
+
+        # 1. Check if date is in the past
+        if proposed_date < today:
+            raise ValidationError("Proposed assessment date cannot be in the past.")
+
+        # 2. Check against assessor availability (if assessment and assessor are known)
+        if self.assessment and self.assessment.assessor:
+            assessor = self.assessment.assessor
+            if AssessorAvailability.objects.filter(assessor=assessor, unavailable_date=proposed_date).exists():
+                raise ValidationError(f"The assigned assessor ({assessor.username}) is unavailable on this date.")
+
+        # 3. Check CE+ 90-day window (if applicable)
+        if self.assessment and self.assessment.assessment_type == 'CE+':
+            if not self.assessment.date_ce_passed:
+                # Cannot validate window if CE pass date is missing
+                # We might want to allow proposing dates anyway, but add a warning?
+                # Or block it entirely? Let's block for now.
+                raise ValidationError("Cannot propose CE+ date: The CE Self-Assessment Pass Date is missing for this assessment.")
+            else:
+                window_start_date = self.assessment.date_ce_passed
+                window_end_date = self.assessment.ce_plus_window_end_date # Use the property
+
+                if not (window_start_date <= proposed_date <= window_end_date):
+                    raise ValidationError(f"CE+ assessment date must be within 90 days of the CE pass date ({window_start_date.strftime('%Y-%m-%d')}). This date must be between {window_start_date.strftime('%Y-%m-%d')} and {window_end_date.strftime('%Y-%m-%d')}.")
+
+        # Note: The unique_together check ('assessment', 'proposed_date')
+        # is handled by Django at the database level or during full form validation,
+        # but could be added here explicitly if desired.
+        # if self.assessment and AssessmentDateOption.objects.filter(assessment=self.assessment, proposed_date=proposed_date).exists():
+        #    raise ValidationError("This date has already been proposed for this assessment.")
+
+        return proposed_date # Return the valid date
+
+# --- NEW Assessor Availability Form ---
+class AssessorAvailabilityForm(forms.ModelForm):
+    unavailable_date = forms.DateField(
+        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
+        label="Block Out Date"
+    )
+
+    class Meta:
+        model = AssessorAvailability
+        fields = ['unavailable_date', 'reason']
+        widgets = {
+            'reason': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Optional: e.g., Holiday, Conference'})
+        }
+
+    def clean_unavailable_date(self):
+        """Ensure the date is not in the past."""
+        date_to_block = self.cleaned_data.get('unavailable_date')
+        today = timezone.now().date()
+        if date_to_block and date_to_block < today:
+            raise ValidationError("Cannot block out a date in the past.")
+        # Note: unique_together check ('assessor', 'unavailable_date') is handled by Django
+        return date_to_block

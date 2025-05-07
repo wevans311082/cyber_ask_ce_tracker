@@ -2,7 +2,22 @@
 import logging
 import traceback # Import traceback for detailed error printing
 from datetime import date
-from .models import Assessment, ScopedItem, OperatingSystem
+from .models import (
+    Assessment,
+    AssessmentCloudService,
+    AssessmentLog,
+    AssessmentWorkflowStep,
+    Client,
+    CloudServiceDefinition,
+    Evidence,
+    ExternalIP,
+    Network,
+    OperatingSystem,
+    ScopedItem,
+    UploadedReport,
+    UserProfile,
+    NessusAgentURL
+)
 
 # Import log function carefully or define locally
 # (Ensures this util function can still work even if views.py has issues)
@@ -137,3 +152,206 @@ def check_and_fail_assessment_for_eol(assessment_id):
         # --- DEBUG PRINT ---
         print(f">>> DEBUG: UTIL FUNCTION 'check_and_fail_assessment_for_eol' EXITED - Assessment ID: {assessment_id} <<<")
         # --- End DEBUG PRINT ---
+def check_os_match(scoped_item_os, agent_platform_string):
+    """
+    Compares an OperatingSystem model instance with a Tenable platform string.
+    Returns True if they likely match (or cannot be determined), False if they likely mismatch.
+    """
+    if not scoped_item_os or not agent_platform_string:
+        return True # Cannot determine mismatch if data is missing
+
+    agent_platform = agent_platform_string.lower()
+    os_category = scoped_item_os.category.lower() if scoped_item_os.category else ""
+
+    # Basic Mapping (Expand as needed based on Tenable platform strings)
+    platform_map = {
+        'windows': ['win', 'windows'],
+        'linux': ['linux', 'ubu', 'centos', 'deb', 'fed', 'amzn', 'suse', 'rhel'], # Add more Linux distros
+        'macos': ['mac', 'macos', 'osx', 'darwin'],
+    }
+
+    likely_match = False
+    if os_category in platform_map:
+        if any(p_str in agent_platform for p_str in platform_map[os_category]):
+            likely_match = True
+    # Add elif for other categories like 'Mobile', 'Network' if needed,
+    # although agents typically aren't installed there.
+
+    # If the category is known but doesn't match any agent platform category, it's likely a mismatch.
+    # If the category is unknown or doesn't map, we assume it might be okay (return True).
+    if not likely_match and os_category in platform_map:
+        # We have a known OS category, but the agent platform doesn't match known strings for it.
+         logger.debug(f"OS Mismatch Check: Scope Item OS Category '{os_category}' vs Agent Platform '{agent_platform_string}' -> Mismatch")
+         return False
+    else:
+         # Either a likely match, or we couldn't determine (e.g., unknown OS category)
+         logger.debug(f"OS Mismatch Check: Scope Item OS Category '{os_category}' vs Agent Platform '{agent_platform_string}' -> OK/Undetermined")
+         return True
+def calculate_sample_size(count):
+    """Calculates required sample size based on the provided table."""
+    if count <= 0:
+        return 0
+    elif count == 1:
+        return 1
+    elif 2 <= count <= 5:
+        return 2
+    elif 6 <= count <= 19:
+        return 3
+    elif 20 <= count <= 60:
+        return 4
+    else: # 61+
+        return 5
+def is_admin(user):
+    # Basic check, assuming UserProfile relationship works
+    if not user.is_authenticated: return False
+    try:
+        # Check profile relation explicitly
+        profile = getattr(user, 'userprofile', None)
+        return profile is not None and profile.role == 'Admin'
+    except Exception as e: # Catch potential related object errors
+        logger.error(f"Error checking is_admin for user {user.username}: {e}", exc_info=True)
+        return False
+
+def is_assessor(user):
+    if not user.is_authenticated: return False
+    try:
+        profile = getattr(user, 'userprofile', None)
+        return profile is not None and profile.role == 'Assessor'
+    except Exception as e:
+        logger.error(f"Error checking is_assessor for user {user.username}: {e}", exc_info=True)
+        return False
+
+def is_client(user):
+    # Add detailed logging
+    if not user.is_authenticated:
+        logger.debug(f"[is_client check] User '{user.username}' NOT authenticated.")
+        return False
+
+    logger.debug(f"[is_client check] Checking user '{user.username}'.")
+    profile = None # Initialize profile variable
+    has_profile_attr = hasattr(user, 'userprofile')
+    logger.debug(f"[is_client check] hasattr(user, 'userprofile') = {has_profile_attr}")
+
+    if has_profile_attr:
+        try:
+            # Attempt to access the related profile object
+            profile = user.userprofile
+            logger.debug(f"[is_client check] Accessed user.userprofile. Profile object: {profile}")
+            if profile is None:
+                 logger.debug(f"[is_client check] user.userprofile is None.")
+                 return False # Explicitly handle None case
+
+            # Check the role on the profile object
+            profile_role = getattr(profile, 'role', 'AttributeError') # Safely get role
+            is_role_client = profile_role == 'Client'
+            logger.debug(f"[is_client check] Profile role: '{profile_role}'. Is role 'Client'? {is_role_client}")
+            return is_role_client # Return based only on role check now
+
+        except UserProfile.DoesNotExist:
+            # This handles the case where the relationship exists but the profile record doesn't
+            logger.warning(f"[is_client check] UserProfile.DoesNotExist for user '{user.username}'.")
+            return False
+        except Exception as e:
+            # Catch any other unexpected errors during profile access
+            logger.error(f"[is_client check] Error accessing profile or role for user '{user.username}': {e}", exc_info=True)
+            return False
+    else:
+        # If the 'userprofile' related manager doesn't even exist on the user object
+        logger.warning(f"[is_client check] User '{user.username}' does not have 'userprofile' attribute.")
+        return False
+def user_can_manage_assessment_networks(user, assessment):
+    """Checks if a user can manage networks for a given assessment."""
+    if not user.is_authenticated:
+        return False
+    if is_admin(user):
+        return True # Admins can manage any
+    if is_assessor(user) and assessment.assessor == user:
+        return True # Assigned assessor can manage
+    if is_client(user) and assessment.client == user.userprofile.client:
+        # Allow client management if assessment is not yet completed
+        if not assessment.status.startswith('Complete_'):
+            return True
+    return False
+def user_can_manage_assessment_external_ips(user, assessment):
+    """
+    Checks if a user can VIEW the External IPs list for a given assessment.
+    Allows Admins, assigned Assessors, and associated Clients (regardless of assessment status).
+    Editing permissions are checked separately.
+    """
+    if not user.is_authenticated:
+        return False
+    if is_admin(user):
+        return True # Admins can always view
+
+    # Assessors can view their assigned assessments
+    if is_assessor(user) and assessment.assessor == user:
+        return True
+
+    # Clients can VIEW if it's their assessment (status doesn't restrict viewing list)
+    if is_client(user) and hasattr(user, 'userprofile') and assessment.client == user.userprofile.client:
+        return True # Allow client to view their list always
+
+    # Default deny if none of the above match
+    return False
+def is_admin_or_assessor(user):
+    return is_admin(user) or is_assessor(user)
+def user_can_edit_assessment_external_ips(user, assessment):
+    """
+    Checks if a user can ADD, EDIT, or DELETE External IPs for an assessment.
+    Allows Admins and Assessors (unless assessment is complete).
+    Allows Clients only if the 'Define External IPs' workflow step (Order 3)
+    is not marked as 'Complete' and the assessment is not fully complete.
+    """
+    if not user.is_authenticated:
+        return False
+
+    # --- Prevent edits on completed assessments for ALL roles ---
+    # Uses the string prefix check for simplicity
+    if assessment.status.startswith('Complete_'):
+        return False
+
+    # --- Admin/Assessor Permissions ---
+    # Allow Admin/Assessor edits unless assessment is complete (checked above)
+    if is_admin(user):
+        return True
+    if is_assessor(user) and assessment.assessor == user:
+        return True
+
+    # --- Client Permissions Tied to Workflow Step 3 ---
+    if is_client(user) and hasattr(user, 'userprofile') and assessment.client == user.userprofile.client:
+        try:
+            # Find the workflow step for defining external IPs (assuming order 3)
+            # Use .select_related('step_definition') for efficiency if needed elsewhere
+            external_ip_workflow_step = AssessmentWorkflowStep.objects.get(
+                assessment=assessment,
+                step_definition__step_order=3 # Step 3 = Define External IPs
+            )
+
+            # Allow editing only if this specific step is NOT 'Complete'
+            # Uses the Status choices enum defined in the AssessmentWorkflowStep model
+            return external_ip_workflow_step.status != AssessmentWorkflowStep.Status.COMPLETE
+
+        except AssessmentWorkflowStep.DoesNotExist:
+            # If the workflow step wasn't created for some reason, deny permission
+            print(f"Warning: Workflow Step 3 not found for Assessment {assessment.id}. Denying external IP edit permission.")
+            return False
+        except Exception as e:
+            # Log unexpected errors and deny permission
+            print(f"Error checking workflow step 3 status for assessment {assessment.id}: {e}")
+            return False # Fail safe
+
+    # Default deny if user is not admin, assigned assessor, or associated client
+    return False
+def user_can_manage_assessment_cloud_services(user, assessment):
+    """Checks if a user can view/manage cloud services for a given assessment."""
+    if not user.is_authenticated: return False
+    if is_admin(user): return True
+    # Assessors can always view/manage their assigned assessments
+    if is_assessor(user) and assessment.assessor == user: return True
+    # Clients can view/manage if it's their assessment AND not completed
+    if is_client(user) and assessment.client == user.userprofile.client:
+        # Decide if clients can manage even when complete (e.g. view proof)
+        # For now, allow view/manage unless explicitly forbidden by status if needed
+        # return not assessment.status.startswith('Complete_')
+        return True # Let clients view even if complete, editing controlled by view logic
+    return False

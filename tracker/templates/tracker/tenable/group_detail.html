@@ -1,0 +1,138 @@
+{% extends "tracker/base.html" %}
+{% load static i18n %}
+
+{% block title %}{{ page_title|default:"Tenable Group Details" }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Optional: Add specific styles if needed */
+    .status-badge {
+        min-width: 60px; /* Ensure badges have some minimum width */
+        text-align: center;
+        font-size: 0.8em; /* Slightly smaller badge text */
+        padding: 0.3em 0.5em;
+    }
+    .table code {
+        font-size: 0.85em;
+        word-break: break-all;
+    }
+    .table th, .table td {
+        vertical-align: middle;
+    }
+    .agent-table-container {
+        max-height: 60vh; /* Limit height and allow scrolling */
+        overflow-y: auto;
+    }
+    .debug-context {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        padding: 15px;
+        margin-bottom: 20px;
+        max-height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap; /* Allows text wrapping */
+        word-wrap: break-word; /* Breaks long words */
+        font-family: monospace;
+        font-size: 0.9em;
+    }
+</style>
+
+<div class="container mt-4">
+
+    {# --- Header --- #}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0"><i class="fas fa-users-cog me-2"></i>{{ page_title }}</h3>
+        {# Link back to the main client list (adjust URL name if different) #}
+        <a href="{% url 'tracker:client_list' %}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Back to Clients
+        </a>
+    </div>
+    <p><strong>Client:</strong> {{ client.name }}</p>
+
+    {# --- Display API Errors --- #}
+    {% if error_message %}
+        <div class="alert alert-danger" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i><strong>Error retrieving data from Tenable.io:</strong> {{ error_message }}
+        </div>
+    {% endif %}
+
+    {# --- Agent List Card --- #}
+    <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap"> {# Use flex-wrap for smaller screens #}
+            <span class="me-3 mb-2 mb-md-0"><i class="fas fa-satellite-dish me-2"></i>Agents Linked to Group "{{ client.name }}" ({{ agent_count|default:0 }})</span>
+            {# --- Manual Trigger Button --- #}
+            {% if client.tenable_tag_uuid %}
+                <form method="post" action="{% url 'tracker:trigger_tenable_asset_tagging' client_pk=client.pk %}" class="d-inline"
+                      onsubmit="return confirm('This will attempt to apply the client tag \'{{ client.name }}\' (Tag UUID: {{ client.tenable_tag_uuid|slice:':8' }}...) to all assets associated with agents currently found in this group. Proceed?');">
+                    {% csrf_token %}
+                    {% with tag_category=config.TENABLE_CLIENT_TAG_CATEGORY|default:"Client" %}
+                        <button type="submit" class="btn btn-sm btn-info"
+                                title="Find assets linked to agents in this group and apply the '{{ client.name }}' tag under the '{{ tag_category }}' category.">
+                            <i class="fas fa-sync-alt me-1"></i> Apply '{{ tag_category }}/{{ client.name }}' Tag to Assets in Group
+                        </button>
+                    {% endwith %}
+                </form>
+            {% else %}
+                 <button type="button" class="btn btn-sm btn-secondary" disabled
+                        title="Client tag does not exist in Tenable.io or hasn't been synced yet. Run client sync first.">
+                    <i class="fas fa-sync-alt me-1"></i> Apply Tags (Tag Missing)
+                </button>
+            {% endif %}
+        </div>
+        <div class="card-body p-0"> {# Remove padding to make table fill card body #}
+            {% if agents %}
+                <div class="table-responsive agent-table-container">
+                    <table class="table table-sm table-striped table-hover mb-0"> {# Remove margin bottom #}
+                        <thead class="table-light sticky-top"> {# Make header sticky #}
+                            <tr>
+                                <th>Agent Name</th>
+                                <th>Status</th>
+                                <th>Platform</th>
+                                <th>Version</th>
+                                <th>Linked Asset UUID</th>
+                                <th>Last Connect (UTC)</th> {# Changed label #}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for agent in agents %}
+                            <tr>
+                                <td>{{ agent.name|default:"N/A" }}</td>
+                                <td>
+                                    {% with agent_status=agent.status|default:"unknown"|lower %}
+                                        <span class="badge status-badge {% if agent_status == 'on' %}bg-success{% elif agent_status == 'off' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                            {{ agent_status|capfirst }}
+                                        </span>
+                                    {% endwith %}
+                                </td>
+                                <td>{{ agent.platform|default:"N/A" }}</td>
+                                <td>{{ agent.version|default:"N/A" }}</td>
+                                <td><code>{{ agent.linked_on_asset_uuid|default:agent.asset_uuid|default:"N/A" }}</code></td>
+                                <td>
+                                    {# === CORRECTED LINE BELOW === #}
+                                    {# Use the pre-converted datetime object with the standard date filter #}
+                                    {% if agent.last_connect_dt %}
+                                        {{ agent.last_connect_dt|date:"Y-m-d H:i" }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                    {# === END CORRECTION === #}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% elif not error_message %}
+                <div class="p-3 text-muted">
+                    No agents currently linked to the group "{{ client.name }}" were found in Tenable.io.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{# Add any specific JS for this page if needed later #}
+{% endblock extra_js %}

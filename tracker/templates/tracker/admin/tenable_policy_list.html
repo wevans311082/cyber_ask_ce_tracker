@@ -1,0 +1,112 @@
+{# File: tracker/admin/tenable_policy_list.html #}
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" type="text/css" href="{% static "admin/css/changelists.css" %}">{% endblock %}
+
+{% block coltype %}colM{% endblock %}
+
+{% block bodyclass %}{{ block.super }} app-{{ opts.app_label }} model-policy change-list{% endblock %} {# Adjust model name if needed #}
+
+{% block content_title %}<h1>{{ title }}</h1>{% endblock %}
+
+{% block content %}
+  <div id="content-main">
+    {% if error_message %}
+      <div class="alert alert-danger my-3" role="alert"> {# Added margin #}
+        Error fetching data from Tenable: {{ error_message }}
+      </div>
+    {% endif %}
+
+    {# Configured Policies Table - Updated #}
+    <h2 class="mt-4">Configured Policies</h2>
+    <p class="text-muted">Use the integer 'Policy ID' below in the Constance setting <code>TENABLE_SCAN_POLICY_UUID</code> for creating scans.</p>
+    {% if policies %}
+      <div class="results">
+        <table id="result_list">
+          <thead>
+            <tr>
+              <th scope="col" class="sortable column-name">
+                 <div class="text"><a>Name</a></div>
+                 <div class="clear"></div>
+              </th>
+              {# CHANGES BEGIN: Display Policy ID (Integer) #}
+              <th scope="col" class="sortable column-policy-id">
+                 <div class="text"><a>Policy ID (Use this)</a></div>
+                 <div class="clear"></div>
+              </th>
+              {# CHANGES END #}
+               <th scope="col" class="sortable column-template-uuid">
+                 {# Added Template UUID for info #}
+                 <div class="text"><a>Based on Template UUID</a></div>
+                 <div class="clear"></div>
+              </th>
+              <th scope="col" class="sortable column-description">
+                 <div class="text"><a>Description</a></div>
+                 <div class="clear"></div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for policy in policies %}
+              <tr class="{% cycle 'row1' 'row2' %}">
+                <td class="field-name"><strong>{{ policy.name }}</strong></td>
+                {# CHANGES BEGIN: Display policy_id #}
+                <td class="field-policy-id"><code>{{ policy.policy_id }}</code></td>
+                {# CHANGES END #}
+                {# Display template_uuid #}
+                <td class="field-template-uuid"><small><code>{{ policy.template_uuid|default:'N/A' }}</code></small></td>
+                <td class="field-description">{{ policy.description|default:"" }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+        {% if not error_message %}
+            <p>No configured policies found in Tenable.io.</p>
+        {% endif %}
+    {% endif %}
+
+    {# Standard Templates Table (Separate & Informational) #}
+    <hr class="mt-5 mb-4"> {# Increased margin #}
+    <h2 class="mt-4">Standard Templates (Informational Only)</h2>
+    <p class="text-muted">These are base templates provided by Tenable and generally cannot be used directly to create scans via the API. You need to create a configured policy based on a template first.</p>
+    {% if templates %}
+       <div class="results">
+        <table id="template_list">
+          <thead>
+            <tr>
+              <th scope="col" class="sortable column-name">
+                 <div class="text"><a>Name</a></div>
+                 <div class="clear"></div>
+              </th>
+               <th scope="col" class="sortable column-template-uuid">
+                 <div class="text"><a>Template UUID</a></div>
+                 <div class="clear"></div>
+              </th>
+               <th scope="col" class="sortable column-description">
+                 <div class="text"><a>Description</a></div>
+                 <div class="clear"></div>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for template in templates %}
+              <tr class="{% cycle 'row1' 'row2' %}">
+                <td class="field-name">{{ template.name }}</td>
+                <td class="field-template-uuid"><code>{{ template.template_uuid }}</code></td>
+                <td class="field-description"><small>{{ template.description|default:"" }}</small></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+         {% if not error_message %}
+            <p>No standard templates found or unable to fetch.</p>
+         {% endif %}
+    {% endif %}
+
+  </div>
+{% endblock %}

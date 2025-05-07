@@ -1,11 +1,10 @@
 {% extends "tracker/base.html" %}
-{% load static %}
+{% load static %} {# Removed i18n as it wasn't used here #}
+{% load tz %} {# Load timezone filters if you use |localtime or |timezone #}
 
 {% block title %}Assessment Details - {{ assessment.id }}{% endblock %}
 
 {% block content %}
-
-{# Removed the General Debug Div as requested #}
 
 <h2>Assessment Details: #{{ assessment.id }}</h2>
 <p>Type: {{ assessment.get_assessment_type_display }}</p>
@@ -138,10 +137,8 @@
                              <small class="d-block text-muted mt-1" id="workflow-completion-{{ step.pk }}"></small>
                             {% endif %}
                         </td>
-                        {# --- ACTION CELL - CORRECTED for Client --- #}
+                        {# --- ACTION CELL --- #}
                         <td id="workflow-actions-{{ step.pk }}">
-                           {# Removed the debug div as requested #}
-
                             {% if step.can_update %} {# Use the variable from the view #}
                             <div class="btn-group btn-group-sm workflow-action-group" role="group" aria-label="Workflow Step Actions for {{ step.step_definition.step_order }}">
                                 {# Show 'Start' button only if Not Started #}
@@ -210,7 +207,7 @@
 {# --- END Workflow Checklist --- #}
 
 
-{# --- Existing Cards (Assessment Info, Scope Summary, Networks, Cloud Services, Sample, Evidence, Log) --- #}
+{# --- Assessment Info & Scope Summary Card --- #}
 <div class="card mb-4">
     <div class="card-header">Assessment Information & Scope Summary</div>
     <div class="card-body">
@@ -243,14 +240,13 @@
              {# Column 2: Scope Summary #}
             <div class="col-md-6">
                  <div class="d-flex justify-content-between align-items-center mb-2">
-                     {# Ensure scope_summary passed from view #}
                      <h5>Scope Summary ({{ scope_summary.total_items|default:0 }} Total Items)</h5>
-                      {% if can_edit_scope %} {# Ensure can_edit_scope passed from view #}
+                      {% if can_edit_scope %}
                          <a href="{% url 'tracker:client_scope_manage' assessment.pk %}" class="btn btn-warning btn-sm">Manage Scope</a>
                      {% endif %}
                 </div>
                  {% if scope_summary.total_items > 0 %}
-                    {# Render scope summary details - Example using list #}
+                    {# Render scope summary details #}
                     <ul>
                     {% for category, data in scope_summary.items %}
                         {% if category != 'total_items' and category != 'has_unsupported_or_eol' and data.count > 0 %}
@@ -259,7 +255,8 @@
                             <ul>
                                 {% for os_key, os_data in data.os_types.items %}
                                 <li>
-                                    {% include "tracker/partials/os_icon.html" with os_name=os_key.0 vendor_hint=os_key.1 %}
+                                    {# Inlined OS Icon Logic #}
+                                    <i class="fa-solid {% if 'windows' in os_key.1 %}fa-windows{% elif 'macos' in os_key.1 or 'apple' in os_key.1 %}fa-apple{% elif 'linux' in os_key.1 %}fa-linux{% else %}fa-desktop{% endif %} me-1"></i>
                                     {{ os_key.0 }}: {{ os_data.count }}
                                     {% if not os_data.is_supported %}<span class="badge bg-danger ms-1">Unsupported/EOL</span>{% endif %}
                                 </li>
@@ -281,12 +278,173 @@
     </div>
 </div>
 
+{# === Assessment Date Scheduling Card === #}
+<div class="card mb-4">
+    <div class="card-header">Assessment Date Scheduling</div>
+    <div class="card-body">
+
+        {# --- Display Confirmed Date --- #}
+        {% comment %} Use display_confirmed_assessment_date which checks options first, then assessment.date_start {% endcomment %}
+        {% if display_confirmed_assessment_date %}
+            <div class="alert alert-success" role="alert">
+                <strong>Confirmed Assessment Date: {{ display_confirmed_assessment_date|date:"l, F j, Y" }}</strong>
+            </div>
+        {% elif not assessment_allows_date_management %} {# If management not allowed and no date confirmed display status #}
+             <div class="alert alert-secondary" role="alert">
+                Assessment date negotiation is not currently active. Status: {{ assessment.get_status_display }}.
+            </div>
+        {% else %} {# Management is allowed, no date confirmed yet #}
+             <div class="alert alert-info" role="alert">
+                Please suggest or indicate your preference for assessment dates below. The assessor ({{ assessment.assessor.username|default:"Not Assigned" }}) will confirm the final date.
+            </div>
+        {% endif %}
+
+        {# --- Display CE+ Window Info --- #}
+        {% if assessment.assessment_type == 'CE+' %}
+            <div class="alert alert-warning" role="alert">
+                <small>
+                <i class="fa-solid fa-circle-info me-1"></i>
+                <strong>CE+ Scheduling Window:</strong>
+                {% if ce_plus_window_start_date and ce_plus_window_end_date %}
+                    Based on the CE Self-Assessment pass date of {{ ce_plus_window_start_date|date:"Y-m-d" }}, the CE+ assessment must be completed by
+                    <strong>{{ ce_plus_window_end_date|date:"Y-m-d" }}</strong> (within 90 days).
+                {% elif assessment.date_ce_passed %}
+                     Error calculating 90-day window from CE pass date {{ assessment.date_ce_passed|date:"Y-m-d" }}.
+                {% else %}
+                    The CE Self-Assessment Pass Date has not been recorded yet. The 90-day window cannot be calculated.
+                {% endif %}
+                </small>
+            </div>
+        {% endif %}
+
+        <hr>
+
+        {# --- Display Date Options --- #}
+        <h5>Proposed Dates</h5>
+        {% if assessment_date_options %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Proposed Date</th>
+                            <th>Status</th>
+                            <th>Proposed By</th>
+                            <th>Notes</th>
+                            {% if assessment_allows_date_management %}<th>Actions</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for option in assessment_date_options %}
+                        <tr>
+                            <td>{{ option.proposed_date|date:"Y-m-d (D)" }}</td>
+                            <td>
+                                {% if option.status == option.Status.CONFIRMED %}
+                                    <span class="badge bg-success"><i class="fa-solid fa-check-circle me-1"></i>{{ option.get_status_display }}</span>
+                                {% elif option.status == option.Status.CLIENT_PREFERRED %}
+                                    <span class="badge bg-info text-dark">{{ option.get_status_display }}</span>
+                                {% elif option.status == option.Status.REJECTED %}
+                                    <span class="badge bg-danger">{{ option.get_status_display }}</span>
+                                {% else %} {# Suggested #}
+                                    <span class="badge bg-secondary">{{ option.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ option.proposed_by.username|default:"N/A" }}</td>
+                            <td>{{ option.notes|default:"-"|linebreaksbr }}</td>
+                            {% comment %} Actions only shown if management is allowed overall {% endcomment %}
+                            {% if assessment_allows_date_management %}
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                    {# Client: Can mark 'Preferred' if 'Suggested' and not already preferred #}
+                                    {% if option.status == option.Status.SUGGESTED %}
+                                    <form action="{% url 'tracker:update_assessment_date_status' assessment_pk=assessment.pk option_pk=option.pk %}" method="POST" class="d-inline">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="new_status" value="{{ option.Status.CLIENT_PREFERRED }}">
+                                        <button type="submit" class="btn btn-outline-info" title="Mark as Preferred">
+                                            <i class="fa-solid fa-star"></i> Prefer
+                                        </button>
+                                    </form>
+                                    {% endif %}
+
+                                    {# Client: Can delete their *own* suggestions if status is 'Suggested' #}
+                                    {% if option.proposed_by == request.user and option.status == option.Status.SUGGESTED %}
+                                     <form action="{% url 'tracker:delete_assessment_date_option' assessment_pk=assessment.pk option_pk=option.pk %}" method="POST" class="d-inline" onsubmit="return confirm('Delete this date suggestion?')">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-outline-danger" title="Delete Suggestion">
+                                            <i class="fa-solid fa-trash-alt"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            {% endif %} {# End assessment_allows_date_management #}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-muted">No assessment dates have been proposed yet.</p>
+        {% endif %}
+
+        {# --- Propose New Date Form --- #}
+        {% comment %} Only show form if management allowed AND a date isn't already confirmed {% endcomment %}
+        {% if assessment_allows_date_management %}
+        <hr>
+        <h5>Suggest a New Date</h5>
+        <form action="{% url 'tracker:propose_assessment_date' assessment_pk=assessment.pk %}" method="post" class="row g-3 align-items-end" novalidate>
+             {% csrf_token %}
+            <div class="col-md-4">
+                {% comment %} Use the specific form passed in context {% endcomment %}
+                {% with propose_date_form.proposed_date as field %}
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                <input type="date" name="{{ field.name }}"
+                       id="{{ field.id_for_label }}"
+                       class="form-control {% if field.errors %}is-invalid{% endif %}"
+                       required {% if field.value %} value="{{ field.value|date:'Y-m-d' }}" {% endif %}
+                       data-unavailable-dates="{{ assessor_unavailable_dates_json|escapejs }}">
+                 {% if field.errors %}
+                     <div class="invalid-feedback d-block">
+                         {{ field.errors|striptags }}
+                     </div>
+                 {% endif %}
+                 <small class="form-text text-muted">{{ field.help_text }}</small>
+                 {% endwith %}
+            </div>
+            <div class="col-md-6">
+                {% with propose_date_form.notes as field %}
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                 <textarea name="{{ field.name }}" id="{{ field.id_for_label }}" class="form-control {% if field.errors %}is-invalid{% endif %}" rows="2">{{ field.value|default:"" }}</textarea>
+                 {% if field.errors %}
+                     <div class="invalid-feedback d-block">
+                         {{ field.errors|striptags }}
+                     </div>
+                 {% endif %}
+                 <small class="form-text text-muted">{{ field.help_text }}</small>
+                 {% endwith %}
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Suggest Date</button>
+            </div>
+             {% if propose_date_form.non_field_errors %}
+                 <div class="col-12 mt-2 text-danger">
+                     {{ propose_date_form.non_field_errors|join:", " }}
+                 </div>
+             {% endif %}
+        </form>
+        <small class="d-block mt-2 text-muted">Note: Assessor's unavailable dates are disabled in the calendar but will be checked upon submission.</small>
+        {% endif %} {# End assessment_allows_date_management #}
+
+    </div> {# End card-body #}
+</div> {# End Card #}
+
+
+{# --- Defined Networks Card --- #}
 <div class="card mb-4">
     <div class="card-header">Defined Networks</div>
     <div class="card-body">
         {% if assessment.networks.exists %}
              <ul>
-                 {% for network in assessment.networks.all|slice:":5" %} {# Show first 5 #}
+                 {% for network in assessment.networks.all|slice:":5" %}
                      <li>{{ network.name }} {% if network.ip_range %}({{ network.ip_range }}){% endif %}</li>
                  {% endfor %}
                  {% if assessment.networks.count > 5 %}
@@ -297,7 +455,6 @@
              <p class="text-muted">No networks defined yet.</p>
          {% endif %}
          <div class="text-center mt-2">
-              {# Allow adding/managing unless complete #}
               {% if not assessment.status|slice:":8" == 'Complete' %}
                 <div class="mt-3">
                     <a href="{% url 'tracker:client_network_list' assessment.pk %}" class="btn btn-warning btn-sm">Manage Networks</a>
@@ -307,6 +464,7 @@
     </div>
 </div>
 
+{# --- Cloud Services Card --- #}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>Cloud Services in Scope</span>
@@ -316,7 +474,7 @@
          {% with assessment.assessment_cloud_services.all as services %}
              {% if services.exists %}
              <ul>
-                 {% for service in services|slice:":5" %} {# Show first 5 #}
+                 {% for service in services|slice:":5" %}
                      <li>{{ service.cloud_service_definition.name }} {% if not service.is_compliant and service.cloud_service_definition.requires_mfa_for_ce %}<span class="badge bg-danger">MFA Check Needed</span>{% endif %}</li>
                  {% endfor %}
                  {% if services.count > 5 %}
@@ -330,29 +488,32 @@
     </div>
 </div>
 
-    <div class="card mb-4">
+{# --- External Scan Targets Card --- #}
+<div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
         <span>External Scan Targets (IPs/Hostnames)</span>
         <a href="{% url 'tracker:client_externalip_list' assessment.pk %}" class="btn btn-outline-primary btn-sm">Manage Targets</a>
     </div>
     <div class="card-body">
-        {# Optional: Display a summary/count here #}
          {% with assessment.external_ips.all as targets %}
              {% if targets.exists %}
              <p><small>Currently listed targets:</small></p>
              <ul>
-                 {% for target in targets|slice:":5" %} {# Show first 5 #}
+                 {% for target in targets|slice:":5" %}
                      <li>
-    <code>{{ target.ip_address_or_hostname }}</code>
-    {# Add Scan Status Badge #}
-    {% if target.scan_status == 'ScannedOK' %} <span class="badge bg-success ms-1">{{ target.get_scan_status_display }}</span>
-    {% elif target.scan_status == 'ScannedIssues' %} <span class="badge bg-danger ms-1">{{ target.get_scan_status_display }}</span>
-    {% elif target.scan_status == 'Remediated' %} <span class="badge bg-info text-dark ms-1">{{ target.get_scan_status_display }}</span>
-    {% elif target.scan_status == 'Excluded' %} <span class="badge bg-secondary ms-1">{{ target.get_scan_status_display }}</span>
-    {% elif target.scan_status != 'Pending' %} <span class="badge bg-light text-dark border ms-1">{{ target.get_scan_status_display }}</span> {% endif %}
-    {# Indicate missing consent #}
-    {% if not target.consent_given %}<span class="badge bg-warning text-dark ms-1">Consent Needed</span>{% endif %}
-</li>
+                        <code>{{ target.ip_address_or_hostname }}</code>
+                        {# --- Inlined Scan Status Badge --- #}
+                        {% with target.scan_status as status %}
+                            {% if status == 'ScannedOK' %}<span class="badge bg-success ms-1">{{ target.get_scan_status_display }}</span>
+                            {% elif status == 'ScannedIssues' %}<span class="badge bg-danger ms-1">{{ target.get_scan_status_display }}</span>
+                            {% elif status == 'Remediated' %}<span class="badge bg-info text-dark ms-1">{{ target.get_scan_status_display }}</span>
+                            {% elif status == 'Excluded' %}<span class="badge bg-secondary ms-1">{{ target.get_scan_status_display }}</span>
+                            {% elif status != 'Pending' %}<span class="badge bg-light text-dark border ms-1">{{ target.get_scan_status_display }}</span>
+                            {% endif %}
+                        {% endwith %}
+                        {# --- End Inlined Scan Status Badge --- #}
+                        {% if not target.consent_given %}<span class="badge bg-warning text-dark ms-1">Consent Needed</span>{% endif %}
+                    </li>
                  {% endfor %}
                  {% if targets.count > 5 %}
                      <li>... and {{ targets.count|add:"-5" }} more.</li>
@@ -365,23 +526,46 @@
     </div>
 </div>
 
+{# --- CE+ Sample Card --- #}
 {% if assessment.assessment_type == 'CE+' %}
 <div class="card mb-4">
-    <div class="card-header">CE+ Sample Selected for Testing</div>
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span>CE+ Sample Selected for Testing</span>
+        {# --- START: Added Map Agents Button for Client --- #}
+        {% if ce_plus_sample_items %} {# Only show if there are items in the sample #}
+            <a href="{% url 'tracker:map_agents' assessment_pk=assessment.pk %}" class="btn btn-warning btn-sm" title="Map scanned devices to Nessus Agents">
+                 <i class="fas fa-link me-1"></i> Map/View Nessus Agents
+            </a>
+        {% endif %}
+        {# --- END: Add Map Agents Link/Button --- #}
+    </div>
     <div class="card-body">
-         {% if ce_plus_sample_items %} {# Ensure ce_plus_sample_items passed from view #}
-             <p>The following items have been selected by the assessor for CE+ testing:</p>
-             <div class="table-responsive">
+         {% if ce_plus_sample_items %}
+             {# ... existing 72 hour notice, countdown timer ... #}
+
+             <p>Initial Sample for Preparation:</p>
+             <div class="table-responsive mb-3">
                  <table class="table table-sm table-bordered">
                      <thead>
-                         <tr><th>Type</th><th>Identifier</th><th>OS / Version</th><th>Make/Model</th><th>Network</th><th>Status</th></tr>
+                         <tr>
+                             <th>Type</th>
+                             <th>Identifier</th>
+                             <th>OS / Version</th>
+                             <th>Make/Model</th>
+                             <th>Network</th>
+                             <th>Status</th>
+                             <th>Agent Linked?</th>
+                         </tr>
                      </thead>
                      <tbody>
                      {% for item in ce_plus_sample_items %}
                          <tr>
                              <td>{{ item.get_item_type_display }}</td>
                              <td>{{ item.identifier|default:'-' }}</td>
-                             <td>{{ item.operating_system|default:'N/A' }}</td>
+                             <td>
+                                 {% include "tracker/partials/os_icon.html" with os_name=item.operating_system.name|default:'' vendor_hint=item.operating_system.vendor|default:''|lower %}
+                                 {{ item.operating_system|default:'N/A' }}
+                             </td>
                              <td>{{ item.make_model|default:'-' }}</td>
                              <td>{{ item.network.name|default:'-' }}</td>
                              <td>
@@ -391,30 +575,95 @@
                                  {% elif item.eol_status == 'unknown' %}<span class="badge bg-warning text-dark">OS Unknown</span>
                                  {% endif %}
                              </td>
+                             <td class="text-center">
+                                 {# This logic correctly checks the DB field #}
+                                 {% if item.linked_tenable_agent_uuid %}
+                                     <i class="fas fa-check-circle text-success" title="Agent link recorded"></i>
+                                     <span class="visually-hidden">Yes</span>
+                                 {% else %}
+                                     <i class="fas fa-times-circle text-danger" title="Agent not linked in database"></i>
+                                     <span class="visually-hidden">No</span>
+                                 {% endif %}
+                             </td>
                          </tr>
                      {% endfor %}
                      </tbody>
                  </table>
              </div>
+
+             {# --- Conditional Link for Agent Script --- #}
+             {% if has_ce_plus_sample %}
+                 <div class="alert alert-info d-flex align-items-center" role="alert">
+                    <i class="fa-solid fa-download me-2 flex-shrink-0"></i>
+                    <div>
+                        A Nessus Agent must be installed on all sampled endpoints (Servers, Laptops, Desktops).
+                        You can generate installation scripts using the link below.
+                        <hr class="my-2">
+                        <a href="{% url 'tracker:client_generate_agent_script' assessment.pk %}" class="btn btn-primary btn-sm">
+                            <i class="fa-solid fa-file-code me-1"></i> Generate Agent Install Scripts
+                        </a>
+                    </div>
+                </div>
+             {% endif %}
+
+             {# --- START: Launch Scan Button & Agent Script Link Block --- #}
+             <hr class="my-3">
+             <div class="d-flex flex-wrap gap-3 align-items-center"> {# Use flexbox #}
+                  {# Generate Agent Script Link/Button (Existing) #}
+                 <div class="flex-grow-1"> {# Allow text to wrap #}
+                     <a href="{% url 'tracker:client_generate_agent_script' assessment.pk %}" class="btn btn-primary btn-sm">
+                         <i class="fa-solid fa-file-code me-1"></i> Generate Agent Install Scripts
+                     </a><br>
+                     <small class="text-muted">A Nessus Agent must be installed on all sampled endpoints (Servers, Laptops, Desktops).</small>
+                 </div>
+
+                 {# Launch Scan Button Form #}
+                 <div class="text-center"> {# Center button in its column #}
+                     {# CHANGES BEGIN: Add Launch Scan Button Form #}
+                     <form action="{% url 'tracker:launch_tenable_scan' assessment_pk=assessment.pk %}" method="post" class="d-inline" onsubmit="return confirm('Launch a Tenable agent scan for your tagged devices?');">
+                         {% csrf_token %}
+                         <button type="submit" class="btn btn-success" {# Larger button for client? #}
+                                 {% if not scan_launch_status.can_launch %}disabled title="{{ scan_launch_status.reason }}"{% endif %}>
+                             <i class="fa-solid fa-rocket me-1"></i> Launch Required Scan
+                         </button>
+                     </form>
+                     {# CHANGES END #}
+                     {# CHANGES BEGIN: Add Guidance Note #}
+                     <div class="mt-1">
+                         {% if scan_launch_status.can_launch %}
+                             <small class="text-muted d-block"><i class="fa-solid fa-circle-info me-1"></i>Scan prerequisites met.</small>
+                         {% else %}
+                             <small class="text-danger d-block"><i class="fa-solid fa-triangle-exclamation me-1"></i>{{ scan_launch_status.reason }}</small>
+                         {% endif %}
+                      </div>
+                     {# CHANGES END #}
+                 </div>
+             </div>
+             {# --- END: Launch Scan Button & Agent Script Link Block --- #}
+             {# --- END Conditional Link --- #}
+
          {% else %}
              <p class="text-muted">CE+ sample not yet selected by assessor.</p>
          {% endif %}
     </div>
 </div>
 {% endif %}
-
+{# --- END CE+ Sample Card --- #}
+{# --- Downloads Card --- #}
 <div class="card mb-4">
     <div class="card-header">Downloads</div>
     <div class="card-body">
-        {# Ensure downloadable_evidence passed from view #}
         {% if downloadable_evidence %}
             <ul class="list-group">
                 {% for evidence in downloadable_evidence %}
-                <li class="list-group-item">
-                    <a href="{% url 'tracker:download_evidence' evidence.pk %}" title="Download {{ evidence.filename }}">
-                        <i class="fa-solid fa-download me-2"></i>{{ evidence.description }}
-                    </a>
-                     <small class="text-muted">({{ evidence.filename }}) - Uploaded {{ evidence.uploaded_at|date:"Y-m-d" }}</small>
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <a href="{% url 'tracker:download_evidence' evidence.pk %}" title="Download {{ evidence.filename }}">
+                            <i class="fa-solid fa-download me-2"></i>{{ evidence.description|default:evidence.filename }}
+                        </a>
+                         <small class="text-muted d-block">({{ evidence.filename }})</small>
+                    </div>
+                    <small class="text-muted">Uploaded {{ evidence.uploaded_at|date:"Y-m-d" }}</small>
                 </li>
                 {% endfor %}
             </ul>
@@ -424,15 +673,16 @@
     </div>
 </div>
 
+{# --- Assessment Log Card --- #}
 <div class="card mb-4">
     <div class="card-header">Assessment Log</div>
     <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-        {# Ensure logs passed from view #}
          {% if logs %}
             <ul class="list-unstyled">
                 {% for log in logs %}
                 <li class="mb-2 border-bottom pb-1">
-                    <small class="text-muted">{{ log.timestamp|date:"Y-m-d H:i:s" }} - {% firstof log.user.username 'System' %}:</small><br>
+                    {# Use timezone filter if needed, e.g., |localtime or |timezone:"Europe/London" #}
+                    <small class="text-muted">{{ log.timestamp|date:"Y-m-d H:i:s" }} (UTC) - {% firstof log.user.username 'System' %}:</small><br>
                     {{ log.event }}
                 </li>
                 {% endfor %}
@@ -442,16 +692,80 @@
         {% endif %}
     </div>
 </div>
-{# --- End Existing Cards --- #}
+{# --- End Assessment Log Card --- #}
 
 <hr>
 <a href="{% url 'tracker:client_assessment_list' %}" class="btn btn-secondary">Back to My Assessments</a>
 
+
+
+
+{% if has_ce_plus_sample and assessment_end_date_iso %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const targetDateISO = "{{ assessment_end_date_iso }}";
+  console.log("Countdown Timer: Target ISO Date from Django:", targetDateISO); // DEBUG: Log the raw date string
+
+  const countDownDate = new Date(targetDateISO).getTime();
+  console.log("Countdown Timer: Parsed Target Date (ms):", countDownDate); // DEBUG: Log the parsed time in ms
+
+  const timerElement = document.getElementById("countdown-timer");
+
+  if (!timerElement) {
+      console.error("Countdown timer: Error - Element with ID 'countdown-timer' not found."); // DEBUG: Error if element missing
+      return;
+  }
+  if (isNaN(countDownDate)) {
+      console.error("Countdown timer: Error - The provided date string '" + targetDateISO + "' is invalid or could not be parsed by new Date()."); // DEBUG: Error if date invalid
+      timerElement.innerHTML = "Invalid target date"; // Show error in UI
+      timerElement.closest('.alert')?.classList.remove('alert-primary');
+      timerElement.closest('.alert')?.classList.add('alert-danger'); // Make alert red
+      return;
+  }
+
+  // --- Interval Function ---
+  const updateTimer = function() {
+    const now = new Date().getTime();
+    const distance = countDownDate - now;
+    // console.log("Countdown Timer: Tick - Now (ms):", now, "Distance (ms):", distance); // DEBUG: Log each tick (can be verbose)
+
+    if (distance < 0) {
+      clearInterval(countdownInterval);
+      timerElement.innerHTML = "Target end date has passed";
+      timerElement.closest('.alert')?.classList.remove('alert-primary');
+      timerElement.closest('.alert')?.classList.add('alert-secondary');
+      console.log("Countdown Timer: Timer stopped - Target date passed."); // DEBUG: Log stop
+    } else {
+      // Time calculations
+      const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+      const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+      let timerString = "";
+      if (days > 0) timerString += days + "d ";
+      if (hours > 0 || days > 0) timerString += hours + "h ";
+      if (minutes > 0 || hours > 0 || days > 0) timerString += minutes + "m ";
+      timerString += seconds + "s";
+      timerElement.innerHTML = timerString;
+    }
+  };
+  // --- End Interval Function ---
+
+  // Update the count down immediately and then every 1 second
+  updateTimer(); // Run once immediately to avoid initial "Calculating..." flash
+  const countdownInterval = setInterval(updateTimer, 1000);
+  console.log("Countdown Timer: Interval started."); // DEBUG: Log start
+
+});
+</script>
+{% endif %}
+
 {% endblock %}
 
-
-{# --- Corrected JavaScript Block --- #}
+{# --- JavaScript Block --- #}
 {% block extra_js %}
+{# --- Workflow Update JS --- #}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // --- Helper Function to Rebuild Buttons ---
@@ -463,6 +777,7 @@ document.addEventListener('DOMContentLoaded', function() {
         actionGroup.style.display = 'flex'; // Ensure visible
 
         // Add buttons based on the new status for Client
+        // (Assuming clients have these permissions based on step.can_update)
         if (newStatus === 'NotStarted') {
             actionGroup.innerHTML = `
                 <button type="button" class="btn btn-outline-primary btn-sm workflow-status-change-btn" data-status="InProgress" data-step-pk="${stepPk}" data-assessment-pk="${assessmentPk}" title="Mark as In Progress">
@@ -502,7 +817,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     <i class="fas fa-pencil-alt"></i> Reopen
                 </button>
              `;
-        } // Add else if for 'Skipped' if needed
+        }
 
         // Re-attach event listeners
         actionGroup.querySelectorAll('.workflow-status-change-btn').forEach(newButton => {
@@ -510,20 +825,25 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // --- Named Handler Function for Clicks (Corrected) ---
+    // --- Named Handler Function for Clicks ---
     function handleStatusChangeClick(event) {
         event.preventDefault();
         const buttonEl = event.currentTarget;
         const targetStatus = buttonEl.dataset.status;
         const stepPk = buttonEl.dataset.stepPk;
         const assessmentPk = buttonEl.dataset.assessmentPk;
-        const csrfToken = document.querySelector('input[name="csrfmiddlewaretoken"]').value;
+        const csrfTokenInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        if (!csrfTokenInput) {
+             console.error("CSRF token input not found!");
+             alert("Error: Could not perform action (security token missing). Please refresh the page.");
+             return;
+         }
+        const csrfToken = csrfTokenInput.value;
         const actionCell = buttonEl.closest('td');
         const spinnerContainer = actionCell.querySelector('.spinner-container');
         const successMsgContainer = actionCell.querySelector('.update-success-msg');
         const actionGroup = actionCell.querySelector('.workflow-action-group');
 
-        // Corrected Confirmation Message
         const stepNumberText = buttonEl.closest('tr')?.querySelector('td:first-child')?.innerText || 'this step';
         let confirmMsg = `Change status for step ${stepNumberText} to "${targetStatus}"?`;
         if (targetStatus === 'HelpNeeded') confirmMsg = `Mark step ${stepNumberText} as needing help? This will notify the assessor.`;
@@ -531,15 +851,14 @@ document.addEventListener('DOMContentLoaded', function() {
              return;
         }
 
-        // Corrected URL Construction
-        const url = "{% url 'tracker:update_workflow_step_status' assessment_pk=0 step_pk=0 %}".replace('0/workflow/step/0', `${assessmentPk}/workflow/step/${stepPk}`);
+        // Construct URL robustly
+        let url = "{% url 'tracker:update_workflow_step_status' assessment_pk=9999 step_pk=9999 %}"; // Placeholder URL
+        url = url.replace('9999/workflow/step/9999', `${assessmentPk}/workflow/step/${stepPk}`);
 
-        // Show loading state
         if (spinnerContainer) spinnerContainer.style.display = 'block';
         if (actionGroup) actionGroup.style.display = 'none';
         if (successMsgContainer) successMsgContainer.style.display = 'none';
 
-        // Fetch request
         fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRFToken': csrfToken, 'Accept': 'application/json' },
@@ -551,7 +870,6 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .then(data => {
             if (data.success) {
-                // UI Updates (Badge, Completion Info, Row Highlighting)
                 const statusCell = document.getElementById(`workflow-status-${stepPk}`);
                 const completionCell = document.getElementById(`workflow-completion-${stepPk}`);
                 const row = document.getElementById(`workflow-step-row-${stepPk}`);
@@ -561,24 +879,37 @@ document.addEventListener('DOMContentLoaded', function() {
                     else if (data.new_status === 'InProgress') badgeClass = 'bg-info text-dark';
                     else if (data.new_status === 'HelpNeeded') { badgeClass = 'bg-warning text-dark'; iconPrefix = '<i class="fa-solid fa-triangle-exclamation me-1"></i>'; }
                     else if (data.new_status === 'Skipped') badgeClass = 'bg-secondary';
-                    statusCell.innerHTML = `<span class="badge ${badgeClass}">${iconPrefix}${data.new_status_display || ''}</span>`;
+                    statusCell.innerHTML = `<span class="badge ${badgeClass}">${iconPrefix}${data.new_status_display || data.new_status}</span>`; // Use display name or raw status
                  }
                 if (completionCell) {
                     let completionText = '';
                     if (data.completed_by) completionText += `by ${data.completed_by} `;
-                    if (data.completed_at) { const d = new Date(data.completed_at); completionText += `on ${d.toLocaleDateString()}`; }
+                    if (data.completed_at) {
+                         try {
+                            // Attempt to format date nicely, requires moment.js or similar, or manual formatting
+                            // Basic formatting for now:
+                            const date = new Date(data.completed_at); // Assumes ISO format or similar from server
+                            completionText += `on ${date.getFullYear()}-${('0' + (date.getMonth() + 1)).slice(-2)}-${('0' + date.getDate()).slice(-2)}`;
+                         } catch (e) {
+                             completionText += `on ${data.completed_at}`; // Fallback
+                         }
+                     }
                     completionCell.innerHTML = completionText;
                  }
                  if(row) {
                      row.classList.remove('table-info', 'table-warning');
                      if (data.new_status === 'HelpNeeded') row.classList.add('table-warning');
+                     // Add highlight for current step if applicable based on window location or other logic
                  }
-                // Hide spinner, show success message
+
                 if (spinnerContainer) spinnerContainer.style.display = 'none';
                 if (successMsgContainer) { successMsgContainer.style.display = 'block'; setTimeout(() => { successMsgContainer.style.display = 'none'; }, 2500); }
-                // Rebuild action buttons
                 rebuildActionButtons(actionCell, data.new_status, stepPk, assessmentPk);
+
+                // Reload after a short delay to show message and ensure visual map updates
+                // Consider updating the visual map dynamically instead if reload is disruptive
                 setTimeout(() => { window.location.reload(); }, 750);
+
             } else {
                  throw new Error(data.error || 'Update failed.');
             }
@@ -586,15 +917,85 @@ document.addEventListener('DOMContentLoaded', function() {
         .catch(error => {
             console.error('Error updating workflow step:', error);
             if (spinnerContainer) spinnerContainer.style.display = 'none';
-            if (actionGroup) actionGroup.style.display = 'flex'; // Show buttons again on error
+            if (actionGroup) actionGroup.style.display = 'flex';
             alert(`An error occurred: ${error.message}`);
         });
     }
 
-    // --- Initial Setup: Attach event listeners ---
+    // Attach event listeners to initially loaded buttons
     document.querySelectorAll('.workflow-status-change-btn').forEach(button => {
         button.addEventListener('click', handleStatusChangeClick);
     });
 });
 </script>
+
+{# --- START: Countdown Timer Script --- #}
+{% if has_ce_plus_sample and assessment_start_date_iso %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Set the date we're counting down to
+  const countDownDate = new Date("{{ assessment_start_date_iso }}").getTime();
+  const timerElement = document.getElementById("countdown-timer");
+
+  if (!timerElement || isNaN(countDownDate)) {
+      console.error("Countdown timer element not found or target date is invalid.");
+      if(timerElement) timerElement.innerHTML = "Target date not set";
+      return;
+  }
+
+  // Update the count down every 1 second
+  const countdownInterval = setInterval(function() {
+    // Get today's date and time
+    const now = new Date().getTime();
+
+    // Find the distance between now and the count down date
+    const distance = countDownDate - now;
+
+    // Time calculations for days, hours, minutes and seconds
+    const days = Math.floor(distance / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+
+    // Display the result in the element with id="countdown-timer"
+    if (distance < 0) {
+      clearInterval(countdownInterval);
+      timerElement.innerHTML = "Assessment period has started";
+      // Optional: change alert style
+      timerElement.closest('.alert')?.classList.remove('alert-primary');
+      timerElement.closest('.alert')?.classList.add('alert-success');
+
+    } else {
+      let timerString = "";
+      if (days > 0) timerString += days + "d ";
+      if (hours > 0 || days > 0) timerString += hours + "h ";
+      if (minutes > 0 || hours > 0 || days > 0) timerString += minutes + "m ";
+      timerString += seconds + "s";
+      timerElement.innerHTML = timerString;
+    }
+  }, 1000);
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dateInput = document.getElementById("{{ propose_date_form.proposed_date.id_for_label }}"); // Get ID from form render
+    if(dateInput) {
+        const unavailableDates = JSON.parse('{{ assessor_unavailable_dates_json|escapejs }}');
+        console.log("Assessor unavailable:", unavailableDates); // DEBUG
+
+        flatpickr(dateInput, {
+            dateFormat: "Y-m-d", // Match Django's expected format
+            minDate: "today",    // Don't allow past dates
+            disable: unavailableDates, // Disable specific dates
+            // Add more options as needed
+        });
+    }
+});
+</script>
+
+{% endif %}
+{# --- End Workflow Update JS --- #}
 {% endblock extra_js %}

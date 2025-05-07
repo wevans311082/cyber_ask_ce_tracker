@@ -233,6 +233,194 @@
 </div>
 {# --- END RESTORED --- #}
 
+{# === Assessment Date Scheduling Card === #}
+<div class="card mb-4">
+   <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Assessment Date Scheduling</span>
+         <a href="{% url 'tracker:assessor_availability_list' %}" class="btn btn-outline-secondary btn-sm" title="Manage Your General Availability">
+             <i class="fa-regular fa-calendar-xmark"></i> Manage Availability
+        </a>
+    </div>
+    <div class="card-body">
+
+        {# --- Display Confirmed Date --- #}
+        {% comment %} Use display_confirmed_assessment_date which checks options first, then assessment.date_start {% endcomment %}
+        {% if display_confirmed_assessment_date %}
+            <div class="alert alert-success" role="alert">
+                <strong>Confirmed Assessment Date: {{ display_confirmed_assessment_date|date:"l, F j, Y" }}</strong>
+            </div>
+        {% elif not assessment_allows_date_management %} {# If management not allowed and no date confirmed display status #}
+             <div class="alert alert-secondary" role="alert">
+                Assessment date negotiation is not currently active. Status: {{ assessment.get_status_display }}.
+            </div>
+        {% else %} {# Management is allowed, no date confirmed yet #}
+             <div class="alert alert-info" role="alert">
+                {% if assessment_date_options %}
+                    Review suggested dates below, propose alternatives, or confirm a final date.
+                {% else %}
+                    No dates proposed yet. You or the client can suggest dates.
+                {% endif %}
+            </div>
+        {% endif %}
+
+
+        {# --- Display CE+ Window Info --- #}
+        {% if assessment.assessment_type == 'CE+' %}
+            <div class="alert alert-warning" role="alert">
+                <small>
+                <i class="fa-solid fa-circle-info me-1"></i>
+                <strong>CE+ Scheduling Window:</strong>
+                {% if ce_plus_window_start_date and ce_plus_window_end_date %}
+                    Based on CE pass date {{ ce_plus_window_start_date|date:"Y-m-d" }}, assessment must be completed by
+                    <strong>{{ ce_plus_window_end_date|date:"Y-m-d" }}</strong>.
+                {% elif assessment.date_ce_passed %}
+                     Error calculating 90-day window from CE pass date {{ assessment.date_ce_passed|date:"Y-m-d" }}.
+                {% else %}
+                    CE Self-Assessment Pass Date not recorded. 90-day window cannot be calculated. Ensure this is set in assessment details if applicable.
+                {% endif %}
+                 Dates outside this window will be rejected or cannot be confirmed.
+                </small>
+            </div>
+        {% endif %}
+
+        <hr>
+
+        {# --- Display Date Options --- #}
+        <h5>Proposed Dates</h5>
+        {% if assessment_date_options %}
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>Proposed Date</th>
+                            <th>Status</th>
+                            <th>Proposed By</th>
+                            <th>Notes</th>
+                             {% if assessment_allows_date_management %}<th>Actions</th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for option in assessment_date_options %}
+                        <tr>
+                            <td>{{ option.proposed_date|date:"Y-m-d (D)" }}</td>
+                             <td>
+                                {% if option.status == option.Status.CONFIRMED %}
+                                    <span class="badge bg-success"><i class="fa-solid fa-check-circle me-1"></i>{{ option.get_status_display }}</span>
+                                {% elif option.status == option.Status.CLIENT_PREFERRED %}
+                                    <span class="badge bg-info text-dark">{{ option.get_status_display }}</span>
+                                {% elif option.status == option.Status.REJECTED %}
+                                    <span class="badge bg-danger">{{ option.get_status_display }}</span>
+                                {% else %} {# Suggested #}
+                                    <span class="badge bg-secondary">{{ option.get_status_display }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ option.proposed_by.username|default:"N/A" }}</td>
+                            <td>{{ option.notes|default:"-"|linebreaksbr }}</td>
+                            {% comment %} Actions only shown if management is allowed overall {% endcomment %}
+                             {% if assessment_allows_date_management %}
+                            <td>
+                                <div class="btn-group btn-group-sm" role="group">
+                                     {# Assessor: Can Confirm if not already Confirmed/Rejected #}
+                                    {% if option.status != option.Status.CONFIRMED and option.status != option.Status.REJECTED %}
+                                    <form action="{% url 'tracker:update_assessment_date_status' assessment_pk=assessment.pk option_pk=option.pk %}" method="POST" class="d-inline" onsubmit="return confirm('Confirm this date? This will set the official Assessment Start Date and reject other options.')">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="new_status" value="{{ option.Status.CONFIRMED }}">
+                                        <button type="submit" class="btn btn-outline-success" title="Confirm this Date">
+                                            <i class="fa-solid fa-check"></i> Confirm
+                                        </button>
+                                    </form>
+                                    {% endif %}
+
+                                     {# Assessor: Can Reject if not already Confirmed/Rejected #}
+                                    {% if option.status != option.Status.CONFIRMED and option.status != option.Status.REJECTED %}
+                                    <form action="{% url 'tracker:update_assessment_date_status' assessment_pk=assessment.pk option_pk=option.pk %}" method="POST" class="d-inline" onsubmit="return confirm('Reject this date suggestion?')">
+                                        {% csrf_token %}
+                                         <input type="hidden" name="new_status" value="{{ option.Status.REJECTED }}">
+                                        <button type="submit" class="btn btn-outline-warning" title="Reject Suggestion">
+                                             <i class="fa-solid fa-times"></i> Reject
+                                        </button>
+                                    </form>
+                                    {% endif %}
+
+                                     {# Assessor: Can delete any suggestion if not Confirmed #}
+                                    {% if option.status != option.Status.CONFIRMED %}
+                                    <form action="{% url 'tracker:delete_assessment_date_option' assessment_pk=assessment.pk option_pk=option.pk %}" method="POST" class="d-inline" onsubmit="return confirm('Delete this date suggestion?')">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-outline-danger" title="Delete Suggestion">
+                                            <i class="fa-solid fa-trash-alt"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                             {% endif %} {# End assessment_allows_date_management #}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+             <p class="text-muted">No assessment dates have been proposed yet.</p>
+        {% endif %}
+
+
+        {# --- Propose New Date Form --- #}
+        {% comment %} Only show form if management allowed AND a date isn't already confirmed {% endcomment %}
+        {% if assessment_allows_date_management %}
+        <hr>
+        <h5>Suggest a New Date</h5>
+        <form action="{% url 'tracker:propose_assessment_date' assessment_pk=assessment.pk %}" method="post" class="row g-3 align-items-end" novalidate>
+             {% csrf_token %}
+            <div class="col-md-4">
+                {% comment %} Use the specific form passed in context {% endcomment %}
+                {% with propose_date_form.proposed_date as field %}
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                <input type="date" name="{{ field.name }}"
+                       id="{{ field.id_for_label }}"
+                       class="form-control {% if field.errors %}is-invalid{% endif %}"
+                       required {% if field.value %} value="{{ field.value|date:'Y-m-d' }}" {% endif %}
+                       data-unavailable-dates="{{ assessor_unavailable_dates_json|escapejs }}">
+                 {% if field.errors %}
+                     <div class="invalid-feedback d-block">
+                         {{ field.errors|striptags }}
+                     </div>
+                 {% endif %}
+                 <small class="form-text text-muted">{{ field.help_text }}</small>
+                 {% endwith %}
+            </div>
+            <div class="col-md-6">
+                {% with propose_date_form.notes as field %}
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                 <textarea name="{{ field.name }}" id="{{ field.id_for_label }}" class="form-control {% if field.errors %}is-invalid{% endif %}" rows="2">{{ field.value|default:"" }}</textarea>
+                 {% if field.errors %}
+                     <div class="invalid-feedback d-block">
+                         {{ field.errors|striptags }}
+                     </div>
+                 {% endif %}
+                 <small class="form-text text-muted">{{ field.help_text }}</small>
+                 {% endwith %}
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Suggest Date</button>
+            </div>
+             {% if propose_date_form.non_field_errors %}
+                 <div class="col-12 mt-2 text-danger">
+                     {{ propose_date_form.non_field_errors|join:", " }}
+                 </div>
+             {% endif %}
+        </form>
+          <small class="d-block mt-2 text-muted">
+              {% if assessment.assessor %}
+                 Your unavailable dates are disabled in the calendar.
+              {% else %}
+                 Assessor not assigned; availability not checked.
+              {% endif %}
+             <a href="{% url 'tracker:assessor_availability_list' %}">Manage your availability</a>.
+         </small>
+        {% endif %} {# End assessment_allows_date_management #}
+
+    </div> {# End card-body #}
+</div> {# End Card #}
 {# --- RESTORED: Defined Networks Card --- #}
 <div class="card mb-4">
     <div class="card-header d-flex justify-content-between align-items-center">
@@ -332,12 +520,34 @@
     </div>
     <div class="card-body">
          {% if assessment.assessment_type == 'CE+' %}
-            <div class="mb-3">
+            <div class="mb-3 d-flex flex-wrap gap-2"> {# Use flex for buttons #}
                 <form action="{% url 'tracker:calculate_save_sample' assessment.pk %}" method="post" class="d-inline" onsubmit="return confirm('Recalculate sample based on current scope? This will overwrite the current selection.');">
                      {% csrf_token %}
-                     <button type="submit" class="btn btn-primary btn-sm">Calculate/Recalculate Sample</button>
+                     <button type="submit" class="btn btn-primary btn-sm">
+                        <i class="fas fa-calculator me-1"></i> Calculate/Recalculate Sample
+                     </button>
                 </form>
+                {# --- START: Added Map Agents Button --- #}
+                <a href="{% url 'tracker:map_agents' assessment_pk=assessment.pk %}" class="btn btn-info btn-sm">
+                    <i class="fas fa-link me-1"></i> Map Nessus Agents
+                </a>
+                 <form action="{% url 'tracker:launch_tenable_scan' assessment_pk=assessment.pk %}" method="post" class="d-inline" onsubmit="return confirm('Launch a Tenable agent scan for all tagged devices belonging to {{ assessment.client.name }}?');">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success btn-sm"
+                            {% if not scan_launch_status.can_launch %}disabled title="{{ scan_launch_status.reason }}"{% endif %}>
+                        <i class="fa-solid fa-rocket me-1"></i> Launch Scan
+                    </button>
+                </form>
+                {# CHANGES END #}
+
             </div>
+             {# CHANGES BEGIN: Add Guidance Note #}
+             {% if scan_launch_status.can_launch %}
+                 <p class="text-muted small"><i class="fa-solid fa-circle-info me-1"></i>Scan can be launched as prerequisites are met.</p>
+             {% else %}
+                  <p class="text-warning small"><i class="fa-solid fa-triangle-exclamation me-1"></i>Scan cannot be launched yet: {{ scan_launch_status.reason }}</p>
+             {% endif %}
+             {# CHANGES END #}
             <hr>
             {# Ensure stored_sample_items and sample_summary are passed from view #}
             {% if stored_sample_items %}
@@ -345,23 +555,33 @@
                   <div class="table-responsive">
                      <table class="table table-sm table-bordered">
                          <thead>
-                             <tr><th>Type</th><th>Identifier</th><th>OS / Version</th><th>Make/Model</th><th>Network</th></tr>
+                             <tr><th>Type</th><th>Identifier</th><th>OS / Version</th><th>Make/Model</th><th>Network</th><th>Agent Linked?</th></tr>
                          </thead>
                          <tbody>
-                         {% for item in stored_sample_items %}
+                         {% for item in stored_sample_items %} {# Use the correct variable name from context #}
                              <tr>
                                  <td>{{ item.get_item_type_display }}</td>
                                  <td>{{ item.identifier|default:'-' }}</td>
                                  <td>{{ item.operating_system|default:'N/A' }}</td>
                                  <td>{{ item.make_model|default:'-' }}</td>
                                  <td>{{ item.network.name|default:'-' }}</td>
+                                 <td class="text-center">
+                                     {# This logic correctly checks the DB field #}
+                                     {% if item.linked_tenable_agent_uuid %}
+                                         <i class="fas fa-check-circle text-success" title="Agent: {{ item.linked_tenable_agent_uuid }}"></i>
+                                         <span class="visually-hidden">Yes</span>
+                                     {% else %}
+                                         <i class="fas fa-times-circle text-danger" title="Agent not linked in database"></i>
+                                         <span class="visually-hidden">No</span>
+                                     {% endif %}
+                                 </td>
                              </tr>
                          {% endfor %}
                          </tbody>
                      </table>
                  </div>
             {% else %}
-                 <p class="text-muted">No sample calculated yet.</p>
+                 <p class="text-muted">No sample calculated or selected yet.</p> {# Updated message #}
             {% endif %}
         {% else %}
              <p class="text-muted">Sample selection only applicable for CE+.</p>
@@ -369,6 +589,59 @@
     </div>
 </div>
 {# --- END RESTORED --- #}
+
+   <div class="card mt-4">
+        <div class="card-header">
+            Tenable Integration
+        </div>
+        <div class="card-body">
+            {# Display Client Tag Info #}
+            {% if assessment.client.tenable_tag_uuid %}
+            <p>Client Tenable Tag Value UUID: <code>{{ assessment.client.tenable_tag_uuid }}</code></p>
+            {% else %}
+            <p class="text-warning">Client Tenable tag details not yet synchronized or found.</p>
+            {% endif %}
+
+            {# --- Manual Trigger Buttons --- #}
+            <div class="d-flex flex-wrap gap-2"> {# Use flexbox for better button alignment #}
+
+                {# Button/Form for Client Tag Sync (NEW) #}
+                <form method="post" action="{% url 'tracker:trigger_tenable_client_tag_sync' pk=assessment.pk %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-secondary btn-sm" title="Attempt to create or update the Tenable tag for client '{{ assessment.client.name }}'">
+                        <i class="fas fa-user-tag"></i> Sync Client Tag
+                    </button>
+                    <a href="{% url 'tracker:generate_agent_script' pk=assessment.pk %}" class="btn btn-outline-success btn-sm" title="Generate OS-specific Nessus Agent install/link commands">
+                    <i class="fas fa-scroll"></i> Generate Agent Script
+                </a>
+                </form>
+
+                {# Button/Form for Asset Tagging (Existing) #}
+                {% if assessment.client.tenable_tag_uuid %} {# Only show if client tag exists #}
+                    <form method="post" action="{% url 'tracker:trigger_tenable_asset_tagging' pk=assessment.pk %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-info btn-sm" title="Attempt to find assessment scope items in Tenable and apply the client tag '{{ assessment.client.tenable_tag_uuid }}'">
+                            <i class="fas fa-sync-alt"></i> Sync Assets to Tag
+                        </button>
+                    </form>
+                {% else %}
+                     <button type="button" class="btn btn-info btn-sm disabled" title="Client tag must be synced first before assets can be tagged">
+                         <i class="fas fa-sync-alt"></i> Sync Assets to Tag
+                     </button>
+                {% endif %}
+
+            </div>
+             <small class="form-text text-muted d-block mt-2">
+                Use these buttons to manually initiate synchronization tasks with Tenable. Monitor Celery logs for progress.
+            </small>
+            {# --- END Manual Trigger Buttons --- #}
+
+
+            {# Placeholder for future scan list #}
+            <h5 class="mt-3">Tenable Scans</h5>
+            <p>Scan integration not yet implemented.</p>
+        </div>
+    </div>
 
 {# --- RESTORED: Evidence Files Card --- #}
 <div class="card mb-4">
@@ -631,4 +904,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
 });
 </script>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const dateInput = document.getElementById("{{ propose_date_form.proposed_date.id_for_label }}"); // Get ID from form render
+    if(dateInput) {
+        // Get unavailable dates directly from the input's data attribute
+        let unavailableDates = [];
+        try {
+            unavailableDates = JSON.parse(dateInput.dataset.unavailableDates || '[]');
+        } catch (e) {
+            console.error("Error parsing unavailable dates JSON:", e);
+        }
+        console.log("Assessor unavailable:", unavailableDates); // DEBUG
+
+        flatpickr(dateInput, {
+            dateFormat: "Y-m-d", // Match Django's expected format
+            minDate: "today",    // Don't allow past dates
+            disable: unavailableDates, // Disable specific dates
+        });
+    }
+});
+</script>
+
 {% endblock extra_js %}

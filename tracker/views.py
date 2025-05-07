@@ -1,265 +1,190 @@
-from django.shortcuts import render, get_object_or_404, redirect
-from django.urls import reverse_lazy, reverse
-from django.views import View
-from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView, FormView
-from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.contrib.auth.views import LoginView, LogoutView
-from django.contrib import messages
-from datetime import date
-from django.utils import timezone
-from django.db.models.functions import Concat, Coalesce
-from django.core.exceptions import PermissionDenied # Import PermissionDenied
-from django.forms import modelformset_factory # For scope items potentially
-from django.db.models import ProtectedError # <-- ADD THIS LINE
-from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
-from collections import defaultdict
-from django.http import HttpResponseRedirect
-from django.db import IntegrityError
-from django.utils import timezone # Add timezone import
-from .models import ExternalIP, Assessment # Add ExternalIP model
-from .forms import ExternalIPForm, ExternalIPScanUpdateForm
-from django.contrib.auth.mixins import UserPassesTestMixin
-from django.core.serializers.json import DjangoJSONEncoder
-from django.contrib.auth.mixins import LoginRequiredMixin # Use appropriate mixin
-from .forms import UploadReportForm # Import the new form
-from .models import UploadedReport, Assessment # Import new model
-from .pdf_extractor import extract_ce_data_from_pdf
+# Standard library
 import json
 import os
-import requests
 import random
-from django.db import transaction # Import transaction
-from django.views.decorators.http import require_POST, require_http_methods
-from django.views.decorators.csrf import csrf_protect
+import logging
+from collections import defaultdict
+from datetime import date, datetime, timezone, time
+from urllib.parse import quote
+
+# Third-party
+import requests
+import pytz
+from requests.auth import HTTPBasicAuth
+from tenable.errors import APIError, NotFoundError, ForbiddenError
+from .tenable_client import get_tenable_io_client
+from constance import config
+from .pdf_extractor import extract_ce_data_from_pdf
+
+# Django core
 from django.conf import settings
-from datetime import datetime
-
-
-from django.http import HttpResponseForbidden, FileResponse, Http404, JsonResponse # Added JsonResponse
-from django.db.models import Count, Min, Value, CharField, ProtectedError
-from .models import Client, UserProfile, Assessment, ScopedItem, Evidence, AssessmentLog, OperatingSystem, Network, CloudServiceDefinition, AssessmentCloudService
-from .models import Assessment, AssessmentWorkflowStep
-from .forms import (
-    ClientForm, CustomUserCreationForm, CustomUserChangeForm, AssessmentCreateForm,
-    AssessmentStatusUpdateForm, EvidenceForm,
-    OperatingSystemForm, NetworkForm, CloudServiceDefinitionForm, AssessmentCloudServiceForm,  AssessmentCloudServiceAssessorForm, ScopedItemForm, ScopedItemUpdateForm, AssessmentCloudServiceUpdateForm
-)
+from django.contrib import messages
+from django.contrib import admin
+from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import User
-import requests # Import requests library for API calls
-from requests.auth import HTTPBasicAuth # For API authentication
+from django.contrib.auth.views import LoginView, LogoutView
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
+from django.core.serializers.json import DjangoJSONEncoder
+from django.core.exceptions import PermissionDenied, ObjectDoesNotExist, MultipleObjectsReturned
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Min, ProtectedError, Value, CharField, Q
+from django.db.models.functions import Coalesce, Concat
+from django.forms import modelformset_factory
+from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseRedirect,JsonResponse
+
+from django.utils import timezone as django_timezone
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse, reverse_lazy, NoReverseMatch
+from django.utils import timezone
+from django.views import View
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_http_methods, require_POST
+from django.views.generic import CreateView, DeleteView, DetailView, FormView, ListView, UpdateView, TemplateView
+
+# Local app imports
+from .forms import (
+    AssessmentCloudServiceAssessorForm,
+    AssessmentCloudServiceForm,
+    AssessmentCloudServiceUpdateForm,
+    AssessmentCreateForm,
+    AssessmentStatusUpdateForm,
+    ClientForm,
+    CustomUserChangeForm,
+    CustomUserCreationForm,
+    EvidenceForm,
+    ExternalIPForm,
+    ExternalIPScanUpdateForm,
+    NetworkForm,
+    OperatingSystemForm,
+    ScopedItemForm,
+    ScopedItemUpdateForm,
+    UploadReportForm,
+    CloudServiceDefinitionForm,
+    AssessmentDateOptionForm,
+    AssessorAvailabilityForm,
+    AssessorAvailability,
+    AssessmentDateOption,
+    AssessmentCloudService,
+    OperatingSystem,
+
+)
+from .models import (
+    Assessment,
+    AssessmentCloudService,
+    AssessmentLog,
+    AssessmentWorkflowStep,
+    Client,
+    CloudServiceDefinition,
+    Evidence,
+    ExternalIP,
+    Network,
+    OperatingSystem,
+    ScopedItem,
+    UploadedReport,
+    UserProfile,
+    NessusAgentURL,
+    AssessorAvailability,
+    AssessmentDateOption,
+    WorkflowStepDefinition
+)
+
+from .tasks import (
+    sync_client_with_tenable,
+    apply_tenable_tag_to_assets,
+    scrape_nessus_agent_urls,
+    validate_agent_urls,
+    create_or_update_tenable_client_tag,
+    launch_tenable_scan_task
+)
+
+
+from .utils import (
+check_and_fail_assessment_for_eol,
+check_os_match,
+is_admin_or_assessor,
+is_client,
+is_assessor,
+is_admin,
+calculate_sample_size,
+user_can_edit_assessment_external_ips,
+user_can_manage_assessment_external_ips,
+user_can_manage_assessment_networks,
+log_assessment_event,
+user_can_manage_assessment_cloud_services
+)
+
+
+from .client_view import (
+ClientUpdateView,
+ClientListView,
+ClientCreateView,
+ClientDeleteView,
+client_dashboard,
+ClientAssessmentDetailView,
+ClientAssessmentDetailView,
+ClientAssessmentListView
+
+)
+
+
+from .assessment_view import (
+AssessmentCloudServiceListView,
+AssessmentUpdateStatusView,
+AssessmentCloudServiceAddView,
+AssessmentCloudServiceDeleteView,
+AssessmentCloudServiceUpdateView,
+AssessmentCreateView,
+AssessmentDeleteView,
+AdminAssessmentListView
+
+)
+
+
+from .cloud_services_view import (
+CloudServiceDefinitionListView,
+CloudServiceDefinitionUpdateView,
+CloudServiceDefinitionCreateView,
+CloudServiceDefinitionDeleteView
+
+)
+
+
+from .mixin import (
+ClientRequiredMixin,
+AdminRequiredMixin,
+AssessorRequiredMixin,
+AssessorOrAdminRequiredMixin
+
+)
+
+
+logger = logging.getLogger(__name__)
 
 
 
-def calculate_sample_size(count):
-    """Calculates required sample size based on the provided table."""
-    if count <= 0:
-        return 0
-    elif count == 1:
-        return 1
-    elif 2 <= count <= 5:
-        return 2
-    elif 6 <= count <= 19:
-        return 3
-    elif 20 <= count <= 60:
-        return 4
-    else: # 61+
-        return 5
-def is_admin(user):
-    # Ensure user is authenticated and has a profile before checking role
-    return user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile is not None and user.userprofile.role == 'Admin'
-def is_assessor(user):
-    return user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile is not None and user.userprofile.role == 'Assessor'
-def is_client(user):
-    return user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile is not None and user.userprofile.role == 'Client'
-def user_can_manage_assessment_networks(user, assessment):
-    """Checks if a user can manage networks for a given assessment."""
-    if not user.is_authenticated:
-        return False
-    if is_admin(user):
-        return True # Admins can manage any
-    if is_assessor(user) and assessment.assessor == user:
-        return True # Assigned assessor can manage
-    if is_client(user) and assessment.client == user.userprofile.client:
-        # Allow client management if assessment is not yet completed
-        if not assessment.status.startswith('Complete_'):
-            return True
-    return False
-def user_can_manage_assessment_external_ips(user, assessment):
-    """
-    Checks if a user can VIEW the External IPs list for a given assessment.
-    Allows Admins, assigned Assessors, and associated Clients (regardless of assessment status).
-    Editing permissions are checked separately.
-    """
-    if not user.is_authenticated:
-        return False
-    if is_admin(user):
-        return True # Admins can always view
-
-    # Assessors can view their assigned assessments
-    if is_assessor(user) and assessment.assessor == user:
-        return True
-
-    # Clients can VIEW if it's their assessment (status doesn't restrict viewing list)
-    if is_client(user) and hasattr(user, 'userprofile') and assessment.client == user.userprofile.client:
-        return True # Allow client to view their list always
-
-    # Default deny if none of the above match
-    return False
-def is_admin_or_assessor(user):
-    return is_admin(user) or is_assessor(user)
-def user_can_edit_assessment_external_ips(user, assessment):
-    """
-    Checks if a user can ADD, EDIT, or DELETE External IPs for an assessment.
-    Allows Admins and Assessors (unless assessment is complete).
-    Allows Clients only if the 'Define External IPs' workflow step (Order 3)
-    is not marked as 'Complete' and the assessment is not fully complete.
-    """
-    if not user.is_authenticated:
-        return False
-
-    # --- Prevent edits on completed assessments for ALL roles ---
-    # Uses the string prefix check for simplicity
-    if assessment.status.startswith('Complete_'):
-        return False
-
-    # --- Admin/Assessor Permissions ---
-    # Allow Admin/Assessor edits unless assessment is complete (checked above)
-    if is_admin(user):
-        return True
-    if is_assessor(user) and assessment.assessor == user:
-        return True
-
-    # --- Client Permissions Tied to Workflow Step 3 ---
-    if is_client(user) and hasattr(user, 'userprofile') and assessment.client == user.userprofile.client:
-        try:
-            # Find the workflow step for defining external IPs (assuming order 3)
-            # Use .select_related('step_definition') for efficiency if needed elsewhere
-            external_ip_workflow_step = AssessmentWorkflowStep.objects.get(
-                assessment=assessment,
-                step_definition__step_order=3 # Step 3 = Define External IPs
-            )
-
-            # Allow editing only if this specific step is NOT 'Complete'
-            # Uses the Status choices enum defined in the AssessmentWorkflowStep model
-            return external_ip_workflow_step.status != AssessmentWorkflowStep.Status.COMPLETE
-
-        except AssessmentWorkflowStep.DoesNotExist:
-            # If the workflow step wasn't created for some reason, deny permission
-            print(f"Warning: Workflow Step 3 not found for Assessment {assessment.id}. Denying external IP edit permission.")
-            return False
-        except Exception as e:
-            # Log unexpected errors and deny permission
-            print(f"Error checking workflow step 3 status for assessment {assessment.id}: {e}")
-            return False # Fail safe
-
-    # Default deny if user is not admin, assigned assessor, or associated client
-    return False
-
-
-
-
-class AdminRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    def test_func(self):
-        return is_admin(self.request.user)
-
-    def handle_no_permission(self):
-        # Optional: Customize response for permission denied
-        if not self.request.user.is_authenticated:
-            return super().handle_no_permission() # Redirect to login
-        messages.error(self.request, "Admin permissions required.")
-        # Redirect non-admins somewhere appropriate, maybe the main dashboard
-        # Check if user has any profile first
-        if hasattr(self.request.user, 'userprofile') and self.request.user.userprofile is not None:
-            if is_assessor(self.request.user):
-                 return redirect('tracker:assessor_dashboard')
-            elif is_client(self.request.user):
-                 return redirect('tracker:client_dashboard')
-        # Fallback if no role or profile
-        return redirect('login')
-class AssessorRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    def test_func(self):
-        return is_assessor(self.request.user)
-
-    def handle_no_permission(self):
-        if not self.request.user.is_authenticated:
-            return super().handle_no_permission()
-        messages.error(self.request, "Assessor permissions required.")
-        # Redirect non-assessors
-        if is_admin(self.request.user):
-            return redirect('tracker:admin_dashboard')
-        elif is_client(self.request.user):
-            return redirect('tracker:client_dashboard')
-        return redirect('login')
-class ClientRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    def test_func(self):
-        # Also check if the client user is linked to a company
-        return is_client(self.request.user) and self.request.user.userprofile.client is not None
-
-    def handle_no_permission(self):
-        if not self.request.user.is_authenticated:
-            return super().handle_no_permission()
-
-        # Check if they are a client but just not linked yet
-        if is_client(self.request.user) and self.request.user.userprofile.client is None:
-            messages.warning(self.request, "Your client account is not yet linked to a company. Please contact an administrator.")
-            return redirect('login') # Or an error page/logout
-
-        messages.error(self.request, "Client permissions required.")
-        # Redirect non-clients
-        if is_admin(self.request.user):
-            return redirect('tracker:admin_dashboard')
-        elif is_assessor(self.request.user):
-            return redirect('tracker:assessor_dashboard')
-        return redirect('login')
-class AssessorOrAdminRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    def test_func(self):
-        return is_admin(self.request.user) or is_assessor(self.request.user)
-
-    def handle_no_permission(self):
-        if not self.request.user.is_authenticated:
-            return super().handle_no_permission()
-        messages.error(self.request, "Admin or Assessor permissions required.")
-        if is_client(self.request.user):
-            return redirect('tracker:client_dashboard')
-        return redirect('login')
-def log_assessment_event(assessment, user, event_description):
-    """Creates an AssessmentLog entry."""
-    try:
-        # Check if user is None or AnonymousUser before logging
-        log_user = user if user and user.is_authenticated else None
-        AssessmentLog.objects.create(assessment=assessment, user=log_user, event=event_description)
-    except Exception as e:
-        # Log the error instead of crashing the view
-        print(f"Error logging assessment event for assessment {assessment.id}: {e}")
-        # Optionally use Python's logging module here
-        # import logging
-        # logging.error(f"Error logging assessment event for assessment {assessment.id}: {e}", exc_info=True)
-        pass # Allow the main view function to continue
 @login_required
 def dashboard(request):
     user = request.user
-    # Check if profile exists FIRST
     if not hasattr(user, 'userprofile') or user.userprofile is None:
          messages.error(request, "Your user profile is not configured. Please contact support.")
-         # Log them out explicitly is safer here
-         return redirect('logout') # Assumes a logout URL name exists
-
-    # Now check roles
+         return redirect('logout')
     if is_admin(user):
         return redirect('tracker:admin_dashboard')
     elif is_assessor(user):
         return redirect('tracker:assessor_dashboard')
     elif is_client(user):
-         if user.userprofile.client: # Already checked profile exists
+         if user.userprofile.client:
              return redirect('tracker:client_dashboard')
          else:
              messages.warning(request, "Your client account is not yet linked to a company. Please contact an administrator.")
-             return redirect('logout') # Log out if not linked
+             return redirect('logout')
     else:
-        # Handles cases where profile exists but role is None or invalid
         messages.error(request, "Your user role is not configured correctly. Please contact support.")
-        return redirect('logout') # Log out if role invalid
+        return redirect('logout')
+
 @login_required
 @user_passes_test(is_admin, login_url=reverse_lazy('login')) # Redirect to login if test fails
 def admin_dashboard(request):
@@ -274,67 +199,7 @@ def admin_dashboard(request):
         'pending_approval_count': pending_approval_count, # <-- Add to context
     }
     return render(request, 'tracker/admin/admin_dashboard.html', context)
-class ClientListView(AdminRequiredMixin, ListView):
-    model = Client
-    template_name = 'tracker/admin/client_list.html'
-    context_object_name = 'clients'
-class ClientCreateView(AdminRequiredMixin, CreateView):
-    model = Client
-    form_class = ClientForm
-    template_name = 'tracker/admin/client_form.html'
-    success_url = reverse_lazy('tracker:client_list')
 
-    def form_valid(self, form):
-        messages.success(self.request, f"Client '{form.instance.name}' created successfully.")
-        return super().form_valid(form)
-class ClientUpdateView(AdminRequiredMixin, UpdateView):
-    model = Client
-    form_class = ClientForm
-    template_name = 'tracker/admin/client_form.html'
-    success_url = reverse_lazy('tracker:client_list')
-
-    def form_valid(self, form):
-        # --- ADDED LOGIC ---
-        client_instance = self.get_object() # Get the object *before* saving the form
-        name_changed = 'name' in form.changed_data
-        number_changed = 'organization_number' in form.changed_data
-
-        if (name_changed or number_changed) and client_instance.companies_house_validated:
-            # Reset validation status if relevant fields changed
-            form.instance.companies_house_validated = False
-            form.instance.last_companies_house_validation = None
-            form.instance.validated_name = None # Clear tracked validated data
-            form.instance.validated_number = None
-            messages.warning(self.request, f"Client details changed. Companies House validation status reset for '{form.instance.name}'. Please re-validate.")
-        # --- END ADDED LOGIC ---
-
-        messages.success(self.request, f"Client '{form.instance.name}' updated successfully.")
-        return super().form_valid(form)
-class ClientDeleteView(AdminRequiredMixin, DeleteView):
-    model = Client
-    template_name = 'tracker/admin/client_confirm_delete.html'
-    success_url = reverse_lazy('tracker:client_list')
-
-    # Removed the 'delete' method override as 'post' handles it now
-
-    def post(self, request, *args, **kwargs):
-        """
-        Override post to handle ProtectedError during the deletion process,
-        which might occur during transaction commit.
-        """
-        try:
-            # Get client name BEFORE attempting delete for the message
-            # Note: self.object is set before post runs for DeleteView via get_object
-            client_name = self.get_object().name
-            # Attempt the deletion process by calling the parent post method
-            response = super().post(request, *args, **kwargs)
-            # If super().post() succeeds (no exception), add success message
-            messages.success(request, f"Client '{client_name}' deleted successfully.")
-            return response
-        except ProtectedError:
-            # If ProtectedError occurs during super().post() execution
-            messages.error(request, f"Cannot delete client '{self.get_object().name}' because they have associated assessments. Please delete or reassign their assessments first.")
-            return redirect('tracker:client_list')
 class UserListView(AdminRequiredMixin, ListView):
     model = User
     template_name = 'tracker/admin/user_list.html'
@@ -374,52 +239,7 @@ class UserUpdateView(AdminRequiredMixin, UpdateView):
     def form_invalid(self, form):
         messages.error(self.request, "Please correct the errors below.")
         return super().form_invalid(form)
-class AdminAssessmentListView(AdminRequiredMixin, ListView):
-    model = Assessment
-    template_name = 'tracker/admin/assessment_list.html'
-    context_object_name = 'assessments'
-    queryset = Assessment.objects.select_related('client', 'assessor__userprofile').order_by('-created_at') # Include assessor profile if needed
-class AssessmentCreateView(AdminRequiredMixin, CreateView):
-    model = Assessment
-    form_class = AssessmentCreateForm
-    template_name = 'tracker/admin/assessment_form.html'
-    success_url = reverse_lazy('tracker:admin_assessment_list')
 
-    def form_valid(self, form):
-        self.object = form.save()
-        log_assessment_event(self.object, self.request.user, f"Assessment created ({self.object.get_assessment_type_display()}) for {self.object.client.name}.")
-        messages.success(self.request, f"Assessment for '{self.object.client.name}' created.")
-        return super().form_valid(form)
-
-    def form_invalid(self, form):
-        messages.error(self.request, "Failed to create assessment. Please check the form data.")
-        return super().form_invalid(form)
-class AssessmentDeleteView(AdminRequiredMixin, DeleteView):
-    model = Assessment
-    template_name = 'tracker/admin/assessment_confirm_delete.html' # Template we will create next
-    success_url = reverse_lazy('tracker:admin_assessment_list')
-    context_object_name = 'assessment' # To refer to the assessment in the template
-
-    def delete(self, request, *args, **kwargs):
-        """
-        Adds a success message upon successful deletion.
-        """
-        assessment = self.get_object() # Get object before deleting it
-        assessment_id = assessment.id
-        client_name = assessment.client.name # Get client name for the message
-
-        # Call the superclass's delete method
-        response = super().delete(request, *args, **kwargs)
-
-        # Add success message
-        messages.success(request, f"Assessment #{assessment_id} for client '{client_name}' deleted successfully.")
-        return response
-
-
-    def get_context_data(self, **kwargs):
-         context = super().get_context_data(**kwargs)
-         context['page_title'] = f"Confirm Deletion of Assessment {self.object.id}"
-         return context
 
 
 
@@ -610,6 +430,8 @@ def assessor_dashboard(request):
         'pending_approval_count': pending_approval_count, # <-- Add to context
     }
     return render(request, 'tracker/assessor/assessor_dashboard.html', context)
+
+
 class AssessorAssessmentListView(AssessorRequiredMixin, ListView):
     model = Assessment
     template_name = 'tracker/assessor/assessment_list.html'
@@ -617,111 +439,143 @@ class AssessorAssessmentListView(AssessorRequiredMixin, ListView):
 
     def get_queryset(self):
         return Assessment.objects.filter(assessor=self.request.user).select_related('client').order_by('status', 'date_target_end')
+
 class AssessorAssessmentDetailView(AssessorOrAdminRequiredMixin, DetailView):
     model = Assessment
     template_name = 'tracker/assessor/assessment_detail.html'
     context_object_name = 'assessment'
 
     def get_queryset(self):
-        # Ensure workflow steps are prefetched here
+        """ Prefetches related data for efficiency """
         user = self.request.user
         base_qs = Assessment.objects.select_related(
-            'client', 'assessor'
+            'client', 'assessor__userprofile'
         ).prefetch_related(
-            'scoped_items__operating_system',
-            'evidence_files__uploaded_by',
-            'logs__user',
-            'external_ips', # Added for External IPs
-            # --- Make sure these prefetches are present ---
-            'workflow_steps__step_definition',
-            'workflow_steps__completed_by',
-            # --- End check ---
+            'scoped_items__operating_system', # For sample display
+            'scoped_items__network',          # For sample display
+            'evidence_files__uploaded_by',    # For evidence list
+            'logs__user',                     # For assessment log
+            'external_ips',                   # For external IP summary (if added)
+            'networks',                       # For network summary (if added)
+            'assessment_cloud_services__cloud_service_definition', # For cloud summary (if added)
+            'workflow_steps__step_definition', # *** Crucial for workflow ***
+            'workflow_steps__completed_by',    # *** Crucial for workflow ***
+            'date_options__proposed_by'        # For date scheduling
         )
         if is_admin(user):
-            return base_qs
+            return base_qs # Admin sees all
         elif is_assessor(user):
-            return base_qs.filter(assessor=user)
+            return base_qs.filter(assessor=user) # Assessor sees assigned
         else:
-            return Assessment.objects.none()
-
+            return Assessment.objects.none() # Should not happen
 
     def get_context_data(self, **kwargs):
+        """ Adds workflow steps and other necessary context """
         context = super().get_context_data(**kwargs)
         assessment = self.get_object()
+        user = self.request.user
+        today = date.today()
 
-        # --- Standard context items ---
+        # --- Standard Context ---
         context['evidence_form'] = EvidenceForm()
         context['status_update_form'] = AssessmentStatusUpdateForm(instance=assessment)
         context['needs_scope_review'] = assessment.status == 'Scoping_Review'
-        context['downloadable_evidence'] = assessment.evidence_files.all()
-        context['logs'] = assessment.logs.all()[:20]
-        context['stored_sample_items'] = list(assessment.scoped_items.filter(is_in_ce_plus_sample=True).select_related('operating_system').order_by('item_type', 'operating_system__name', 'id'))
-        context['sample_summary'] = { 'total_selected_items': len(context['stored_sample_items']) }
-        # Add user_role for template logic
-        context['user_role'] = self.request.user.userprofile.role if hasattr(self.request.user, 'userprofile') else None
+        context['downloadable_evidence'] = assessment.evidence_files.all() # Uses prefetch
+        context['logs'] = assessment.logs.all()[:20] # Uses prefetch and model ordering
+        context['user_role'] = user.userprofile.role if hasattr(user, 'userprofile') else None
 
+        # --- CE+ Sample Items & EOL Status ---
+        # Fetch all items once using prefetched relations
+        all_scope_items = list(assessment.scoped_items.all())
+        stored_sample_items = [item for item in all_scope_items if item.is_in_ce_plus_sample]
+        context['stored_sample_items'] = stored_sample_items
+        context['sample_summary'] = { 'total_selected_items': len(stored_sample_items) }
+        sample_items_with_status = []
+        if assessment.assessment_type == 'CE+':
+            for item in stored_sample_items:
+                item.eol_status = 'ok'
+                if item.operating_system:
+                    if not item.operating_system.is_supported: item.eol_status = 'unsupported'
+                    if item.operating_system.end_of_life_date and item.operating_system.end_of_life_date < today: item.eol_status = 'eol'
+                elif item.item_type not in ['SaaS', 'PaaS', 'IaaS', 'Other', 'IP']: item.eol_status = 'unknown'
+                sample_items_with_status.append(item)
+        context['ce_plus_sample_items'] = sorted(sample_items_with_status, key=lambda x: (x.item_type, x.identifier or ''))
 
-        # --- START: Verify this whole block exists ---
-        # --- Workflow Context Logic ---
-        workflow_steps = list(assessment.workflow_steps.all()) # Get steps via prefetched relationship
+        # --- Workflow Context ---
+        logger.debug(f"[Assessor View {assessment.pk}] Populating workflow context...")
+        # Use prefetched data directly from assessment object
+        workflow_steps_qs = assessment.workflow_steps.all()
+        workflow_steps_list = list(workflow_steps_qs) # Evaluate queryset now
+
         current_step = None
         steps_with_permission = []
+        if workflow_steps_list: # Check if the list is not empty
+            for step in workflow_steps_list:
+                # Calculate permission using the model method and current user
+                step.can_update = step.is_update_allowed(user)
+                steps_with_permission.append(step)
+                # Determine the current step (first non-complete, non-skipped one)
+                if step.status not in [AssessmentWorkflowStep.Status.COMPLETE, AssessmentWorkflowStep.Status.SKIPPED] and current_step is None:
+                    current_step = step
+            # Ensure steps are ordered correctly for display
+            context['workflow_steps'] = sorted(steps_with_permission, key=lambda s: s.step_definition.step_order)
+            context['current_step'] = current_step
+            logger.debug(f"[Assessor View {assessment.pk}] Found {len(context['workflow_steps'])} workflow steps. Current step: {current_step.step_definition.name if current_step else 'None'}")
+        else:
+            # Explicitly set to empty list/None if no steps found
+            context['workflow_steps'] = []
+            context['current_step'] = None
+            logger.warning(f"[Assessor View {assessment.pk}] No workflow steps found for this assessment!")
+        # --- END Workflow Context ---
 
-        for step in workflow_steps:
-            # Calculate permission using the request user
-            step.can_update = step.is_update_allowed(self.request.user) # Adds permission flag
-            steps_with_permission.append(step) # Add the modified step to the new list
 
-            # Determine the current step (first non-complete one)
-            if step.status != AssessmentWorkflowStep.Status.COMPLETE and current_step is None:
-                current_step = step
-        # --- END NEW ---
+        # === Assessment Date Scheduling Context ===
+        date_options = list(assessment.date_options.all()) # Use prefetch
+        context['assessment_date_options'] = date_options
 
-        # Add the processed steps and current step to the context
-        context['workflow_steps'] = steps_with_permission # Use the list with the added 'can_update' attribute
-        context['current_step'] = current_step
-        # --- END: Verify this whole block exists ---
+        confirmed_date_option = next((opt for opt in date_options if opt.status == AssessmentDateOption.Status.CONFIRMED), None)
+        context['display_confirmed_assessment_date'] = confirmed_date_option.proposed_date if confirmed_date_option else assessment.date_start
+        has_explicitly_confirmed_option = confirmed_date_option is not None
 
+        is_before_testing = assessment.status in ['Draft', 'Date_Negotiation', 'Scoping_Client', 'Scoping_Review']
+        context['assessment_allows_date_management'] = is_before_testing and not has_explicitly_confirmed_option
+
+        context['propose_date_form'] = AssessmentDateOptionForm(assessment=assessment)
+
+        unavailable_dates_json = "[]"
+        target_assessor = assessment.assessor or (user if is_assessor(user) else None)
+        if target_assessor:
+            unavailable_dates = AssessorAvailability.objects.filter(assessor=target_assessor).values_list('unavailable_date', flat=True)
+            unavailable_dates_str = [d.strftime('%Y-%m-%d') for d in unavailable_dates]
+            unavailable_dates_json = json.dumps(unavailable_dates_str)
+        context['assessor_unavailable_dates_json'] = unavailable_dates_json
+        context['availability_shown_for'] = target_assessor
+
+        context['ce_plus_window_start_date'] = assessment.date_ce_passed
+        context['ce_plus_window_end_date'] = assessment.ce_plus_window_end_date
+        context['confirmed_assessment_date'] = context['display_confirmed_assessment_date']
+        context['scan_launch_status'] = assessment.can_launch_ce_plus_scan()
+
+
+        # --- Timer Date (for countdown JS using Assessment.date_target_end) ---
+        context['assessment_end_date_iso'] = None
+        if assessment.date_target_end:
+             try:
+                 end_datetime_utc = django_timezone.make_aware(datetime.combine(assessment.date_target_end, time.max), pytz.utc)
+                 context['assessment_end_date_iso'] = end_datetime_utc.isoformat()
+             except ValueError:
+                 logger.warning(f"Could not create datetime for countdown timer from date_target_end: {assessment.date_target_end}")
 
         return context
-class AssessmentUpdateStatusView(AssessorOrAdminRequiredMixin, UpdateView): # Allow Admin too
-    model = Assessment
-    form_class = AssessmentStatusUpdateForm
-    template_name = 'tracker/assessor/assessment_update_form.html' # Can be integrated
 
-    def get_queryset(self):
-        # Allow admin to update any, assessor only their own
-        user = self.request.user
-        if is_admin(user):
-            return Assessment.objects.all()
-        elif is_assessor(user):
-             return Assessment.objects.filter(assessor=user)
-        return Assessment.objects.none()
 
-    def form_valid(self, form):
-        assessment = self.get_object()
-        old_status = assessment.get_status_display() # Get display value for log
-        assessment = form.save() # Save first to get updated instance
-        new_status = assessment.get_status_display()
 
-        # Log event if status actually changed
-        if old_status != new_status:
-             log_message = f"Assessment status changed from '{old_status}' to '{new_status}'."
-             if form.cleaned_data.get('final_outcome'):
-                 log_message += f" Final outcome set to '{form.cleaned_data['final_outcome']}'."
-             log_assessment_event(assessment, self.request.user, log_message)
 
-        messages.success(self.request, f"Assessment status updated successfully.")
-        return redirect(self.get_success_url())
 
-    def get_success_url(self):
-        # Redirect back to the detail view based on user role
-        user = self.request.user
-        if is_admin(user):
-            # Admin might want to go back to the Admin detail view if one exists, or list
-             return reverse('tracker:admin_assessment_list') # Adjust if admin detail view exists
-        else: # Assessor
-             return reverse('tracker:assessor_assessment_detail', kwargs={'pk': self.object.pk})
+
+
+
+
 class EvidenceUploadView(AssessorOrAdminRequiredMixin, FormView): # Allow Admin too
     form_class = EvidenceForm
     # Typically part of detail view, needs context if rendered standalone
@@ -765,151 +619,8 @@ class EvidenceUploadView(AssessorOrAdminRequiredMixin, FormView): # Allow Admin 
               return reverse('tracker:admin_assessment_list') # Adjust if admin detail view exists
          else: # Assessor
               return reverse('tracker:assessor_assessment_detail', kwargs={'pk': self.assessment.pk})
-@login_required
-@user_passes_test(is_client, login_url=reverse_lazy('login'))
-def client_dashboard(request):
-    # Mixin should handle the check for profile.client existence now
-    profile = request.user.userprofile
-    client_assessments = Assessment.objects.filter(client=profile.client).select_related('assessor').order_by('-created_at')
-    context = {
-        'client': profile.client,
-        'assessments': client_assessments,
-    }
-    return render(request, 'tracker/client/client_dashboard.html', context)
-class ClientAssessmentListView(ClientRequiredMixin, ListView):
-    model = Assessment
-    template_name = 'tracker/client/assessment_list.html'
-    context_object_name = 'assessments'
-
-    def get_queryset(self):
-        profile = self.request.user.userprofile
-        return Assessment.objects.filter(client=profile.client).select_related('assessor').order_by('-created_at')
-class ClientAssessmentDetailView(ClientRequiredMixin, DetailView):
-    model = Assessment
-    template_name = 'tracker/client/assessment_detail.html'
-    context_object_name = 'assessment'
-
-    def get_queryset(self):
-        # Ensure workflow steps and related data are prefetched efficiently
-        profile = self.request.user.userprofile
-        return Assessment.objects.filter(client=profile.client).prefetch_related(
-            'scoped_items__operating_system',
-            'evidence_files__uploaded_by',
-            'logs__user',
-            # --- Workflow: Prefetch workflow steps and related data ---
-            'workflow_steps__step_definition', # Gets the definition for each step
-            'workflow_steps__completed_by',   # Gets the user who completed the step
-            # --- End Workflow ---
-        )
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        assessment = self.get_object()
-
-        # --- Keep existing context data ---
-        context['can_edit_scope'] = assessment.status == 'Scoping_Client'
-        context['downloadable_evidence'] = assessment.evidence_files.all()
-        context['logs'] = assessment.logs.all()[:20] # Limit log entries
-
-        # --- Scope Summary Logic (keep your existing implementation) ---
-        # Using the previously provided logic for scope summary
-        scope_summary_data = {
-            'servers': {'count': 0, 'os_types': defaultdict(lambda: {'count': 0, 'is_supported': True, 'is_eol': False})},
-            'workstations': {'count': 0, 'os_types': defaultdict(lambda: {'count': 0, 'is_supported': True, 'is_eol': False})},
-            'mobiles': {'count': 0, 'os_types': defaultdict(lambda: {'count': 0, 'is_supported': True, 'is_eol': False})},
-            'network_devices': {'count': 0, 'os_types': defaultdict(lambda: {'count': 0, 'is_supported': True, 'is_eol': False})},
-            'cloud_services': {'count': 0, 'os_types': defaultdict(lambda: {'count': 0, 'is_supported': True, 'is_eol': False})},
-            'other': {'count': 0, 'os_types': defaultdict(lambda: {'count': 0, 'is_supported': True, 'is_eol': False})},
-            'total_items': 0,
-            'has_unsupported_or_eol': False
-        }
-        scope_summary_data['total_items'] = assessment.scoped_items.count()
-        all_items_qs = assessment.scoped_items.select_related('operating_system').all()
-        today = date.today()
-        for item in all_items_qs:
-            os_name_str, vendor_hint_str, is_supported, is_eol = "Unknown OS", "unknown", True, False
-            if item.operating_system:
-                os_name_str = str(item.operating_system)
-                vendor_hint_str = item.operating_system.vendor.lower() if item.operating_system.vendor else "unknown"
-                is_supported = item.operating_system.is_supported
-                if item.operating_system.end_of_life_date and item.operating_system.end_of_life_date < today:
-                    is_eol = True; is_supported = False
-            os_info_key = (os_name_str, vendor_hint_str)
-            group_dict = None
-            if item.item_type == 'Server': group_dict = scope_summary_data['servers']
-            elif item.item_type in ['Laptop', 'Desktop']: group_dict = scope_summary_data['workstations']
-            elif item.item_type == 'Mobile': group_dict = scope_summary_data['mobiles']
-            elif item.item_type in ['Firewall', 'Router', 'Switch', 'IP']: group_dict = scope_summary_data['network_devices']
-            elif item.item_type in ['SaaS', 'PaaS', 'IaaS']: group_dict = scope_summary_data['cloud_services']
-            else: group_dict = scope_summary_data['other']
-            if group_dict is not None:
-                group_dict['count'] += 1
-                os_data = group_dict['os_types'][os_info_key]
-                os_data['count'] += 1
-                if not is_supported: os_data['is_supported'] = False
-                if is_eol: os_data['is_eol'] = True
-                if not is_supported or is_eol: scope_summary_data['has_unsupported_or_eol'] = True
-        final_scope_summary = {'total_items': scope_summary_data['total_items'], 'has_unsupported_or_eol': scope_summary_data['has_unsupported_or_eol']}
-        for category, data in scope_summary_data.items():
-             if category not in ['total_items', 'has_unsupported_or_eol']:
-                 final_scope_summary[category] = {'count': data['count'], 'os_types': {key: dict(val) for key, val in data['os_types'].items()}}
-        context['scope_summary'] = final_scope_summary
-        # --- End Scope Summary Logic ---
-
-        # --- CE+ Sample Item Logic (keep your existing implementation) ---
-        # Using the previously provided logic for sample items
-        if assessment.assessment_type == 'CE+':
-            sample_items_with_status = []
-            raw_sample_items = assessment.scoped_items.filter(is_in_ce_plus_sample=True).select_related('operating_system').order_by('item_type', 'operating_system__name', 'id')
-            for item in raw_sample_items:
-                item.eol_status = 'ok'
-                if item.operating_system:
-                    if not item.operating_system.is_supported: item.eol_status = 'unsupported'
-                    if item.operating_system.end_of_life_date and item.operating_system.end_of_life_date < today: item.eol_status = 'eol'
-                elif item.item_type not in ['SaaS', 'PaaS', 'IaaS', 'Other', 'IP']: item.eol_status = 'unknown'
-                sample_items_with_status.append(item)
-            context['ce_plus_sample_items'] = sample_items_with_status
-        else:
-            context['ce_plus_sample_items'] = None
-        # --- End CE+ Sample Item Logic ---
 
 
-        # --- Workflow: Fetch and Add Workflow Context ---
-        # Use the prefetched data from get_queryset
-        # Ensure AssessmentWorkflowStep model has correct ordering in Meta ('step_definition__step_order')
-        workflow_steps = list(assessment.workflow_steps.all())
-        current_step = None
-        workflow_steps = list(assessment.workflow_steps.all())  # Get all steps
-        current_step = None
-        steps_with_permission = []  # Create a new list to hold steps with permission flag
-
-        # --- NEW: Iterate and check permission for each step ---
-        for step in workflow_steps:
-            # Calculate permission using the request user
-            step.can_update = step.is_update_allowed(self.request.user)  # Add the result as a new attribute
-            steps_with_permission.append(step)  # Add the modified step to the new list
-
-            # Determine the current step (first non-complete one)
-            if step.status != AssessmentWorkflowStep.Status.COMPLETE and current_step is None:
-                current_step = step
-        # --- END NEW ---
-
-        # Add the processed steps and current step to the context
-        context['workflow_steps'] = steps_with_permission  # Use the list with the added 'can_update' attribute
-        context['current_step'] = current_step
-        # --- End Workflow ---
-
-        # --- Workflow: Add Debug Prints ---
-        print("-" * 20)
-        print(f"DEBUG VIEW ({self.__class__.__name__}): Assessment ID = {assessment.id}")
-        print(f"DEBUG VIEW: Found {len(steps_with_permission)} workflow_steps in context (with permissions checked).")
-        # Optionally print permissions:
-        # for s in steps_with_permission:
-        #     print(f"  Step {s.step_definition.step_order}: can_update={s.can_update}")
-        print(f"DEBUG VIEW: Current Step object in context = {current_step}")
-        print("-" * 20)
-        # --- End Workflow Debug Prints ---
-        return context
 class ScopeItemManageView(ClientRequiredMixin, View):
     """
     Handles GET and POST requests for the client scope management page.
@@ -1454,432 +1165,448 @@ class NetworkDeleteView(LoginRequiredMixin, DeleteView): # Remove AssessorOrAdmi
              return reverse('tracker:client_network_list', kwargs={'assessment_pk': self.assessment.pk})
         else: # Admin or Assessor
              return reverse('tracker:network_list', kwargs={'assessment_pk': self.assessment.pk})
-class CloudServiceDefinitionListView(AssessorOrAdminRequiredMixin, ListView):
-    model = CloudServiceDefinition
-    template_name = 'tracker/cloud_service_mgmt/definition_list.html' # Template to create
-    context_object_name = 'definitions'
-    paginate_by = 20
-    queryset = CloudServiceDefinition.objects.order_by('vendor', 'name')
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['page_title'] = "Manage Cloud Service Definitions"
-        # --- NEW: Add count for pending approval ---
-        context['pending_approval_count'] = CloudServiceDefinition.objects.filter(is_globally_approved=False).count()
-        # --- END NEW ---
-        return context
-class CloudServiceDefinitionCreateView(AssessorOrAdminRequiredMixin, CreateView):
-    model = CloudServiceDefinition
-    form_class = CloudServiceDefinitionForm
-    template_name = 'tracker/cloud_service_mgmt/definition_form.html' # Template to create
-    success_url = reverse_lazy('tracker:cloud_service_definition_list')
+class ProposeAssessmentDateView(LoginRequiredMixin, CreateView):
+    model = AssessmentDateOption
+    form_class = AssessmentDateOptionForm
+    # No separate template needed, POST from detail view
 
-    def form_valid(self, form):
-        form.instance.created_by = self.request.user
-        # If an admin/assessor creates it AND checks 'approved', set approved_by
-        if form.cleaned_data.get('is_globally_approved'):
-             form.instance.approved_by = self.request.user
-        messages.success(self.request, f"Cloud Service Definition '{form.instance.name}' created.")
-        return super().form_valid(form)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['page_title'] = "Add New Cloud Service Definition"
-        return context
-class CloudServiceDefinitionUpdateView(AssessorOrAdminRequiredMixin, UpdateView):
-    model = CloudServiceDefinition
-    form_class = CloudServiceDefinitionForm
-    template_name = 'tracker/cloud_service_mgmt/definition_form.html'
-    context_object_name = 'definition'
-    success_url = reverse_lazy('tracker:cloud_service_definition_list')
-
-    def form_valid(self, form):
-         # If the approval status changed to True, record who approved it
-        if 'is_globally_approved' in form.changed_data and form.cleaned_data.get('is_globally_approved'):
-            if not form.instance.approved_by: # Only set if not already set
-                form.instance.approved_by = self.request.user
-        elif 'is_globally_approved' in form.changed_data and not form.cleaned_data.get('is_globally_approved'):
-             # Clear approver if unchecked? Optional, depends on desired logic.
-             form.instance.approved_by = None # Example: Clear approver if unapproved
-
-        messages.success(self.request, f"Cloud Service Definition '{form.instance.name}' updated.")
-        return super().form_valid(form)
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['page_title'] = f"Edit Cloud Service Definition: {self.object.name}"
-        return context
-class CloudServiceDefinitionDeleteView(AdminRequiredMixin, DeleteView): # Only Admins can delete definitions? Or Assessor too? Decide permission.
-    model = CloudServiceDefinition
-    template_name = 'tracker/cloud_service_mgmt/definition_confirm_delete.html' # Template to create
-    context_object_name = 'definition'
-    success_url = reverse_lazy('tracker:cloud_service_definition_list')
-
-    def form_valid(self, form):
-        # Handle ProtectedError in case definitions are linked via PROTECT
-        try:
-            definition_name = self.object.name
-            response = super().form_valid(form)
-            messages.success(self.request, f"Cloud Service Definition '{definition_name}' deleted.")
-            return response
-        except ProtectedError:
-            messages.error(self.request, f"Cannot delete '{self.object.name}' as it is linked to one or more assessments.")
-            return redirect('tracker:cloud_service_definition_list')
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['page_title'] = f"Delete Cloud Service Definition: {self.object.name}"
-        return context
-def user_can_manage_assessment_cloud_services(user, assessment):
-    """Checks if a user can view/manage cloud services for a given assessment."""
-    if not user.is_authenticated: return False
-    if is_admin(user): return True
-    # Assessors can always view/manage their assigned assessments
-    if is_assessor(user) and assessment.assessor == user: return True
-    # Clients can view/manage if it's their assessment AND not completed
-    if is_client(user) and assessment.client == user.userprofile.client:
-        # Decide if clients can manage even when complete (e.g. view proof)
-        # For now, allow view/manage unless explicitly forbidden by status if needed
-        # return not assessment.status.startswith('Complete_')
-        return True # Let clients view even if complete, editing controlled by view logic
-    return False
-
-
-class AssessmentCloudServiceListView(LoginRequiredMixin, ListView):
-    model = AssessmentCloudService
-    template_name = 'tracker/assessment_cloud_service/service_list.html'
-    context_object_name = 'assessment_services'
-
-    def dispatch(self, request, *args, **kwargs):
-        """Get assessment and check permissions before proceeding."""
-        self.assessment = get_object_or_404(Assessment, pk=self.kwargs['assessment_pk'])
-        if not user_can_manage_assessment_cloud_services(request.user, self.assessment):
-            raise PermissionDenied("You do not have permission to view cloud services for this assessment.")
-        return super().dispatch(request, *args, **kwargs)
-
-    def get_queryset(self):
-        """Return services belonging to the specific assessment."""
-        return AssessmentCloudService.objects.filter(
-            assessment=self.assessment
-        ).select_related('cloud_service_definition').order_by('cloud_service_definition__name')
-
-    def get_context_data(self, **kwargs):
-        """Add assessment and other context."""
-        context = super().get_context_data(**kwargs)
-        context['assessment'] = self.assessment
-        context['page_title'] = f"Cloud Services for Assessment #{self.assessment.id}"
-        context['user_role'] = self.request.user.userprofile.role if hasattr(self.request.user, 'userprofile') else None
-        # Determine if adding should be allowed based on status
-        context['can_add_services'] = not self.assessment.status.startswith('Complete_')
-        # Pass is_client flag for potential template use
-        context['is_client_user'] = is_client(self.request.user)
-        return context
-
-
-class AssessmentCloudServiceAddView(LoginRequiredMixin, CreateView):
-    model = AssessmentCloudService
-    form_class = AssessmentCloudServiceForm
-    template_name = 'tracker/assessment_cloud_service/assessment_cloud_service_add_form.html'
-
-    # Ensure this setup method is present to set self.assessment early
     def setup(self, request, *args, **kwargs):
-        """Fetches the Assessment object early and stores it on the view instance."""
-        super().setup(request, *args, **kwargs) # Call parent setup methods first
-        assessment_pk = self.kwargs.get('assessment_pk')
-        if assessment_pk:
-            # Fetch the Assessment object and store it as an instance attribute
-            # This makes self.assessment available to other methods like get_context_data
-            self.assessment = get_object_or_404(Assessment, pk=assessment_pk)
-        else:
-            # If assessment_pk is missing from URL kwargs, raise an error early
-            raise Http404("Assessment primary key not found in URL for view setup")
-        # Add any permission checks related to self.assessment here if needed
-        # e.g., check if self.request.user belongs to self.assessment.client
+        super().setup(request, *args, **kwargs)
+        self.assessment = get_object_or_404(Assessment, pk=self.kwargs['assessment_pk'])
+        # --- Permission check: Basic role check ---
+        profile = getattr(request.user, 'userprofile', None)
+        if not profile or profile.role not in ['Admin', 'Assessor', 'Client']:
+             raise PermissionDenied("Invalid user role for proposing dates.")
+        if profile.role == 'Client' and self.assessment.client != profile.client:
+             raise PermissionDenied("You cannot propose dates for this assessment.")
+        # Admins/Assessors (even unassigned?) can propose - adjust if needed
+        if profile.role == 'Assessor' and self.assessment.assessor and self.assessment.assessor != request.user:
+            # Optionally restrict assessors to only propose for their assigned assessments
+            # raise PermissionDenied("You can only propose dates for your assigned assessments.")
+            pass # Allow any assessor to propose for now
 
-    # get_context_data can now safely use self.assessment set by setup()
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # self.assessment should exist now if setup ran correctly and didn't raise Http404
-        context['assessment'] = self.assessment # Pass object to template context
-        context['page_title'] = f"Add Cloud Service for Assessment {self.assessment.id}" # Use self.assessment safely
-
-        # Pass role flags (useful for base templates or conditional rendering)
-        profile = getattr(self.request.user, 'userprofile', None)
-        context['is_client_user'] = profile and profile.role == 'Client'
-        context['is_assessor_or_admin'] = profile and profile.role in ['Assessor', 'Admin']
-        context['user_role'] = profile.role if profile else None
-        return context
-
-    # get_form_kwargs fetches assessment independently to pass specifically to the form.
-    # This provides robustness in case of complex MRO issues with mixins/setup timing.
-    def get_form_kwargs(self):
-        """Pass assessment to the form's __init__ method."""
-        kwargs = super().get_form_kwargs()
-        assessment_pk = self.kwargs.get('assessment_pk')
-        if assessment_pk:
-            # Fetch assessment again here to pass specifically to the form kwargs
-            assessment = get_object_or_404(Assessment, pk=assessment_pk)
-            kwargs['assessment'] = assessment
-        else:
-            # This path should ideally not be reached if setup runs first and raises Http404
-            kwargs['assessment'] = None
-            messages.error(self.request,"Critical Error: Assessment ID missing when initializing form.")
-
-        # NOTE: Do NOT pass 'user' here unless the form's __init__ explicitly handles it.
-        # kwargs['user'] = self.request.user # This caused the TypeError previously
-
-        return kwargs
-
-    # form_valid uses self.assessment (set by setup) and self.request.user
-    def form_valid(self, form):
-        print("\n--- DEBUG: form_valid entered ---") # DEBUG
-        try:
-            print(f"DEBUG: Raw Cleaned data: {form.cleaned_data}") # DEBUG
-        except Exception as e:
-            print(f"DEBUG: Error printing cleaned_data: {e}") # DEBUG
-
-        # self.assessment should be available here thanks to setup()
-        if not hasattr(self, 'assessment') or not self.assessment:
-             print("--- DEBUG: CRITICAL ERROR - self.assessment not set in form_valid ---") # DEBUG
-             messages.error(self.request, "Critical error: Assessment context lost.")
-             return self.form_invalid(form)
-
-        assessment_service = form.save(commit=False)
-        assessment_service.assessment = self.assessment # Link to current assessment
-
-        add_new = form.cleaned_data.get('add_new_service')
-        existing_service = form.cleaned_data.get('cloud_service_definition')
-        print(f"DEBUG: add_new flag: {add_new}") # DEBUG
-        print(f"DEBUG: existing_service object: {existing_service}") # DEBUG
-
-        if add_new:
-            print("--- DEBUG: Attempting to add new service definition ---") # DEBUG
-            try:
-                new_def_name = form.cleaned_data.get('new_service_name', 'MISSING_NAME') # DEBUG check if exists
-                print(f"DEBUG: New service name from form: {new_def_name}") # DEBUG
-                # Ensure user is available
-                if not hasattr(self.request, 'user') or not self.request.user.is_authenticated:
-                     print("--- DEBUG: ERROR - Request user not available ---") # DEBUG
-                     messages.error(self.request, "Error: User information not available.")
-                     return self.form_invalid(form)
-
-                new_def = CloudServiceDefinition.objects.create(
-                    name=new_def_name,
-                    vendor=form.cleaned_data.get('new_service_vendor'),
-                    service_url=form.cleaned_data.get('new_service_url'),
-                    description=form.cleaned_data.get('new_service_description'),
-                    requires_mfa_for_ce=form.cleaned_data.get('new_service_requires_mfa', False),
-                    is_globally_approved=False,
-                    created_by=self.request.user # Use user from request
-                )
-                assessment_service.cloud_service_definition = new_def
-                print(f"--- DEBUG: New Definition Created, PK: {new_def.pk} ---") # DEBUG
-                messages.info(self.request, f"New service '{new_def.name}' suggested and added to assessment pending approval.")
-            except Exception as e:
-                 print(f"--- DEBUG: ERROR creating new CloudServiceDefinition: {e} ---") # DEBUG
-                 import traceback # DEBUG
-                 traceback.print_exc() # DEBUG - Print full traceback to console
-                 messages.error(self.request, f"Error creating suggested service: {e}")
-                 return self.form_invalid(form)
-
-        elif existing_service:
-             print(f"--- DEBUG: Linking to existing service: {existing_service.name} (PK: {existing_service.pk}) ---") # DEBUG
-             # The form linking should already be done by form.save(commit=False) if field is in form.Meta.fields
-             assessment_service.cloud_service_definition = existing_service # Ensure it's set if not done by form
-             messages.success(self.request, f"Service '{existing_service.name}' added to assessment.")
-        else:
-             # This should be caught by form validation, but double-check
-             print("--- DEBUG: ERROR - Neither add_new nor existing_service is true after clean() ---") # DEBUG
-             messages.error(self.request, "Could not add service. No existing service selected or new service suggested properly.")
-             return self.form_invalid(form)
-
-        # --- Attempt to save the AssessmentCloudService ---
-        try:
-            print(f"--- DEBUG: Attempting to save AssessmentCloudService ---") # DEBUG
-            print(f"DEBUG: Assessment PK: {assessment_service.assessment.pk if assessment_service.assessment else 'None'}") # DEBUG
-            print(f"DEBUG: Service Definition: {assessment_service.cloud_service_definition}") # DEBUG
-            print(f"DEBUG: Client Notes: {assessment_service.client_notes}") # DEBUG
-            # Add prints for mfa proof fields if needed
-
-            assessment_service.save() # Save the AssessmentCloudService instance
-
-            print(f"--- DEBUG: AssessmentCloudService SAVED, PK: {assessment_service.pk} ---") # DEBUG
-            # save_m2m is only needed if the form has M2M fields, which this one doesn't seem to
-            # form.save_m2m()
-            # print("--- DEBUG: save_m2m called (if applicable) ---") # DEBUG
-
-        except Exception as e:
-            print(f"--- DEBUG: ERROR saving AssessmentCloudService: {e} ---") # DEBUG
-            import traceback # DEBUG
-            traceback.print_exc() # DEBUG - Print full traceback to console
-            messages.error(self.request, f"Error saving service to assessment: {e}")
-            # If a new definition was created, consider deleting it on failure
-            if add_new and 'new_def' in locals() and new_def:
-                try:
-                    print(f"--- DEBUG: Attempting to delete newly created definition {new_def.pk} due to save error ---") # DEBUG
-                    new_def.delete()
-                except Exception as del_e:
-                    print(f"--- DEBUG: Error deleting new_def after save failure: {del_e} ---") # DEBUG
-            return self.form_invalid(form)
-
-        print("--- DEBUG: form_valid completed successfully, redirecting ---") # DEBUG
-        return redirect(self.get_success_url())
-
-    # get_success_url uses self.assessment set by setup()
-    def get_success_url(self):
-         # Clients typically add services, redirect to their list view
-         # self.assessment should exist here
-         return reverse('tracker:client_assessment_cloud_service_list', kwargs={'assessment_pk': self.assessment.pk})
-
-
-
-class AssessmentCloudServiceUpdateView(LoginRequiredMixin, UpdateView):
-    model = AssessmentCloudService
-    # No static form_class anymore, determined by get_form_class
-    # Use the new template for updating
-    template_name = 'tracker/assessment_cloud_service/assessment_cloud_service_update_form.html'
-
-
-    # Assessment is set by AssessmentRelatedObjectMixin in setup
-
-    def get_form_class(self):
-        """Return the form class to use based on user role."""
-        profile = getattr(self.request.user, 'userprofile', None)
-        # Check if user is associated with the assessment's client or is Assessor/Admin
-        # You might need more specific permission checks here
-
-        if profile and profile.role == 'Client':
-             # Add check: Is this user part of the client company for this assessment?
-             if self.object.assessment.client == profile.client:
-                 return AssessmentCloudServiceUpdateForm
-             else:
-                  raise PermissionDenied("You are not authorized to edit this service for this client.")
-        elif profile and profile.role in ['Assessor', 'Admin']:
-             # Add check: Is this assessor assigned to this assessment? (If applicable)
-             # Or just allow any assessor/admin?
-             return AssessmentCloudServiceAssessorForm
-        else:
-             # Fallback or raise permission denied if user has unexpected/no role
-             raise PermissionDenied("You do not have permission to edit this service entry.")
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        # assessment context usually added by mixin
-        # context['assessment'] = self.object.assessment
-        # Pass role flags needed by the template for conditional rendering
-        profile = getattr(self.request.user, 'userprofile', None)
-        context['is_client_user'] = profile and profile.role == 'Client'
-        context['is_assessor_or_admin'] = profile and profile.role in ['Assessor', 'Admin']
-        context['user_role'] = profile.role if profile else None
-
-        # Keep service name for display
-        context['service_name'] = self.object.cloud_service_definition.name if self.object.cloud_service_definition else "Suggested Service (Pending Approval)"
-        context['page_title'] = f"Update {context['service_name']}"
-        return context
 
     def get_form_kwargs(self):
-        """ Pass assessment or other args if needed by forms """
+        """ Pass the assessment instance to the form for validation """
         kwargs = super().get_form_kwargs()
-        # Pass assessment if any update form needs it (unlikely for these simple forms)
-        # kwargs['assessment'] = self.object.assessment
+        kwargs['assessment'] = self.assessment
         return kwargs
 
     def form_valid(self, form):
-        """Handle saving for both client and assessor forms."""
-        instance = form.save(commit=False)
-        profile = getattr(self.request.user, 'userprofile', None)
-        user_role = profile.role if profile else None
-
-        if user_role in ['Assessor', 'Admin']:
-            # Specific logic for assessor form submission
-            # Check if any verification fields actually changed to set timestamp/user
-            changed_fields = form.changed_data
-            verification_fields = ['mfa_admin_verified', 'mfa_user_verified', 'is_compliant', 'assessor_notes']
-            if any(field in changed_fields for field in verification_fields):
-                instance.verified_by = self.request.user
-                instance.last_verified_at = timezone.now()
-            messages.success(self.request, "Verification details updated successfully.")
-
-        elif user_role == 'Client':
-             # Logic specific to client form submission
-             # Check if files were cleared or changed
-             if 'mfa_admin_proof' in form.changed_data or 'mfa_user_proof' in form.changed_data:
-                 messages.success(self.request, "MFA Proof files updated successfully.")
-             elif 'client_notes' in form.changed_data:
-                 messages.success(self.request, "Client notes updated successfully.")
-             elif form.changed_data: # Check if anything else changed
-                  messages.success(self.request, "Service details updated successfully.")
-             else:
-                  messages.info(self.request, "No changes were detected.")
-                  # Redirect immediately if no changes, skip save
-                  return redirect(self.get_success_url())
-
-        else:
-             # Handle unexpected role - shouldn't happen if get_form_class works
-             messages.error(self.request, "Could not save changes due to permission issue.")
-             return self.form_invalid(form)
-
+        """ Process a valid form submission """
+        logger.debug(f"ProposeAssessmentDateView: form_valid entered for assessment {self.assessment.pk} by user {self.request.user.username}")
+        form.instance.assessment = self.assessment
+        form.instance.proposed_by = self.request.user
         try:
-            instance.save()
-            form.save_m2m() # If there were any M2M fields
-        except Exception as e:
-             messages.error(self.request, f"Error saving changes: {e}")
-             return self.form_invalid(form)
+            # Save the object first to get an ID
+            self.object = form.save()
+            logger.info(f"AssessmentDateOption {self.object.pk} created for assessment {self.assessment.pk} with date {self.object.proposed_date}")
 
-        return redirect(self.get_success_url())
+            log_assessment_event(
+                self.assessment,
+                self.request.user,
+                f"Proposed assessment date: {self.object.proposed_date.strftime('%Y-%m-%d')}"
+                 + (f". Notes: {form.cleaned_data.get('notes')}" if form.cleaned_data.get('notes') else ".")
+            )
+            messages.success(self.request, f"Date {self.object.proposed_date.strftime('%Y-%m-%d')} proposed successfully.")
+        except IntegrityError:
+            # Handle case where date already exists (unique_together constraint)
+            logger.warning(f"IntegrityError: Date {form.cleaned_data.get('proposed_date')} already proposed for assessment {self.assessment.pk}.")
+            messages.error(self.request, f"The date {form.cleaned_data.get('proposed_date').strftime('%Y-%m-%d')} has already been proposed for this assessment.")
+            # Redirect back without saving, error message shown
+            return HttpResponseRedirect(self.get_success_url())
+        except Exception as e:
+            logger.error(f"Error saving proposed date for assessment {self.assessment.pk}: {e}", exc_info=True)
+            messages.error(self.request, f"An unexpected error occurred: {e}")
+            return HttpResponseRedirect(self.get_success_url())
+
+        logger.debug(f"ProposeAssessmentDateView: form_valid completed successfully.")
+        return HttpResponseRedirect(self.get_success_url())
+
+    def form_invalid(self, form):
+        """ Handle invalid form submission """
+        logger.warning(f"ProposeAssessmentDateView: form_invalid for assessment {self.assessment.pk}. Errors: {form.errors.as_json()}")
+        # Add form errors to messages to display on the detail page
+        for field, errors in form.errors.items():
+            for error in errors:
+                # Prepend field name for clarity, handle non-field errors
+                field_name_display = form.fields[field].label if field != '__all__' and field in form.fields else 'Proposal Error'
+                messages.error(self.request, f"{field_name_display}: {error}")
+        # Redirect back to the detail page where messages will be shown
+        return HttpResponseRedirect(self.get_success_url())
 
     def get_success_url(self):
-        """Redirect back to the appropriate list view based on user role."""
-        profile = getattr(self.request.user, 'userprofile', None)
-        assessment_pk = self.object.assessment.pk
+        """ Redirect back to the appropriate assessment detail view """
+        # Determine redirect based on user role
+        profile = getattr(self.request.user, 'userprofile', None) # Use getattr for safety
         if profile and profile.role == 'Client':
-             # Use the client-specific list URL from your urls.py
-             return reverse('tracker:client_assessment_cloud_service_list', kwargs={'assessment_pk': assessment_pk})
+            return reverse('tracker:client_assessment_detail', kwargs={'pk': self.assessment.pk})
+        else: # Assessor or Admin (or other roles if permissions allow)
+            return reverse('tracker:assessor_assessment_detail', kwargs={'pk': self.assessment.pk})
+
+
+
+class UpdateAssessmentDateStatusView(LoginRequiredMixin, View):
+    """ Handles POST requests to update the status of an AssessmentDateOption """
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        # Get assessment and option early for permission checks
+        # Prefetch related fields needed for checks/logic
+        self.assessment = get_object_or_404(
+            Assessment.objects.select_related('assessor', 'client'),
+            pk=self.kwargs['assessment_pk']
+        )
+        self.option = get_object_or_404(
+            AssessmentDateOption.objects.select_related('proposed_by'), # Select proposer if needed
+            pk=self.kwargs['option_pk'],
+            assessment=self.assessment
+        )
+
+    def post(self, request, *args, **kwargs):
+        new_status = request.POST.get('new_status')
+        user = request.user
+        profile = getattr(user, 'userprofile', None)
+
+        # Validate new_status against choices
+        valid_statuses = [choice[0] for choice in AssessmentDateOption.Status.choices]
+        if new_status not in valid_statuses:
+            messages.error(request, "Invalid status provided.")
+            logger.warning(f"Invalid status '{new_status}' attempt for option {self.option.pk} by user {user.username}")
+            return self.redirect_back()
+
+        # --- Permission Check & Action Logic ---
+        original_status = self.option.status
+        can_perform_action = False
+        log_message = "" # Initialize log message
+
+        # Check if assessment already has a confirmed date (blocks most actions)
+        is_assessment_confirmed = AssessmentDateOption.objects.filter(
+            assessment=self.assessment, status=AssessmentDateOption.Status.CONFIRMED
+        ).exclude(pk=self.option.pk).exists() # Exclude self in case this is the confirmation action
+
+        # Check assessment status allows date management generally
+        is_before_testing = self.assessment.status in ['Draft', 'Date_Negotiation', 'Scoping_Client', 'Scoping_Review']
+
+        # Determine if the specific user can perform the specific status change
+        if is_client(user):
+            # Client can only mark as 'ClientPreferred'
+            if is_before_testing and not is_assessment_confirmed and \
+               new_status == AssessmentDateOption.Status.CLIENT_PREFERRED and \
+               original_status == AssessmentDateOption.Status.SUGGESTED:
+                can_perform_action = True
+            else:
+                # Log reason for denial more specifically if possible
+                reason = "assessment already confirmed" if is_assessment_confirmed else \
+                         "assessment status does not allow changes" if not is_before_testing else \
+                         "invalid status transition"
+                logger.warning(f"Client {user.username} permission denied to set status {new_status} on option {self.option.pk}: {reason}")
+
+        elif is_assessor(user) or is_admin(user):
+            # Assessor/Admin can Confirm or Reject
+            if is_before_testing and not is_assessment_confirmed:
+                # --- Confirmation Logic ---
+                if new_status == AssessmentDateOption.Status.CONFIRMED and \
+                   original_status != AssessmentDateOption.Status.CONFIRMED and \
+                   original_status != AssessmentDateOption.Status.REJECTED:
+
+                    # Assessor Availability Check (only if assessor is assigned)
+                    if self.assessment.assessor and AssessorAvailability.objects.filter(assessor=self.assessment.assessor, unavailable_date=self.option.proposed_date).exists():
+                        messages.error(request, f"Cannot confirm: Assessor ({self.assessment.assessor.username}) is unavailable on {self.option.proposed_date.strftime('%Y-%m-%d')}.")
+                        return self.redirect_back()
+
+                    # CE+ Window Check
+                    if self.assessment.assessment_type == 'CE+' and self.assessment.date_ce_passed:
+                        window_end_date = self.assessment.ce_plus_window_end_date
+                        if not (window_end_date and self.assessment.date_ce_passed <= self.option.proposed_date <= window_end_date): # Check window_end_date exists
+                            end_date_str = window_end_date.strftime('%Y-%m-%d') if window_end_date else "N/A"
+                            messages.error(request, f"Cannot confirm: Date is outside the CE+ window ({self.assessment.date_ce_passed.strftime('%Y-%m-%d')} to {end_date_str}).")
+                            return self.redirect_back()
+                    elif self.assessment.assessment_type == 'CE+' and not self.assessment.date_ce_passed:
+                          messages.error(request, "Cannot confirm: CE+ assessment requires the CE Self-Assessment Pass Date to be set first.")
+                          return self.redirect_back()
+
+                    can_perform_action = True # If all checks pass
+
+                # --- Rejection Logic ---
+                elif new_status == AssessmentDateOption.Status.REJECTED and \
+                     original_status != AssessmentDateOption.Status.CONFIRMED and \
+                     original_status != AssessmentDateOption.Status.REJECTED:
+                    can_perform_action = True
+            else:
+                 # Log reason for denial
+                 reason = "assessment already confirmed" if is_assessment_confirmed else \
+                          "assessment status does not allow changes" if not is_before_testing else \
+                          "invalid status transition"
+                 logger.warning(f"Assessor/Admin {user.username} permission denied to set status {new_status} on option {self.option.pk}: {reason}")
+
+
+        if not can_perform_action:
+            messages.error(request, f"Action not allowed: Cannot change status from '{original_status}' to '{new_status}' at this time or with your role.")
+            return self.redirect_back()
+
+        # --- Perform Update within a transaction ---
+        try:
+            with transaction.atomic():
+                self.option.status = new_status
+                log_message_base = f"Assessment date option ({self.option.proposed_date.strftime('%Y-%m-%d')}) status changed to {self.option.get_status_display()}"
+                log_details = []
+
+                # If Client Preferred, reset any other preferred dates for this assessment
+                if new_status == AssessmentDateOption.Status.CLIENT_PREFERRED:
+                    updated_count = AssessmentDateOption.objects.filter(
+                        assessment=self.assessment, status=AssessmentDateOption.Status.CLIENT_PREFERRED
+                    ).exclude(pk=self.option.pk).update(status=AssessmentDateOption.Status.SUGGESTED)
+                    if updated_count > 0:
+                        log_details.append(f"{updated_count} other preference(s) reset to 'Suggested'.")
+
+                # If Assessor Confirmed:
+                if new_status == AssessmentDateOption.Status.CONFIRMED:
+                    # 1. Update the Assessment's TARGET date
+                    self.assessment.date_target_end = self.option.proposed_date
+                    # 2. Update start date if not set or if it should match target
+                    if not self.assessment.date_start:
+                        self.assessment.date_start = self.option.proposed_date
+                    # Ensure start date is not after target end date
+                    if self.assessment.date_start and self.assessment.date_target_end < self.assessment.date_start:
+                        self.assessment.date_start = self.assessment.date_target_end
+                    self.assessment.save(update_fields=['date_target_end', 'date_start'])
+                    log_details.append("Assessment Target End/Start Date set.")
+
+                    # 3. Reject all other Suggested/Preferred options
+                    rejected_count = AssessmentDateOption.objects.filter(
+                        assessment=self.assessment,
+                        status__in=[AssessmentDateOption.Status.SUGGESTED, AssessmentDateOption.Status.CLIENT_PREFERRED]
+                    ).exclude(pk=self.option.pk).update(status=AssessmentDateOption.Status.REJECTED)
+                    if rejected_count > 0:
+                        log_details.append(f"{rejected_count} other option(s) rejected.")
+
+                    # 4. Attempt to close the workflow step
+                    step_name_to_complete = 'Schedule Assessment Date' # ADJUST THIS NAME IF NEEDED
+                    try:
+                        schedule_step_def = WorkflowStepDefinition.objects.get(name=step_name_to_complete)
+                        # Use update_or_create to handle potential race conditions or missing steps gracefully
+                        workflow_step, created = AssessmentWorkflowStep.objects.update_or_create(
+                            assessment=self.assessment,
+                            step_definition=schedule_step_def,
+                            defaults={
+                                'status': AssessmentWorkflowStep.Status.COMPLETE,
+                                'completed_at': django_timezone.now(),
+                                'completed_by': user
+                            }
+                        )
+                        if created:
+                            log_details.append(f"Workflow step '{schedule_step_def.name}' created and marked complete.")
+                            logger.info(f"Workflow step '{schedule_step_def.name}' created and completed for assessment {self.assessment.pk}")
+                        elif workflow_step.status != AssessmentWorkflowStep.Status.COMPLETE:
+                            # If it existed but wasn't complete, log the update
+                            log_details.append(f"Workflow step '{schedule_step_def.name}' marked complete.")
+                            logger.info(f"Workflow step '{schedule_step_def.name}' updated to complete for assessment {self.assessment.pk}")
+                        else: # Step already complete
+                             logger.info(f"Workflow step '{schedule_step_def.name}' was already complete for assessment {self.assessment.pk}")
+                    except WorkflowStepDefinition.DoesNotExist:
+                         logger.error(f"WorkflowStepDefinition '{step_name_to_complete}' does not exist.")
+                         log_details.append(f"Error: Workflow definition '{step_name_to_complete}' not found.")
+                    except Exception as wf_err:
+                         logger.error(f"Error updating workflow step '{step_name_to_complete}' for assessment {self.assessment.pk}: {wf_err}", exc_info=True)
+                         log_details.append(f"Error updating workflow step '{step_name_to_complete}'.")
+                    # --- End Workflow Step Update ---
+
+                # Save the option itself (status changed)
+                self.option.save()
+
+                # Log the combined event
+                full_log_message = log_message_base + (" " + " ".join(log_details) if log_details else ".")
+                log_assessment_event(self.assessment, user, full_log_message)
+                messages.success(request, f"Date {self.option.proposed_date.strftime('%Y-%m-%d')} status updated to {self.option.get_status_display()}.")
+
+        except Exception as e:
+            logger.error(f"Error updating date option status for option {self.option.pk}: {e}", exc_info=True)
+            messages.error(request, f"An unexpected error occurred: {e}")
+
+        return self.redirect_back()
+
+    def redirect_back(self):
+        """ Redirects back to the appropriate detail view """
+        profile = getattr(self.request.user, 'userprofile', None)
+        if profile and profile.role == 'Client':
+            return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
         else: # Assessor or Admin
-             # Use the assessor/admin list URL from your urls.py
-             return reverse('tracker:assessment_cloud_service_list', kwargs={'assessment_pk': assessment_pk})
+            return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
 
 
-class AssessmentCloudServiceDeleteView(LoginRequiredMixin, DeleteView):
-    model = AssessmentCloudService
-    template_name = 'tracker/assessment_cloud_service/service_confirm_delete.html'
-    context_object_name = 'assessment_service'
+class DeleteAssessmentDateOptionView(LoginRequiredMixin, View):
+    """ Handles POST requests to delete an AssessmentDateOption """
 
-    def dispatch(self, request, *args, **kwargs):
-        """Get assessment and check permissions before proceeding."""
-        self.object = self.get_object()
-        self.assessment = self.object.assessment
-        if not user_can_manage_assessment_cloud_services(request.user, self.assessment):
-            raise PermissionDenied("You do not have permission to delete this cloud service entry.")
-        # Prevent deletion if assessment is complete? Usually okay to delete.
-        # if self.assessment.status.startswith('Complete_'):
-        #     raise PermissionDenied("Cannot delete cloud services from a completed assessment.")
-        return super().dispatch(request, *args, **kwargs)
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        # Fetch related assessment for permission checks
+        self.assessment = get_object_or_404(Assessment, pk=self.kwargs['assessment_pk'])
+        # Fetch the specific option to be deleted
+        self.option = get_object_or_404(
+            AssessmentDateOption.objects.select_related('proposed_by'), # Include proposer for checks
+            pk=self.kwargs['option_pk'],
+            assessment=self.assessment
+        )
 
-    def form_valid(self, form):
-        """Add success message and log."""
-        service_name = self.object.cloud_service_definition.name
-        # Consider deleting uploaded files here if desired
-        # (obj.mfa_admin_proof.delete(save=False), obj.mfa_user_proof.delete(save=False))
-        # before calling super().form_valid()
-        response = super().form_valid(form)
-        messages.success(self.request, f"Cloud Service '{service_name}' removed from assessment.")
-        log_assessment_event(self.assessment, self.request.user, f"Cloud service removed: '{service_name}'.")
-        return response
+    def post(self, request, *args, **kwargs):
+        user = request.user
+        profile = getattr(user, 'userprofile', None)
 
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context['assessment'] = self.assessment
-        context['page_title'] = f"Remove Cloud Service: {self.object.cloud_service_definition.name}"
-        context['user_role'] = self.request.user.userprofile.role if hasattr(self.request.user, 'userprofile') else None
-        return context
+        # --- Permission Check for Deletion ---
+        can_delete = False
+        is_before_testing = self.assessment.status in ['Draft', 'Date_Negotiation', 'Scoping_Client', 'Scoping_Review']
+        # Check if any date is confirmed for this assessment
+        is_assessment_confirmed = AssessmentDateOption.objects.filter(
+            assessment=self.assessment, status=AssessmentDateOption.Status.CONFIRMED
+        ).exists()
 
-    def get_success_url(self):
-        """Redirect back to the service list."""
-        if is_client(self.request.user):
-            return reverse('tracker:client_assessment_cloud_service_list', kwargs={'assessment_pk': self.assessment.pk})
+        if self.option.status == AssessmentDateOption.Status.CONFIRMED:
+            # Prevent deletion of confirmed dates via this view
+            messages.error(request, "Confirmed dates cannot be deleted.")
+        # Allow deletion only before testing starts AND if assessment isn't confirmed yet
+        elif is_before_testing and not is_assessment_confirmed:
+            if self.option.status == AssessmentDateOption.Status.SUGGESTED:
+                # Allow proposer OR assessor/admin to delete suggested dates
+                if (self.option.proposed_by == user) or (profile and profile.role in ['Admin', 'Assessor']):
+                    can_delete = True
+            elif self.option.status in [AssessmentDateOption.Status.CLIENT_PREFERRED, AssessmentDateOption.Status.REJECTED]:
+                 # Allow assessor/admin to delete preferred or rejected dates
+                if profile and profile.role in ['Admin', 'Assessor']:
+                    can_delete = True
+        # Add Admin override maybe?
+        # elif is_admin(user) and self.option.status != AssessmentDateOption.Status.CONFIRMED:
+        #    can_delete = True
+
+        if not can_delete:
+             logger.warning(f"User {user.username} permission denied to delete option {self.option.pk} (status: {self.option.status}, assess_confirmed: {is_assessment_confirmed}, assess_status: {self.assessment.status})")
+             messages.error(request, "You do not have permission to delete this date option at this time.")
+             return self.redirect_back()
+
+        # --- Perform Deletion ---
+        try:
+            date_str = self.option.proposed_date.strftime('%Y-%m-%d')
+            status_str = self.option.get_status_display()
+            proposer_username = self.option.proposed_by.username if self.option.proposed_by else 'N/A'
+
+            # Delete the object from the database
+            self.option.delete()
+
+            # Log the deletion event
+            log_assessment_event(self.assessment, user, f"Assessment date option ({date_str}, Status: {status_str}, Proposed by: {proposer_username}) deleted.")
+            messages.success(request, f"Date option {date_str} deleted successfully.")
+            logger.info(f"AssessmentDateOption {self.kwargs['option_pk']} deleted for assessment {self.assessment.pk} by user {user.username}")
+
+        except Exception as e:
+            logger.error(f"Error deleting date option {self.kwargs['option_pk']}: {e}", exc_info=True)
+            messages.error(request, f"An unexpected error occurred while deleting: {e}")
+
+        return self.redirect_back()
+
+    def redirect_back(self):
+        """ Redirects back to the appropriate detail view """
+        profile = getattr(self.request.user, 'userprofile', None)
+        if profile and profile.role == 'Client':
+            return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
+        else: # Assessor or Admin
+            return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
+
+
+class LaunchScanView(LoginRequiredMixin, View):
+    """
+    Handles the POST request to trigger the Tenable scan launch task.
+    """
+    http_method_names = ['post'] # Only allow POST requests
+
+    def post(self, request, *args, **kwargs):
+        assessment_pk = self.kwargs.get('assessment_pk')
+        print(f"[DEBUG LaunchScanView.post] Received POST for assessment {assessment_pk}") # DEBUG
+        logger.info(f"Scan launch requested for assessment {assessment_pk} by user {request.user.username}")
+
+        # --- Get Assessment and Perform Checks ---
+        try:
+            assessment = get_object_or_404(Assessment.objects.select_related('client', 'assessor'), pk=assessment_pk)
+
+            # 1. Permission Check (Admin, Assigned Assessor, or Client Owner)
+            user = request.user
+            profile = getattr(user, 'userprofile', None)
+            allowed = False
+            if is_admin(user): allowed = True
+            elif is_assessor(user) and assessment.assessor == user: allowed = True
+            elif is_client(user) and profile and assessment.client == profile.client: allowed = True
+
+            if not allowed:
+                 logger.warning(f"User {user.username} permission denied to launch scan for assessment {assessment_pk}.")
+                 messages.error(request, "You do not have permission to launch scans for this assessment.")
+                 # Determine redirect based on role
+                 if is_client(user): return redirect('tracker:client_dashboard')
+                 if is_assessor(user): return redirect('tracker:assessor_dashboard')
+                 return redirect('tracker:admin_dashboard')
+
+            # 2. Condition Check (Call the model method again for server-side validation)
+            scan_status = assessment.can_launch_ce_plus_scan()
+            if not scan_status.get('can_launch'):
+                 logger.warning(f"Scan launch aborted for assessment {assessment_pk}: Conditions not met ({scan_status.get('reason')}).")
+                 messages.error(request, f"Cannot launch scan: {scan_status.get('reason')}")
+                 # Redirect back to the detail page
+                 detail_url_name = 'tracker:client_assessment_detail' if is_client(user) else 'tracker:assessor_assessment_detail'
+                 return redirect(detail_url_name, pk=assessment.pk)
+
+                 # CHANGES BEGIN (Call the Celery task)
+                 # --- Trigger Celery Task ---
+            print(f"[DEBUG LaunchScanView.post] Checks passed for assessment {assessment_pk}. Triggering Celery task...")
+            launch_tenable_scan_task.delay(assessment.id)
+                 # CHANGES END
+
+            messages.success(request, f"Tenable scan launch initiated for assessment #{assessment.id}. This may take a few moments.")
+            logger.info(f"Tenable scan launch task triggered for assessment {assessment.id}")
+
+        except Http404:
+             messages.error(request, "Assessment not found.")
+             # Redirect based on role if possible
+             profile = getattr(request.user, 'userprofile', None)
+             if profile and profile.role == 'Client': return redirect('tracker:client_dashboard')
+             if profile and profile.role == 'Assessor': return redirect('tracker:assessor_dashboard')
+             return redirect('tracker:admin_dashboard') # Fallback
+        except Exception as e:
+            logger.exception(f"Error in LaunchScanView for assessment {assessment_pk}: {e}")
+            messages.error(request, f"An unexpected error occurred while trying to launch the scan: {e}")
+
+        # --- Redirect back to the detail view ---
+        # Determine redirect based on user role who initiated
+        user_role = getattr(request.user, 'userprofile', None).role if hasattr(request.user, 'userprofile') else None
+        detail_url_name = 'tracker:client_assessment_detail' if user_role == 'Client' else 'tracker:assessor_assessment_detail'
+        # Fallback if user has no profile role (e.g. admin might not have one depending on setup)
+        if user_role not in ['Client', 'Assessor']:
+            # Default to assessor view or admin view as appropriate
+            detail_url_name = 'tracker:assessor_assessment_detail' # Or redirect admin elsewhere?
+
+        # Ensure assessment_pk is available for redirect even after exception handling
+        redirect_pk = assessment_pk if 'assessment_pk' in locals() else self.kwargs.get('assessment_pk')
+        if redirect_pk:
+            try:
+                return redirect(detail_url_name, pk=redirect_pk)
+            except NoReverseMatch:
+                logger.error(f"NoReverseMatch trying to redirect to {detail_url_name} with pk {redirect_pk}")
+                # Fallback redirect if specific detail view fails
+                if user_role == 'Client': return redirect('tracker:client_dashboard')
+                if user_role == 'Assessor': return redirect('tracker:assessor_dashboard')
+                return redirect('tracker:admin_dashboard')
         else:
-            return reverse('tracker:assessment_cloud_service_list', kwargs={'assessment_pk': self.assessment.pk})
+            # Ultimate fallback if pk was lost
+            logger.error("Could not determine assessment PK for redirect in LaunchScanView")
+            return redirect('tracker:dashboard') # Or appropriate main dashboard
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -2160,21 +1887,7 @@ class ExternalIPDeleteView(LoginRequiredMixin, DeleteView):
     def get_success_url(self):
         return reverse_lazy('tracker:externalip_list', kwargs={'assessment_pk': self.assessment.pk})
 
-class AssessorOrAdminRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
-    def test_func(self):
-        # Assumes is_admin and is_assessor functions exist
-        return is_admin(self.request.user) or is_assessor(self.request.user)
 
-    def handle_no_permission(self):
-        if not self.request.user.is_authenticated:
-            return super().handle_no_permission()
-        messages.error(self.request, "Admin or Assessor permissions required.")
-        # Redirect non-admins/assessors
-        # Assuming client dashboard exists
-        if is_client(self.request.user):
-            return redirect('tracker:client_dashboard')
-        # Fallback for other roles or if dashboards don't exist
-        return redirect('login') # Or 'tracker:dashboard'
 
 class ExternalIPScanUpdateView(AssessorOrAdminRequiredMixin, UpdateView):
     model = ExternalIP
@@ -2381,3 +2094,1131 @@ class UploadExtractReportView(LoginRequiredMixin, View):
             'extraction_errors': extracted_data.get('errors') if extracted_data else ['Processing Error'], # Pass errors separately
             'uploaded_report': upload_instance
         })
+
+
+
+
+class TriggerTenableAssetTaggingView(AdminRequiredMixin, View): # Use Admin Required
+    def post(self, request, *args, **kwargs):
+        # Change pk lookup from Assessment to Client
+        client_id = self.kwargs.get('client_pk') # Get client_pk from URL
+        client = get_object_or_404(Client, pk=client_id)
+        try:
+            # Call the task with the client_id
+            apply_tenable_tag_to_assets.delay(client.id)
+            messages.success(request, f"Asset tagging process initiated for Client '{client.name}' based on agent group. This may take time.")
+        except Exception as e:
+             messages.error(request, f"Failed to initiate asset tagging for Client '{client.name}': {e}")
+
+        # Redirect back to the new group detail view
+        return HttpResponseRedirect(reverse('tracker:tenable_group_detail', kwargs={'pk': client.id}))
+
+
+
+class TriggerTenableClientTagSyncView(AssessorRequiredMixin, TemplateView): # Use Assessor permission
+    """
+    Manually triggers the Celery task to create or update the Tenable.io tag
+    for the client associated with the given assessment.
+    """
+    def post(self, request, *args, **kwargs):
+        assessment_id = self.kwargs.get('pk')
+        assessment = get_object_or_404(Assessment.objects.select_related('client'), pk=assessment_id)
+        client = assessment.client
+
+        if not client:
+            messages.error(request, "Cannot sync client tag: Assessment is not linked to a client.")
+            return HttpResponseRedirect(reverse('tracker:assessor_assessment_detail', kwargs={'pk': assessment_id}))
+
+        try:
+            # Trigger the task for the *client* ID
+            create_or_update_tenable_client_tag.delay(client.id)
+            messages.success(request, f"Client tag synchronization initiated for '{client.name}'. This may take a few moments.")
+        except Exception as e:
+             # Handle potential Celery connection errors
+             messages.error(request, f"Failed to initiate client tag sync: {e}")
+
+        # Redirect back to the assessment detail page
+        return HttpResponseRedirect(reverse('tracker:assessor_assessment_detail', kwargs={'pk': assessment_id}))
+
+
+
+
+
+class GenerateAgentScriptView(LoginRequiredMixin, TemplateView): # Use LoginRequiredMixin as base
+    template_name = 'tracker/assessor/generate_agent_script_v2.html' # Consider renaming/moving if client uses it heavily
+
+    def dispatch(self, request, *args, **kwargs):
+        """Check permissions before allowing access."""
+        assessment_pk = self.kwargs.get('pk') # Assuming 'pk' is used in both URLs
+        try:
+            assessment = get_object_or_404(Assessment.objects.select_related('client', 'assessor'), pk=assessment_pk)
+            self.assessment = assessment # Store for get_context_data
+        except Http404:
+            messages.error(request, "Assessment not found.")
+            # Redirect to a safe place, maybe the main dashboard
+            return redirect('tracker:dashboard') # Or appropriate dashboard based on role
+
+        user = request.user
+        allowed = False
+
+        # Check if Admin or Assessor (assigned or not, depending on your policy)
+        # Sticking to original AssessorOrAdmin check logic for these roles
+        if is_admin(user) or is_assessor(user):
+            # Optional: Restrict assessors only to their assigned assessments
+            # if is_assessor(user) and assessment.assessor != user:
+            #     pass # Not allowed if you want strict assignment
+            # else:
+            #     allowed = True # Allow admin, allow assigned assessor
+            allowed = True # Allow any admin or assessor for now
+
+        # Check if Client associated with the assessment
+        elif is_client(user) and hasattr(user, 'userprofile') and user.userprofile.client == assessment.client:
+            allowed = True
+
+        if not allowed:
+            logger.warning(f"User {user.username} denied access to generate script for assessment {assessment_pk}.")
+            messages.error(request, "You do not have permission to view this page.")
+            # Redirect based on role
+            if is_client(user):
+                return redirect('tracker:client_dashboard')
+            elif is_assessor(user):
+                return redirect('tracker:assessor_dashboard')
+            else: # Includes admins who failed check somehow, or other roles
+                return redirect('tracker:dashboard') # General dashboard
+
+        # User has permission, proceed with the view
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # self.assessment is set in dispatch
+        assessment = self.assessment
+        context['assessment'] = assessment
+        client = assessment.client
+        context['client'] = client
+
+        # --- Tenable Configuration ---
+        linking_key = getattr(config, 'TENABLE_LINKING_KEY', '')
+        tenable_base_url_setting = getattr(config, 'TENABLE_URL', 'https://cloud.tenable.com')
+        # Ensure URL has scheme
+        if not tenable_base_url_setting.startswith(('http://', 'https://')):
+            tenable_base_url = f'https://{tenable_base_url_setting}'
+        else:
+            tenable_base_url = tenable_base_url_setting
+        tenable_host_display = tenable_base_url.replace('https://', '').replace('http://', '')
+
+        context['tenable_host_display'] = tenable_host_display
+        agent_group_name_param = client.name # Group name is client name
+
+        context['agent_download_url'] = getattr(settings, 'TENABLE_AGENT_DOWNLOADS_PAGE_URL', 'https://www.tenable.com/downloads/nessus-agents')
+        context['linking_key_set'] = bool(linking_key)
+        context['page_title'] = f"Generate Nessus Agent Install Script for {client.name}"
+
+        # --- Generate Official Script Commands ---
+        scripts = {}
+        if not linking_key:
+            logger.warning(f"Tenable Linking Key is not set in Constance config. Cannot generate agent scripts for assessment {assessment.pk}.")
+            scripts['error'] = "Tenable Linking Key not configured in application settings. Cannot generate scripts."
+            scripts['windows_official'] = "# Linking key not configured in settings."
+            scripts['linux_macos_official'] = "# Linking key not configured in settings."
+        else:
+            # Windows Command
+            windows_script_url = f"{tenable_base_url}/install/agent/installer/ms-install-script.ps1"
+            groups_ps_arg = f"'{agent_group_name_param}'" # Single quotes for PowerShell
+            scripts['windows_official'] = (
+                f'$ProgressPreference = "SilentlyContinue"; Write-Host "Downloading Tenable PowerShell Installer..."; '
+                f'Invoke-WebRequest -Uri "{windows_script_url}" -OutFile "./ms-install-script.ps1"; '
+                f'Write-Host "Running Installer Script (requires Administrator)..."; '
+                f'.\\ms-install-script.ps1 -key "{linking_key}" -type "agent" -groups {groups_ps_arg}; '
+                f'Write-Host "Cleaning up..."; Remove-Item -Path "./ms-install-script.ps1" -Force -ErrorAction SilentlyContinue; '
+                f'$ProgressPreference = "Continue"; Write-Host "Windows Agent Installation Attempt Complete."'
+            )
+
+            # Linux/macOS Command
+            encoded_group_name = quote(agent_group_name_param) # URL encode group name
+            linux_install_url = f"{tenable_base_url}/install/agent?groups={encoded_group_name}"
+            scripts['linux_macos_official'] = (
+                f"echo 'Downloading and executing Tenable installer script (requires root/sudo)...'; "
+                f"curl -sSLk -H 'X-Key: {linking_key}' '{linux_install_url}' | sudo bash"
+            )
+        context['scripts'] = scripts
+
+        # Fetch ALL Valid Agent URLs for the manual list
+        all_agent_urls = list(NessusAgentURL.objects.filter(is_valid=True).order_by(
+            'os_name', 'architecture', '-agent_version'
+        ))
+        context['all_agent_urls'] = all_agent_urls
+        context['urls_found'] = bool(all_agent_urls)
+
+        # Pass user role to potentially adjust template slightly if needed
+        context['user_role'] = self.request.user.userprofile.role if hasattr(self.request.user, 'userprofile') else None
+
+        return context
+
+
+
+class TenableGroupDetailView(AdminRequiredMixin, DetailView):
+    model = Client
+    template_name = 'tracker/tenable/group_detail.html'
+    context_object_name = 'client'
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        client = self.get_object()
+        context['page_title'] = f"Tenable Agent Group: {client.name}"
+        context['agents'] = []
+        context['agent_count'] = 0
+        context['error_message'] = None
+        context['config'] = config
+
+        tio = get_tenable_io_client()
+        if not tio:
+            context['error_message'] = "Could not initialize connection to Tenable.io. Check API keys and URL in Django Admin > Constance."
+            logger.error(context['error_message'])
+            return context
+
+        agent_group_name = client.name
+        agent_group_id = None
+        try:
+            logger.debug(f"Searching for Tenable agent group named: '{agent_group_name}'")
+            agent_groups = tio.agent_groups.list()
+            for group in agent_groups:
+                if group['name'] == agent_group_name:
+                    agent_group_id = group.get('id')
+                    logger.debug(f"Found group ID {agent_group_id} for name '{agent_group_name}'")
+                    break
+
+            if not agent_group_id:
+                logger.warning(f"Agent group '{agent_group_name}' not found in Tenable.io.")
+                context['error_message'] = f"Agent group '{agent_group_name}' not found in Tenable.io. Have you run the client sync task, and does the name match exactly (case-sensitive)?"
+                return context
+
+            logger.debug(f"Attempting to list agents for group ID: {agent_group_id}")
+            try:
+                 all_agents_iterator = tio.agents.list(limit=1000)
+                 logger.debug(f"Fetched agent iterator (limit 1000). Filtering for group ID {agent_group_id}...")
+
+                 agents_in_group = []
+                 for agent_data in all_agents_iterator:
+                     agent_groups_list = agent_data.get('groups', [])
+                     if isinstance(agent_groups_list, list) and any(ag.get('id') == agent_group_id for ag in agent_groups_list):
+                          timestamp = agent_data.get('last_connect')
+                          if timestamp:
+                              try:
+                                  # === CORRECTED LINE BELOW ===
+                                  # Use timezone.utc from the standard datetime module import
+                                  agent_data['last_connect_dt'] = datetime.fromtimestamp(int(timestamp), tz=pytz.utc)
+                                  # === END CORRECTION ===
+                              except (ValueError, TypeError, OverflowError) as ts_err:
+                                  logger.warning(f"Could not convert last_connect timestamp '{timestamp}' for agent {agent_data.get('id')}: {ts_err}")
+                                  agent_data['last_connect_dt'] = None
+                          else:
+                              agent_data['last_connect_dt'] = None
+                          agents_in_group.append(agent_data)
+
+                 logger.debug(f"Found {len(agents_in_group)} agents in group '{agent_group_name}'.")
+                 context['agents'] = agents_in_group
+                 context['agent_count'] = len(agents_in_group)
+
+            except APIError as e:
+                logger.exception(f"Tenable API Error listing agents (potentially during fetch): {e}")
+                context['error_message'] = f"API Error listing agents: {e}"
+            except ForbiddenError:
+                 logger.exception("Permission denied listing agents in Tenable. Check API key permissions.")
+                 context['error_message'] = "Permission denied listing agents. Check API key permissions."
+            except Exception as e:
+                logger.exception(f"Unexpected error listing or processing agents for group '{agent_group_name}': {e}")
+                context['error_message'] = f"Unexpected error listing/processing agents: {e}" # Keep simple for user
+
+        except APIError as e:
+            logger.exception(f"Tenable API Error finding agent group '{agent_group_name}': {e}")
+            context['error_message'] = f"API Error finding agent group '{agent_group_name}': {e}"
+        except ForbiddenError:
+             logger.exception("Permission denied listing agent groups in Tenable. Check API key permissions.")
+             context['error_message'] = "Permission denied listing agent groups. Check API key permissions."
+        except Exception as e:
+             logger.exception(f"Unexpected error finding agent group '{agent_group_name}': {e}")
+             context['error_message'] = f"Unexpected error finding agent group: {e}" # Keep simple for user
+
+        return context
+
+
+
+
+
+
+
+class AssessorAvailabilityListView(AssessorOrAdminRequiredMixin, ListView):
+    """
+    View for Assessors/Admins to see and manage their unavailable dates.
+    Handles both displaying the list (GET) and adding a new date (POST).
+    """
+    model = AssessorAvailability
+    template_name = 'tracker/assessor/assessor_availability_list.html' # Template to be created
+    context_object_name = 'unavailable_dates'
+
+    def get_queryset(self):
+        # Show only the logged-in user's unavailable dates
+        # Note: AssessorOrAdminRequiredMixin ensures user is one of these roles
+        # If Admins need to see ALL assessor availability, this query needs adjustment
+        return AssessorAvailability.objects.filter(assessor=self.request.user).order_by('unavailable_date')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        # Add the form for adding new unavailable dates
+        if 'form' not in context: # Add form if not already passed (e.g., on POST failure)
+            context['form'] = AssessorAvailabilityForm()
+        context['page_title'] = "Manage My Unavailable Dates"
+        return context
+
+    def post(self, request, *args, **kwargs):
+        """Handles POST request for adding a new unavailable date."""
+        form = AssessorAvailabilityForm(request.POST)
+        if form.is_valid():
+            try:
+                availability = form.save(commit=False)
+                availability.assessor = request.user # Set the assessor to the logged-in user
+                availability.save()
+                messages.success(request, f"Date {availability.unavailable_date.strftime('%Y-%m-%d')} marked as unavailable.")
+                return HttpResponseRedirect(reverse_lazy('tracker:assessor_availability_list'))
+            except IntegrityError: # Catch unique_together constraint violation
+                form.add_error('unavailable_date', "This date is already marked as unavailable.")
+                messages.error(request, "This date is already marked as unavailable.")
+            except Exception as e:
+                messages.error(request, f"An error occurred: {e}")
+        else:
+             messages.error(request, "Please correct the errors below.")
+
+        # Re-render the page with the invalid form and existing data
+        # Need to manually fetch the queryset again for the context if using basic View/POST override
+        # ListView handles this better if combined with FormMixin/CreateView logic,
+        # but this explicit way works for a simple combined view.
+        self.object_list = self.get_queryset()
+        context = self.get_context_data(form=form)
+        return self.render_to_response(context)
+
+
+class DeleteAssessorAvailabilityView(AssessorOrAdminRequiredMixin, DeleteView):
+    """ Handles deleting an AssessorAvailability record. """
+    model = AssessorAvailability
+    # Redirect back to the list view after successful deletion
+    success_url = reverse_lazy('tracker:assessor_availability_list')
+    template_name = 'tracker/assessor/assessor_availability_confirm_delete.html' # Template to be created
+    context_object_name = 'availability'
+
+    def get_queryset(self):
+        # Ensure users can only delete their *own* availability records
+        return AssessorAvailability.objects.filter(assessor=self.request.user)
+
+    def form_valid(self, form):
+        # Overriding form_valid to add messages (DeleteView uses form_valid internally for POST)
+        availability_date = self.object.unavailable_date.strftime('%Y-%m-%d')
+        response = super().form_valid(form)
+        messages.success(self.request, f"Availability block for {availability_date} removed successfully.")
+        return response
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['page_title'] = f"Remove Unavailability for {self.object.unavailable_date.strftime('%Y-%m-%d')}"
+        return context
+
+
+def user_can_manage_assessment_dates(user, assessment, option=None):
+    """ Checks if a user can manage dates for an assessment/option """
+    if not user or not user.is_authenticated:
+        return False
+
+    # Check if an option is already Confirmed (for the assessment overall)
+    if AssessmentDateOption.objects.filter(assessment=assessment, status=AssessmentDateOption.Status.CONFIRMED).exists():
+        # If already confirmed, generally no more management allowed,
+        # EXCEPT maybe deleting a rejected/suggested one by assessor?
+        # For now, block all management if confirmed.
+        # If allowing deletion post-confirmation, refine this check.
+        # If we are checking for deleting a *specific* non-confirmed option, allow it:
+        if option and option.status != AssessmentDateOption.Status.CONFIRMED:
+            pass # Allow check to continue for specific non-confirmed option
+        else:
+            return False # Block general management if any option is confirmed
+
+    # Check if assessment status allows management (before testing/completion)
+    is_before_testing = assessment.status in ['Draft', 'Date_Negotiation', 'Scoping_Client', 'Scoping_Review']
+    if not is_before_testing:
+        return False
+
+    # Check user role permission
+    profile = getattr(user, 'userprofile', None)
+    if not profile:
+        return False
+
+    is_client_user = profile.role == 'Client' and assessment.client == profile.client
+    is_assessor_user = profile.role == 'Assessor' and assessment.assessor == user
+    is_admin_user = profile.role == 'Admin'
+
+    # Basic permission: Must be related client, assigned assessor, or admin
+    has_basic_permission = is_client_user or is_assessor_user or is_admin_user
+    if not has_basic_permission:
+        return False
+
+    # Specific action permissions (can be added later if needed, e.g., only proposer can delete 'Suggested')
+    # For now, if user has basic permission and status allows, return True
+    return True
+
+
+
+class UpdateAssessmentDateStatusView(LoginRequiredMixin, View):
+    """ Handles POST requests to update the status of an AssessmentDateOption """
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        self.assessment = get_object_or_404(Assessment.objects.select_related('assessor'), pk=self.kwargs['assessment_pk']) # Select assessor
+        self.option = get_object_or_404(AssessmentDateOption, pk=self.kwargs['option_pk'], assessment=self.assessment)
+
+    def post(self, request, *args, **kwargs):
+        new_status = request.POST.get('new_status')
+        user = request.user
+
+        valid_statuses = [choice[0] for choice in AssessmentDateOption.Status.choices]
+        if new_status not in valid_statuses:
+            messages.error(request, "Invalid status provided.")
+            return self.redirect_back()
+
+        # Use the helper for permission check, but note it blocks if *any* date is confirmed.
+        # We might need more granular checks depending on the action.
+        if not user_can_manage_assessment_dates(user, self.assessment, self.option):
+            # Check if the reason is simply that another date is already confirmed
+            if AssessmentDateOption.objects.filter(assessment=self.assessment, status=AssessmentDateOption.Status.CONFIRMED).exists():
+                 messages.warning(request, "An assessment date has already been confirmed. Status cannot be changed.")
+            else:
+                 messages.error(request, "You do not have permission to update the status of this date option at this time.")
+            return self.redirect_back()
+
+        original_status = self.option.status
+        can_perform_action = False
+        log_message = "" # Initialize log message
+
+        # Role-based permissions
+        if is_client(user):
+            if new_status == AssessmentDateOption.Status.CLIENT_PREFERRED and original_status == AssessmentDateOption.Status.SUGGESTED:
+                can_perform_action = True
+        elif is_assessor(user) or is_admin(user):
+            # --- Assessor/Admin Confirmation Logic ---
+            if new_status == AssessmentDateOption.Status.CONFIRMED and original_status != AssessmentDateOption.Status.CONFIRMED and original_status != AssessmentDateOption.Status.REJECTED:
+                # Check Assessor Availability
+                if self.assessment.assessor and AssessorAvailability.objects.filter(assessor=self.assessment.assessor, unavailable_date=self.option.proposed_date).exists():
+                    messages.error(request, f"Cannot confirm: Assessor ({self.assessment.assessor.username}) is unavailable on {self.option.proposed_date.strftime('%Y-%m-%d')}.")
+                    return self.redirect_back()
+                # Check CE+ Window
+                if self.assessment.assessment_type == 'CE+' and self.assessment.date_ce_passed:
+                    window_end_date = self.assessment.ce_plus_window_end_date
+                    if not (self.assessment.date_ce_passed <= self.option.proposed_date <= window_end_date):
+                        messages.error(request, f"Cannot confirm: Date is outside the CE+ window ({self.assessment.date_ce_passed.strftime('%Y-%m-%d')} to {window_end_date.strftime('%Y-%m-%d')}).")
+                        return self.redirect_back()
+                elif self.assessment.assessment_type == 'CE+' and not self.assessment.date_ce_passed:
+                    messages.error(request, "Cannot confirm: CE+ assessment requires the CE Self-Assessment Pass Date to be set first.")
+                    return self.redirect_back()
+
+                can_perform_action = True # If all checks pass
+
+            # --- Assessor/Admin Rejection Logic ---
+            elif new_status == AssessmentDateOption.Status.REJECTED and original_status != AssessmentDateOption.Status.CONFIRMED and original_status != AssessmentDateOption.Status.REJECTED:
+                can_perform_action = True
+
+        if not can_perform_action:
+            messages.error(request, f"Your role cannot change status from '{original_status}' to '{new_status}'.")
+            return self.redirect_back()
+
+        # --- Perform Update ---
+        try:
+            with transaction.atomic():
+                self.option.status = new_status
+                log_message = f"Assessment date option ({self.option.proposed_date.strftime('%Y-%m-%d')}) status changed to {self.option.get_status_display()}."
+
+                if new_status == AssessmentDateOption.Status.CLIENT_PREFERRED:
+                    AssessmentDateOption.objects.filter(
+                        assessment=self.assessment, status=AssessmentDateOption.Status.CLIENT_PREFERRED
+                    ).exclude(pk=self.option.pk).update(status=AssessmentDateOption.Status.SUGGESTED)
+                    log_message += " Other preferences reset to 'Suggested'."
+
+                if new_status == AssessmentDateOption.Status.CONFIRMED:
+                    # 1. Update the Assessment's TARGET date (as requested)
+                    self.assessment.date_target_end = self.option.proposed_date
+                    # Also update date_start if it wasn't set or makes sense?
+                    if not self.assessment.date_start:
+                        self.assessment.date_start = self.option.proposed_date
+                    self.assessment.save(update_fields=['date_target_end', 'date_start']) # Save updated date(s)
+
+                    # 2. Reject other options
+                    rejected_count = AssessmentDateOption.objects.filter(
+                        assessment=self.assessment,
+                        status__in=[AssessmentDateOption.Status.SUGGESTED, AssessmentDateOption.Status.CLIENT_PREFERRED]
+                    ).exclude(pk=self.option.pk).update(status=AssessmentDateOption.Status.REJECTED)
+                    log_message += f" Assessment Target End Date set. {rejected_count} other option(s) rejected."
+
+                    # 3. Attempt to close the workflow step
+                    # --- ADJUST 'Schedule Assessment Date' IF YOUR STEP NAME IS DIFFERENT ---
+                    try:
+                        schedule_step_def = WorkflowStepDefinition.objects.get(name='Schedule Assessment Date') # Find the definition
+                        workflow_step = AssessmentWorkflowStep.objects.filter(
+                            assessment=self.assessment,
+                            step_definition=schedule_step_def
+                        ).first()
+                        if workflow_step and workflow_step.status != AssessmentWorkflowStep.Status.COMPLETE:
+                            workflow_step.status = AssessmentWorkflowStep.Status.COMPLETE
+                            workflow_step.completed_at = timezone.now()
+                            workflow_step.completed_by = user
+                            workflow_step.save()
+                            log_message += f" Workflow step '{schedule_step_def.name}' marked complete."
+                            logger.info(f"Workflow step '{schedule_step_def.name}' completed for assessment {self.assessment.pk}")
+                        elif not workflow_step:
+                            logger.warning(f"Could not find workflow step 'Schedule Assessment Date' for assessment {self.assessment.pk} to mark complete.")
+                    except WorkflowStepDefinition.DoesNotExist:
+                         logger.error("WorkflowStepDefinition 'Schedule Assessment Date' does not exist.")
+                    except Exception as wf_err:
+                         logger.error(f"Error updating workflow step for assessment {self.assessment.pk}: {wf_err}", exc_info=True)
+                    # --- End Workflow Step Update ---
+
+                # Save the option itself
+                self.option.save()
+                log_assessment_event(self.assessment, user, log_message) # Log the combined message
+                messages.success(request, f"Date {self.option.proposed_date.strftime('%Y-%m-%d')} status updated to {self.option.get_status_display()}.")
+
+        except Exception as e:
+            logger.error(f"Error updating date option status for option {self.option.pk}: {e}", exc_info=True)
+            messages.error(request, f"An unexpected error occurred: {e}")
+
+        return self.redirect_back()
+
+    def redirect_back(self):
+        if is_client(self.request.user):
+            return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
+        else:
+            return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
+
+
+
+class DeleteAssessmentDateOptionView(LoginRequiredMixin, View):
+    """ Handles POST requests to delete an AssessmentDateOption """
+    # Keep the previous implementation, but ensure the permission check is appropriate
+    # (user_can_manage_assessment_dates might be too strict if it blocks based on confirmation status)
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        self.assessment = get_object_or_404(Assessment, pk=self.kwargs['assessment_pk'])
+        self.option = get_object_or_404(AssessmentDateOption, pk=self.kwargs['option_pk'], assessment=self.assessment)
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+
+        # Simpler Permission Check for Deletion:
+        # Allow deletion if status allows management overall OR if user is admin trying to delete non-confirmed
+        can_delete = False
+        profile = getattr(user, 'userprofile', None)
+        is_before_testing = self.assessment.status in ['Draft', 'Date_Negotiation', 'Scoping_Client', 'Scoping_Review']
+
+        if self.option.status == AssessmentDateOption.Status.CONFIRMED:
+            messages.error(request, "Confirmed dates cannot be deleted via this interface.")
+        elif is_before_testing: # Only allow deletion before testing starts
+            if self.option.status == AssessmentDateOption.Status.SUGGESTED:
+                # Allow proposer or assessor/admin
+                if (self.option.proposed_by == user) or (profile and profile.role in ['Admin', 'Assessor']):
+                    can_delete = True
+            elif self.option.status in [AssessmentDateOption.Status.CLIENT_PREFERRED, AssessmentDateOption.Status.REJECTED]:
+                 # Allow assessor/admin
+                if profile and profile.role in ['Admin', 'Assessor']:
+                    can_delete = True
+
+        if not can_delete:
+             messages.error(request, "You do not have permission to delete this date option at this time.")
+             return self.redirect_back()
+
+        # Perform Deletion
+        try:
+            date_str = self.option.proposed_date.strftime('%Y-%m-%d')
+            status_str = self.option.get_status_display()
+            self.option.delete()
+            log_assessment_event(self.assessment, user, f"Assessment date option ({date_str}, Status: {status_str}) deleted.")
+            messages.success(request, f"Date option {date_str} deleted successfully.")
+        except Exception as e:
+            logger.error(f"Error deleting date option {self.option.pk}: {e}", exc_info=True)
+            messages.error(request, f"An unexpected error occurred while deleting: {e}")
+
+        return self.redirect_back()
+
+    def redirect_back(self):
+        if is_client(self.request.user):
+            return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
+        else:
+            return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
+
+
+# Ensure ProposeAssessmentDateView uses the helper if needed, though its internal checks might suffice
+class ProposeAssessmentDateView(LoginRequiredMixin, CreateView):
+    model = AssessmentDateOption
+    form_class = AssessmentDateOptionForm
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        self.assessment = get_object_or_404(Assessment, pk=self.kwargs['assessment_pk'])
+        # REMOVED permission check based on assessment status/confirmation
+        # Basic login check is handled by LoginRequiredMixin
+        profile = getattr(request.user, 'userprofile', None)
+        if not profile or profile.role not in ['Admin', 'Assessor', 'Client']:
+             raise PermissionDenied("Invalid user role.")
+        if profile.role == 'Client' and self.assessment.client != profile.client:
+             raise PermissionDenied("Client mismatch.")
+        # Assessors/Admins can propose for any assessment they can access
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs['assessment'] = self.assessment
+        return kwargs
+
+    def form_valid(self, form):
+        logger.debug(f"ProposeAssessmentDateView: form_valid entered for assessment {self.assessment.pk} by user {self.request.user.username}") # DEBUG log
+        form.instance.assessment = self.assessment
+        form.instance.proposed_by = self.request.user
+        try:
+            # Save the object first to get an ID
+            self.object = form.save()
+            logger.info(f"AssessmentDateOption {self.object.pk} created for assessment {self.assessment.pk} with date {self.object.proposed_date}") # INFO log
+
+            log_assessment_event(
+                self.assessment,
+                self.request.user,
+                f"Proposed assessment date: {self.object.proposed_date.strftime('%Y-%m-%d')}"
+                 + (f". Notes: {form.cleaned_data.get('notes')}" if form.cleaned_data.get('notes') else ".")
+            )
+            messages.success(self.request, f"Date {self.object.proposed_date.strftime('%Y-%m-%d')} proposed successfully.")
+        except IntegrityError:
+            logger.warning(f"IntegrityError: Date {form.cleaned_data.get('proposed_date')} already proposed for assessment {self.assessment.pk}.") # WARN log
+            messages.error(self.request, f"The date {form.cleaned_data.get('proposed_date').strftime('%Y-%m-%d')} has already been proposed.")
+            # Need to redirect back WITH the form errors shown in the template
+            # Re-rendering the detail view with the invalid form is tricky here.
+            # Redirecting and showing message is simpler for now.
+            return HttpResponseRedirect(self.get_success_url())
+        except Exception as e:
+            logger.error(f"Error saving proposed date for assessment {self.assessment.pk}: {e}", exc_info=True) # ERROR log
+            messages.error(self.request, f"An unexpected error occurred: {e}")
+            return HttpResponseRedirect(self.get_success_url())
+
+        logger.debug(f"ProposeAssessmentDateView: form_valid completed successfully.") # DEBUG log
+        return HttpResponseRedirect(self.get_success_url())
+
+    def form_invalid(self, form):
+        logger.warning(f"ProposeAssessmentDateView: form_invalid for assessment {self.assessment.pk}. Errors: {form.errors.as_json()}") # WARN log
+        # Pass errors via messages
+        for field, errors in form.errors.items():
+            for error in errors:
+                 field_name_display = form.fields[field].label if field != '__all__' and field in form.fields else 'Proposal Error'
+                 messages.error(self.request, f"{field_name_display}: {error}")
+        # Redirect back to detail page, messages will be displayed
+        return HttpResponseRedirect(self.get_success_url())
+
+    def get_success_url(self):
+        if is_client(self.request.user):
+            return reverse('tracker:client_assessment_detail', kwargs={'pk': self.assessment.pk})
+        else:
+            return reverse('tracker:assessor_assessment_detail', kwargs={'pk': self.assessment.pk})
+
+# CHANGES BEGIN (Whole Class Modified/Replaced - Using print for DEBUG)
+class MapAgentsView(LoginRequiredMixin, View):
+    template_name = 'tracker/map_agents.html'
+
+    def get_assessment(self, assessment_pk: int) -> Assessment:
+        """ Helper to get assessment and check object-level permissions.
+            Raises PermissionDenied or Http404 on failure.
+            Returns the assessment object if successful.
+        """
+        print(f"[DEBUG MapAgentsView.get_assessment {assessment_pk}] Checking permissions for user {self.request.user.username}")
+
+        # Fetch assessment first
+        try:
+            assessment = get_object_or_404(Assessment.objects.select_related('client', 'assessor'), pk=assessment_pk)
+        except Http404:
+            logger.warning(f"[MapAgentsView get_assessment {assessment_pk}] Assessment not found.")
+            raise # Re-raise Http404
+
+        user = self.request.user
+        profile = getattr(user, 'userprofile', None)
+
+        # Perform permission checks
+        allowed = False
+        is_adm = is_admin(user)
+        is_ass = is_assessor(user)
+        is_cli = is_client(user)
+        print(f"[DEBUG MapAgentsView.get_assessment {assessment_pk}] Roles: Admin={is_adm}, Assessor={is_ass}, Client={is_cli}")
+
+        if is_adm: allowed = True
+        elif is_ass and assessment.assessor == user: allowed = True
+        elif is_cli and profile and assessment.client == profile.client: allowed = True
+
+        print(f"[DEBUG MapAgentsView.get_assessment {assessment_pk}] Ownership/Assignment Check Passed: {allowed}")
+
+        if not allowed:
+             logger.warning(f"[MapAgentsView get_assessment {assessment_pk}] User {user.username} permission denied (Role/Ownership mismatch).")
+             raise PermissionDenied("You do not have permission for this specific assessment.")
+
+        if assessment.assessment_type != 'CE+':
+            logger.warning(f"[MapAgentsView get_assessment {assessment_pk}] Attempt to map agents for non-CE+ assessment")
+            raise PermissionDenied("Agent mapping is only applicable for CE+ assessments.")
+
+        print(f"[DEBUG MapAgentsView.get_assessment {assessment_pk}] Permissions checks passed.")
+        return assessment
+
+    # --- GET Request Handler ---
+    def get(self, request, *args, **kwargs):
+        assessment_pk = self.kwargs.get('assessment_pk')
+        print(f"[DEBUG MapAgentsView.get {assessment_pk}] Handling GET request by user {request.user.username}")
+
+        try:
+            assessment = self.get_assessment(assessment_pk)
+            self.assessment = assessment
+        except PermissionDenied as e:
+            messages.error(request, str(e))
+            # Role-based redirect handled in handle_no_permission
+            return self.handle_no_permission()
+        except Http404:
+             messages.error(request, "Assessment not found.")
+             return self.handle_no_permission() # Use central handler for redirect
+
+        # --- If permissions pass, continue with GET logic ---
+        print(f"[DEBUG MapAgentsView.get {assessment_pk}] Permissions OK, fetching data...")
+        sampled_items = ScopedItem.objects.filter(
+            assessment=assessment, is_in_ce_plus_sample=True
+        ).select_related('operating_system', 'network').order_by('item_type', 'identifier')
+
+        if not sampled_items.exists():
+             print(f"[DEBUG MapAgentsView.get {assessment_pk}] No sample items found, redirecting.")
+             logger.info(f"[MapAgentsView GET {assessment_pk}] No sample items found, redirecting.") # Keep info log
+             messages.info(request, "No items currently selected in the CE+ sample for this assessment.")
+             profile = getattr(request.user, 'userprofile', None)
+             detail_url_name = 'tracker:client_assessment_detail' if profile and profile.role == 'Client' else 'tracker:assessor_assessment_detail'
+             return redirect(detail_url_name, pk=assessment.pk)
+
+        # Fetch available agents from Tenable.io
+        available_agents = []
+        tenable_error = None
+        tio = get_tenable_io_client()
+        if not tio:
+            tenable_error = "Could not connect to Tenable.io. Check API configuration."
+            logger.error(f"[MapAgentsView GET {assessment_pk}] {tenable_error}") # Keep error log
+        elif not assessment.client:
+            tenable_error = "Assessment is not linked to a client. Cannot determine agent group."
+            logger.error(f"[MapAgentsView GET {assessment_pk}] {tenable_error}") # Keep error log
+        else:
+            agent_group_name = assessment.client.name
+            agent_group_id = None
+            try:
+                print(f"[DEBUG MapAgentsView.get {assessment_pk}] Searching Tenable group '{agent_group_name}'")
+                agent_groups = tio.agent_groups.list()
+                for group in agent_groups:
+                    if group['name'] == agent_group_name:
+                        agent_group_id = group.get('id')
+                        break
+                if not agent_group_id:
+                    logger.warning(f"[MapAgentsView GET {assessment_pk}] Tenable group '{agent_group_name}' not found.") # Keep warning log
+                    tenable_error = f"Tenable agent group '{agent_group_name}' not found. Ensure client name matches group name and sync task has run."
+                else:
+                    print(f"[DEBUG MapAgentsView.get {assessment_pk}] Found group {agent_group_id}. Fetching agents.")
+                    all_agents_iterator = tio.agents.list(limit=2000)
+
+                    processed_agent_count = 0
+                    for agent_data in all_agents_iterator:
+                        processed_agent_count += 1
+                        agent_groups_list = agent_data.get('groups', [])
+                        if isinstance(agent_groups_list, list) and any(ag.get('id') == agent_group_id for ag in agent_groups_list):
+                            agent_uuid = agent_data.get('uuid')
+                            agent_id_fallback = agent_data.get('id')
+
+                            print(f"[DEBUG MapAgentsView.get {assessment_pk}] Processing agent data: Name='{agent_data.get('name')}', Found UUID='{agent_uuid}', Found ID='{agent_id_fallback}'")
+
+                            final_id_for_list = agent_uuid
+                            if not final_id_for_list:
+                                final_id_for_list = agent_id_fallback
+                                if final_id_for_list:
+                                     logger.warning(f"[MapAgentsView GET {assessment_pk}] Agent '{agent_data.get('name')}' missing 'uuid' field, falling back to 'id': {agent_id_fallback}") # Keep warning log
+                                else:
+                                     logger.error(f"[MapAgentsView GET {assessment_pk}] Agent data missing both 'uuid' and 'id' field. Skipping agent: {agent_data}") # Keep error log
+                                     continue
+
+                            agent_name = agent_data.get('name')
+                            if final_id_for_list and agent_name:
+                                available_agents.append({
+                                    'uuid': final_id_for_list,
+                                    'name': agent_name,
+                                    'status': agent_data.get('status', 'unknown').lower(),
+                                    'platform': agent_data.get('platform', 'unknown')
+                                })
+                            else:
+                                 logger.warning(f"[MapAgentsView GET {assessment_pk}] Skipping agent due to missing final_id or name. Data: {agent_data}") # Keep warning log
+
+                    available_agents.sort(key=lambda x: x['name'].lower())
+                    print(f"[DEBUG MapAgentsView.get {assessment_pk}] Processed {processed_agent_count} agents API. Added {len(available_agents)} agents from group '{agent_group_name}' to dropdown.")
+
+            except (APIError, ForbiddenError) as e:
+                 logger.exception(f"[MapAgentsView GET {assessment_pk}] Error fetching Tenable groups/agents: {e}") # Keep exception log
+                 tenable_error = f"Error communicating with Tenable.io: {e}"
+            except Exception as e:
+                 logger.exception(f"[MapAgentsView GET {assessment_pk}] Unexpected error fetching Tenable data: {e}") # Keep exception log
+                 tenable_error = "An unexpected error occurred while fetching Tenable data."
+
+        # Prepare data structure for template
+        mapping_data = []
+        agents_by_name_lower = {agent['name'].lower(): agent for agent in available_agents} if available_agents else {}
+        for item in sampled_items:
+            preselected_uuid = item.linked_tenable_agent_uuid
+            suggested_agent = None
+            if not preselected_uuid and item.identifier:
+                suggested_agent = agents_by_name_lower.get(item.identifier.lower())
+            mapping_data.append({
+                'item': item,
+                'preselected_uuid': preselected_uuid,
+                'suggested_agent': suggested_agent
+            })
+
+        context = {
+            'assessment': assessment,
+            'mapping_data': mapping_data,
+            'available_agents': available_agents,
+            'tenable_error': tenable_error,
+            'no_sample_items': not sampled_items.exists()
+        }
+        print(f"[DEBUG MapAgentsView.get {assessment_pk}] Rendering template {self.template_name}")
+        return render(request, self.template_name, context)
+
+
+    # --- POST Request Handler ---
+    def post(self, request, *args, **kwargs):
+        assessment_pk = self.kwargs.get('assessment_pk')
+        print(f"[DEBUG MapAgentsView.post {assessment_pk}] Handling POST request by user {request.user.username}")
+
+        try:
+            assessment = self.get_assessment(assessment_pk)
+            self.assessment = assessment
+        except PermissionDenied as e:
+            messages.error(request, str(e))
+            return self.handle_no_permission()
+        except Http404:
+             messages.error(request, "Assessment not found.")
+             return self.handle_no_permission()
+
+        # --- If permissions pass, continue with POST logic ---
+        print(f"[DEBUG MapAgentsView.post {assessment_pk}] Permissions OK, processing form data.")
+        items_updated = 0
+        items_processed = 0
+        # Flag to indicate if any validation error occurred for user feedback
+        validation_errors_occurred = False
+        try:
+            with transaction.atomic():
+                post_data_items = list(request.POST.items())
+                print(f"[DEBUG MapAgentsView.post {assessment_pk}] Processing {len(post_data_items)} items in POST data.")
+
+                for key, selected_agent_uuid_str in post_data_items:
+                     if key.startswith('map_item_'):
+                        items_processed += 1
+                        item_pk_str = item_pk = None
+                        try:
+                            item_pk_str = key.split('_')[-1]
+                            item_pk = int(item_pk_str)
+                            print(f"[DEBUG MapAgentsView.post {assessment_pk}] Processing item PK: {item_pk}")
+
+                            item_to_update = get_object_or_404(
+                                ScopedItem, pk=item_pk, assessment=assessment, is_in_ce_plus_sample=True
+                            )
+                            current_uuid = item_to_update.linked_tenable_agent_uuid
+                            print(f"[DEBUG MapAgentsView.post {assessment_pk}] Found item {item_pk}. Current linked UUID: {current_uuid}")
+
+                            print(f"[DEBUG MapAgentsView.post {assessment_pk}] Raw value for key '{key}': '{selected_agent_uuid_str}' (Type: {type(selected_agent_uuid_str)})")
+
+                            agent_uuid_to_save = None if selected_agent_uuid_str == "" else selected_agent_uuid_str
+                            print(f"[DEBUG MapAgentsView.post {assessment_pk}] Form value received (UUID to save): {agent_uuid_to_save}")
+
+                            current_uuid_str = str(current_uuid) if current_uuid else None
+                            agent_uuid_to_save_str = str(agent_uuid_to_save) if agent_uuid_to_save else None
+
+                            if current_uuid_str != agent_uuid_to_save_str:
+                                print(f"[DEBUG MapAgentsView.post {assessment_pk}] Change detected! Attempting to save UUID '{agent_uuid_to_save}' for item {item_pk}.")
+                                try:
+                                     item_to_update.linked_tenable_agent_uuid = agent_uuid_to_save
+                                     item_to_update.full_clean(validate_unique=False)
+                                     item_to_update.save(update_fields=['linked_tenable_agent_uuid'])
+                                     items_updated += 1
+                                     print(f"[DEBUG MapAgentsView.post {assessment_pk}] Item {item_pk} SAVE successful.")
+                                except ValidationError as ve:
+                                     validation_errors_occurred = True # Set flag
+                                     logger.error(f"[MapAgentsView POST {assessment_pk}] ValidationError saving item {item_pk} with value '{agent_uuid_to_save}': {ve}", exc_info=True) # Keep error log
+                                     # Add specific message for this item
+                                     messages.error(request, f"Failed to save link for item PK {item_pk}: Invalid value '{agent_uuid_to_save}'. Please select a valid agent.")
+                                except Exception as save_err:
+                                    validation_errors_occurred = True # Set flag
+                                    logger.error(f"[MapAgentsView POST {assessment_pk}] Error saving item {item_pk} with value '{agent_uuid_to_save}': {save_err}", exc_info=True) # Keep error log
+                                    messages.error(request, f"An error occurred saving the link for item {item_pk}: {save_err}")
+                                    # Consider rollback: transaction.set_rollback(True)
+
+                            else:
+                                print(f"[DEBUG MapAgentsView.post {assessment_pk}] No change detected for item {item_pk}. Skipping save.")
+
+                        except (ValueError, TypeError):
+                             logger.warning(f"[MapAgentsView POST {assessment_pk}] Could not parse item PK from POST key: {key}", exc_info=True) # Keep warning log
+                             messages.warning(request, f"Skipped processing due to invalid key format: {key}")
+                        except ScopedItem.DoesNotExist:
+                             logger.warning(f"[MapAgentsView POST {assessment_pk}] ScopedItem PK {item_pk_str} not found or not in sample.")
+                        except MultipleObjectsReturned:
+                             logger.error(f"[MapAgentsView POST {assessment_pk}] Multiple ScopedItems found for PK {item_pk_str}.") # Keep error log
+                             messages.error(request, f"Configuration error: Multiple items found for PK {item_pk_str}.")
+
+            # --- Transaction finished ---
+            log_message = f"Processed agent mapping: {items_updated} item link(s) updated out of {items_processed} sample items processed."
+            # Only log success if no validation errors occurred during the loop
+            if not validation_errors_occurred:
+                 messages.success(request, f"Agent mapping saved successfully. {items_updated} link(s) updated.")
+            else:
+                 # Give a summary message indicating partial success / issues
+                 messages.warning(request, f"Agent mapping processed. {items_updated} link(s) updated, but some errors occurred (see details above).")
+
+            log_assessment_event(assessment, request.user, log_message)
+            logger.info(f"[MapAgentsView POST {assessment.pk}] {log_message}") # Keep info log
+            print(f"[DEBUG MapAgentsView.post {assessment_pk}] Mapping process finished. Updated: {items_updated}, Processed: {items_processed}, ValidationErrors: {validation_errors_occurred}")
+
+        except Exception as e: # Catch errors during the overall transaction/loop
+            logger.exception(f"[MapAgentsView POST {assessment.pk}] Error saving agent mappings during transaction: {e}") # Keep exception log
+            print(f"[DEBUG MapAgentsView.post {assessment_pk}] CRITICAL ERROR saving mappings: {e}")
+            messages.error(request, f"An unexpected critical error occurred while saving mappings: {e}")
+
+        # --- Redirect based on user role ---
+        profile = getattr(request.user, 'userprofile', None)
+        detail_url_name = 'tracker:client_assessment_detail' if profile and profile.role == 'Client' else 'tracker:assessor_assessment_detail'
+        print(f"[DEBUG MapAgentsView.post {assessment_pk}] Redirecting to {detail_url_name}")
+        return redirect(detail_url_name, pk=assessment.pk)
+
+    def handle_no_permission(self):
+        """ Redirect users based on role if they fail permission checks. """
+        messages.error(self.request, "You do not have permission to access the agent mapping page for this assessment.")
+        profile = getattr(self.request.user, 'userprofile', None)
+        if profile:
+            if profile.role == 'Client':
+                return redirect('tracker:client_dashboard')
+            elif profile.role == 'Assessor':
+                assessment_pk = self.kwargs.get('assessment_pk')
+                if assessment_pk:
+                    try: return redirect('tracker:assessor_assessment_detail', pk=assessment_pk)
+                    except Exception: pass
+                return redirect('tracker:assessor_dashboard')
+        return redirect('tracker:admin_dashboard')
+
+# CHANGES END
+
+@staff_member_required
+def tenable_policy_template_list_view(request):
+    """
+    Admin view to list Tenable scan policies (showing integer ID for scan creation)
+    and standard templates (showing UUID for info).
+    """
+    policies_list = [] # For configured policies with integer IDs
+    templates_list = [] # For standard templates with UUIDs
+    error_message = None
+    tio = get_tenable_io_client()
+
+    if not tio:
+        error_message = "Could not initialize connection to Tenable.io. Check API keys/URL in Constance settings."
+        logger.error(f"[Admin Policy View] {error_message}")
+    else:
+        processed_policy_ids = set() # Track processed integer IDs to avoid duplicates
+
+        # --- Step 1: Get Configured Policies ---
+        try:
+            print("[DEBUG Admin Policy View] Attempting: tio.policies.list()")
+            policies_raw = tio.policies.list()
+            print(f"[DEBUG Admin Policy View] tio.policies.list() returned type: {type(policies_raw)}")
+
+            if isinstance(policies_raw, list):
+                print(f"[DEBUG Admin Policy View] Processing {len(policies_raw)} configured policies...")
+                for index, item in enumerate(policies_raw):
+                    if isinstance(item, dict):
+                        name = item.get('name')
+                        # CHANGES BEGIN: Get the integer 'id' field primarily
+                        policy_id = item.get('id')
+                        template_uuid_val = item.get('template_uuid') # Still get template UUID for info
+
+                        if name and policy_id is not None: # Check if 'id' exists
+                            try:
+                                policy_id_int = int(policy_id) # Ensure it's an integer
+                                if policy_id_int not in processed_policy_ids:
+                                    item_data = {
+                                        'name': name,
+                                        'policy_id': policy_id_int, # Store the integer ID
+                                        'template_uuid': template_uuid_val or 'N/A', # Store template UUID if available
+                                        'description': item.get('description', ''),
+                                        'type': 'Configured Policy'
+                                    }
+                                    policies_list.append(item_data)
+                                    processed_policy_ids.add(policy_id_int)
+                                else:
+                                    print(f"[DEBUG Admin Policy View] Duplicate Policy ID {policy_id_int} found in policies.list(). Skipping.")
+                            except (ValueError, TypeError):
+                                 # Log if 'id' is present but not an integer
+                                 print(f"[DEBUG Admin Policy View] Policy ID '{policy_id}' for policy '{name}' is not an integer. Skipping.")
+                        # CHANGES END
+                        else:
+                            print(f"[DEBUG Admin Policy View] Configured policy at index {index} missing 'name' or 'id': {str(item)}. Skipping.")
+                    else:
+                         print(f"[DEBUG Admin Policy View] Item in policies list at index {index} is not a dict: Type={type(item)}. Skipping.")
+            else:
+                print(f"[DEBUG Admin Policy View] tio.policies.list() did not return a list.")
+
+        except Exception as e:
+            logger.exception(f"[Admin Policy View] Error fetching or processing tio.policies.list(): {e}")
+            print(f"[DEBUG Admin Policy View] Error fetching/processing configured policies: {e}")
+            if not error_message: error_message = "Error retrieving configured policies from Tenable."
+
+        # --- Step 2: Get Standard Templates (Informational) ---
+        try:
+            print("[DEBUG Admin Policy View] Attempting: tio.policies.templates()")
+            templates_raw_dict = tio.policies.templates()
+            print(f"[DEBUG Admin Policy View] tio.policies.templates() returned type: {type(templates_raw_dict)}")
+
+            if isinstance(templates_raw_dict, dict):
+                 print(f"[DEBUG Admin Policy View] Processing {len(templates_raw_dict)} standard templates...")
+                 for name, uuid_val in templates_raw_dict.items():
+                     if isinstance(name, str) and isinstance(uuid_val, str) and len(uuid_val) > 10: # Basic validation
+                         templates_list.append({
+                             'name': name.replace('_', ' ').title(),
+                             'template_uuid': uuid_val, # Templates only have UUIDs
+                             'description': 'Standard Template - Cannot be used directly for scan creation.',
+                             'type': 'Standard Template'
+                         })
+                     else:
+                          print(f"[DEBUG Admin Policy View] Invalid format in templates dict: Key={name}, Value={uuid_val}. Skipping.")
+            else:
+                 print(f"[DEBUG Admin Policy View] tio.policies.templates() did not return a dict.")
+
+        except Exception as e:
+            logger.exception(f"[Admin Policy View] Error fetching or processing tio.policies.templates(): {e}")
+            print(f"[DEBUG Admin Policy View] Error fetching/processing standard templates: {e}")
+            if not error_message: error_message = "Error retrieving standard policy templates from Tenable."
+
+        # --- Step 3: Sort the lists ---
+        if policies_list:
+            try:
+                policies_list.sort(key=lambda x: x.get('name', '').lower())
+                print(f"[DEBUG Admin Policy View] Successfully processed and sorted {len(policies_list)} configured policies.")
+                logger.info(f"[Admin Policy View] Successfully processed {len(policies_list)} configured policies.")
+            except Exception as sort_err:
+                 logger.exception(f"[Admin Policy View] Error during policy sorting phase: {sort_err}")
+                 error_message = "An error occurred while sorting the policy data."
+        if templates_list:
+             try:
+                templates_list.sort(key=lambda x: x.get('name', '').lower())
+             except Exception: pass # Ignore template sorting errors
+
+
+    # --- Stage 4: Context and Rendering ---
+    context = {
+        **admin.site.each_context(request),
+        'title': 'Tenable Scan Policies & Templates',
+        'policies': policies_list, # Pass the policy list with integer IDs
+        'templates': templates_list, # Pass the template list separately
+        'error_message': error_message,
+        'has_permission': True, # Assuming staff_member_required handles this
+        'opts': {'app_label': 'tracker'}, # Needed for admin template context
+    }
+    # Template path remains the same
+    return render(request, 'tracker/admin/tenable_policy_list.html', context)
+# CHANGES END
+
+
+
+@staff_member_required
+def tenable_scanner_list_view(request):
+    """Admin view to list available Tenable scanners and scanner groups."""
+    scanners_list = []
+    error_message = None
+    tio = get_tenable_io_client()
+
+    if not tio:
+        error_message = "Could not initialize connection to Tenable.io..."
+        logger.error(f"[Admin Scanner View] {error_message}")
+    else:
+        scanners_raw = None
+        api_call_successful = False
+        try:
+            # Use tio.scanners.list() to get scanners and groups
+            print("[DEBUG Admin Scanner View] Attempting: tio.scanners.list()")
+            scanners_raw = tio.scanners.list()
+            api_call_successful = True
+            print(f"[DEBUG Admin Scanner View] SUCCESS: tio.scanners.list() returned type: {type(scanners_raw)}")
+
+        except APIError as e:
+            logger.exception(f"[Admin Scanner View] Tenable API Error listing scanners: {e}")
+            error_message = f"API Error listing scanners: {e}. Check Tenable connection and permissions."
+        except ForbiddenError:
+             logger.exception("[Admin Scanner View] Permission denied listing scanners in Tenable.")
+             error_message = "Permission denied listing scanners. Check API key permissions."
+        except Exception as e:
+             logger.exception(f"[Admin Scanner View] Unexpected error calling tio.scanners.list(): {e}")
+             error_message = f"An unexpected error occurred during API call: {e}"
+
+        # --- Process Data ---
+        if api_call_successful:
+            if not isinstance(scanners_raw, list):
+                log_msg = f"[Admin Scanner View] API call succeeded but returned non-list data: Type={type(scanners_raw)}, Value='{str(scanners_raw)[:500]}'." # noqa E501
+                logger.error(log_msg)
+                print(f"[DEBUG] {log_msg}")
+                if not error_message:
+                    error_message = "Received unexpected data format from Tenable API (expected list for scanners)."
+                scanners_to_process = []
+            else:
+                scanners_to_process = scanners_raw
+                print(f"[DEBUG Admin Scanner View] API call returned a list. Item count: {len(scanners_to_process)}. Processing...")
+
+            # Filter for dictionaries with expected keys ('name', 'uuid', 'status')
+            valid_items = []
+            if scanners_to_process:
+                for index, item in enumerate(scanners_to_process):
+                    if isinstance(item, dict):
+                        # Expect 'name', 'uuid', 'status', 'type' (e.g., 'cloud', 'managed')
+                        name = item.get('name')
+                        uuid_val = item.get('uuid')
+                        if name and uuid_val:
+                            item_data = {
+                                'name': name,
+                                'uuid': uuid_val,
+                                'status': item.get('status', 'unknown'),
+                                'type': item.get('type', 'unknown'),
+                            }
+                            valid_items.append(item_data)
+                        else:
+                            log_msg = f"[Admin Scanner View] Scanner dict at index {index} missing 'name' or 'uuid': {str(item)}. Skipping." # noqa E501
+                            logger.warning(log_msg)
+                            print(f"[DEBUG] {log_msg}")
+                    else:
+                        log_msg = f"[Admin Scanner View] Item in scanners list at index {index} is not a dict: Type={type(item)}, Value='{str(item)[:100]}'. Skipping." # noqa E501
+                        logger.warning(log_msg)
+                        print(f"[DEBUG] {log_msg}")
+
+            # Sort the valid items by name
+            if valid_items:
+                try:
+                    scanners_list = sorted(valid_items, key=lambda x: x.get('name', '').lower())
+                    print(f"[DEBUG Admin Scanner View] Successfully processed and sorted {len(scanners_list)} scanners.")
+                    logger.info(f"[Admin Scanner View] Successfully processed {len(scanners_list)} scanners.")
+                except Exception as sort_err:
+                    logger.exception(f"[Admin Scanner View] Error during sorting phase: {sort_err}")
+                    print(f"[DEBUG Admin Scanner View] ERROR during sorting: {sort_err}")
+                    error_message = "An error occurred while sorting the scanner data."
+                    scanners_list = valid_items # Show unsorted
+            else:
+                 print("[DEBUG Admin Scanner View] No valid scanner items found after filtering.")
+                 scanners_list = []
+
+    # --- Context and Rendering ---
+    context = {
+        **admin.site.each_context(request),
+        'title': 'Tenable Scanners & Groups', # Updated title
+        'scanners': scanners_list, # Use 'scanners' key for clarity
+        'error_message': error_message,
+        'has_permission': True,
+        'opts': {'app_label': 'tracker'},
+    }
+    # Use a new template file name
+    return render(request, 'tracker/admin/tenable_scanner_list.html', context)

@@ -1,0 +1,96 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}Map Nessus Agents - Assessment #{{ assessment.id }}{% endblock %}
+
+{% block content %}
+<h2>Map Nessus Agents to CE+ Sample Items</h2>
+<p>Assessment: <strong>#{{ assessment.id }} - {{ assessment.client.name }}</strong></p>
+
+{% if tenable_error %}
+<div class="alert alert-danger" role="alert">
+  <i class="fas fa-exclamation-triangle me-2"></i>
+  <strong>Tenable Error:</strong> {{ tenable_error }}
+  <p><small>Please ensure the client name matches the Tenable Agent Group name exactly (case-sensitive) and that the API keys and URL are correctly configured in application settings. The Tenable sync task may need to be run.</small></p>
+</div>
+{% endif %}
+
+{% if no_sample_items %}
+<div class="alert alert-warning" role="alert">
+  There are currently no items selected in the CE+ sample for this assessment. Please calculate the sample on the assessment detail page first.
+</div>
+<a href="{% url 'tracker:assessor_assessment_detail' pk=assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% elif not mapping_data and not tenable_error %}
+ <div class="alert alert-info" role="alert">
+  No sample items found to map. This might occur if the sample exists but couldn't be processed.
+</div>
+<a href="{% url 'tracker:assessor_assessment_detail' pk=assessment.pk %}" class="btn btn-secondary">Back to Assessment Details</a>
+{% elif mapping_data %}
+
+<p>Select the corresponding Nessus Agent from Tenable.io for each sampled item below. Agents are automatically fetched from the Tenable agent group named '<strong>{{ assessment.client.name }}</strong>'.</p>
+<p><small>Leave the selection blank ("-- Select Agent --") to unlink an item.</small></p>
+
+<form method="POST" action="{% url 'tracker:map_agents' assessment_pk=assessment.pk %}" id="map-agents-form">
+    {% csrf_token %}
+
+    <div class="table-responsive">
+        <table class="table table-bordered table-striped table-hover align-middle">
+            <thead class="table-light">
+                <tr>
+                    <th>Sampled Item (Type/Identifier)</th>
+                    <th>Operating System</th>
+                    <th>Suggested Agent (Name Match)</th>
+                    <th>Select Linked Agent</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for map_item in mapping_data %}
+                <tr>
+                    <td>
+                        <strong>{{ map_item.item.get_item_type_display }}</strong><br>
+                        {{ map_item.item.identifier|default:"(No Identifier)" }}
+                    </td>
+                    <td>{{ map_item.item.operating_system|default:"N/A" }}</td>
+                    <td>
+                        {% if map_item.suggested_agent %}
+                           <span class="badge bg-info text-dark" title="UUID: {{ map_item.suggested_agent.uuid }}">
+                               <i class="fas fa-lightbulb me-1"></i>{{ map_item.suggested_agent.name }}
+                           </span>
+                        {% else %}
+                            <span class="text-muted fst-italic">None</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        {# Dropdown for selecting agent #}
+                        {# Name includes item PK for POST processing #}
+                        <select class="form-select form-select-sm" name="map_item_{{ map_item.item.pk }}" aria-label="Select agent for item {{ map_item.item.identifier|default:map_item.item.pk }}">
+                            <option value="">-- Select Agent -- (Unlink)</option>
+                            {% for agent in available_agents %}
+                                <option value="{{ agent.uuid }}" {% if map_item.preselected_uuid == agent.uuid %}selected{% endif %}>
+                                    {{ agent.name }} ({{ agent.platform|default:'-' }}) - [{{ agent.status|upper }}]
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="mt-3">
+        <button type="submit" class="btn btn-primary">
+            <i class="fas fa-save me-1"></i> Save Agent Mappings
+        </button>
+        <a href="{% url 'tracker:assessor_assessment_detail' pk=assessment.pk %}" class="btn btn-secondary">Cancel</a>
+    </div>
+
+</form>
+
+{% endif %} {# End if mapping_data #}
+
+{% endblock %}
+
+{% block extra_js %}
+{# Add JS for Select2 or similar if dropdown becomes large #}
+{% endblock %}

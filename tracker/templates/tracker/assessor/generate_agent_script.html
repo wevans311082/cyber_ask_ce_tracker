@@ -1,0 +1,258 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title|default:"Generate Agent Script" }}{% endblock %}
+
+{% block content %}
+<style>
+    /* Style for the container holding the script */
+    .script-container {
+        background-color: #f8f9fa; /* Light background */
+        border: 1px solid #dee2e6;
+        padding: 1rem;
+        border-radius: 0.25rem;
+        position: relative; /* For positioning the button */
+        margin-bottom: 1rem;
+    }
+    /* Specific style for the <pre> tag inside the container */
+    .script-container pre {
+        margin: 0; /* Remove default pre margins */
+        padding: 0; /* Remove default pre padding */
+        white-space: pre-wrap;       /* Preserves whitespace, wraps text */
+        word-wrap: break-word;       /* Breaks long words/strings */
+        overflow-wrap: break-word;   /* More modern version of word-wrap */
+        font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 0.9em;
+    }
+    .copy-btn {
+        position: absolute;
+        top: 0.5rem;
+        right: 0.5rem;
+        z-index: 10; /* Ensure button is clickable */
+    }
+    .nav-tabs .nav-link {
+        color: var(--bs-primary);
+    }
+     .nav-tabs .nav-link.active {
+        color: var(--bs-nav-tabs-link-active-color);
+        background-color: var(--bs-nav-tabs-link-active-bg);
+        border-color: var(--bs-nav-tabs-link-active-border-color);
+    }
+    .os-icon {
+        margin-right: 0.5em;
+    }
+</style>
+
+<div class="container mt-4">
+    <h3><i class="fas fa-scroll me-2"></i>Generate Nessus Agent Install Script</h3>
+    <p><strong>Assessment:</strong> #{{ assessment.id }}</p>
+    <p><strong>Client:</strong> {{ client.name }}</p>
+
+    {% if not linking_key_set %}
+    <div class="alert alert-danger" role="alert">
+      <strong>Configuration Error:</strong> The Tenable Agent Linking Key is not configured in the system settings. The generated scripts below will be incomplete. Please contact an administrator.
+    </div>
+    {% endif %}
+
+    <div class="alert alert-info" role="alert">
+        <h4 class="alert-heading">Instructions</h4>
+        <p>Use the commands below to install and link the Nessus Agent on target systems within the scope for <strong>{{ client.name }}</strong>. The commands include the necessary linking key and group assignment.</p>
+        <hr>
+        <p class="mb-0"><strong>Important:</strong> You must first download the correct Nessus Agent installer for the target OS from Tenable:</p>
+        <a href="{{ agent_download_url }}" target="_blank" class="btn btn-outline-primary btn-sm mt-2">
+            <i class="fas fa-download me-1"></i> Download Nessus Agents from Tenable.com
+        </a>
+    </div>
+
+    {# --- Tabs for Different OS --- #}
+    <nav>
+        <div class="nav nav-tabs mb-3" id="nav-tab" role="tablist">
+            <button class="nav-link active" id="nav-windows-tab" data-bs-toggle="tab" data-bs-target="#nav-windows" type="button" role="tab" aria-controls="nav-windows" aria-selected="true">
+                <i class="fab fa-windows os-icon"></i> Windows
+            </button>
+            <button class="nav-link" id="nav-linux-deb-tab" data-bs-toggle="tab" data-bs-target="#nav-linux-deb" type="button" role="tab" aria-controls="nav-linux-deb" aria-selected="false">
+                <i class="fab fa-linux os-icon"></i> Linux (DEB)
+            </button>
+            <button class="nav-link" id="nav-linux-rpm-tab" data-bs-toggle="tab" data-bs-target="#nav-linux-rpm" type="button" role="tab" aria-controls="nav-linux-rpm" aria-selected="false">
+                 <i class="fab fa-redhat os-icon"></i> Linux (RPM)
+            </button>
+             <button class="nav-link" id="nav-macos-tab" data-bs-toggle="tab" data-bs-target="#nav-macos" type="button" role="tab" aria-controls="nav-macos" aria-selected="false">
+                 <i class="fab fa-apple os-icon"></i> macOS
+            </button>
+        </div>
+    </nav>
+
+    <div class="tab-content" id="nav-tabContent">
+        {# --- Windows Tab --- #}
+        <div class="tab-pane fade show active" id="nav-windows" role="tabpanel" aria-labelledby="nav-windows-tab">
+            <h5>Windows Installation</h5>
+            <p><small>Choose one of the methods below. Both require running from an <strong>Administrator</strong> Command Prompt or PowerShell.</small></p>
+
+            <h6>Method 1: Using MSI Installer (Recommended for bulk deployment)</h6>
+            <p><small>Place the downloaded <code>NessusAgent-x64.msi</code> (or similar) in the current directory.</small></p>
+            <div class="script-block">
+                <pre><code id="script-windows-msi">{{ scripts.windows_msi }}</code></pre>
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-windows-msi" title="Copy MSI Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+
+             <h6>Method 2: Using PowerShell Script (Downloads and installs)</h6>
+             <p><small>Paste and run this entire block in PowerShell. It will download the official Tenable install script, run it with the correct parameters, and then clean up the script file. Ensure <code>&lt;hostname&gt;</code> in the <code>-name</code> parameter is replaced appropriately.</small></p>
+             <div class="script-block">
+                <pre><code id="script-windows-ps">{{ scripts.windows_ps }}</code></pre>
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-windows-ps" title="Copy PowerShell Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+        </div>
+
+        {# --- Linux DEB Tab --- #}
+        <div class="tab-pane fade" id="nav-linux-deb" role="tabpanel" aria-labelledby="nav-linux-deb-tab">
+            <h5>Linux Installation (Debian/Ubuntu)</h5>
+            <p><small>Run these commands in the terminal. Replace <code>NessusAgent-*.deb</code> with the actual downloaded filename.</small></p>
+
+            <h6>1. Install Agent</h6>
+            <div class="script-block">
+                <pre><code id="script-linux-deb-install">{{ scripts.linux_deb_install }}</code></pre>
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-linux-deb-install" title="Copy Install Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+
+            <h6>2. Link Agent</h6>
+            <div class="script-block">
+                <pre><code id="script-linux-link-deb">{{ scripts.linux_link }}</code></pre> {# Use the same link command #}
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-linux-link-deb" title="Copy Link Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+
+            <h6>3. Start Service</h6>
+             <div class="script-block">
+                <pre><code id="script-linux-start-deb">{{ scripts.linux_start }}</code></pre> {# Use the same start command #}
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-linux-start-deb" title="Copy Start Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+        </div>
+
+        {# --- Linux RPM Tab --- #}
+        <div class="tab-pane fade" id="nav-linux-rpm" role="tabpanel" aria-labelledby="nav-linux-rpm-tab">
+             <h5>Linux Installation (RPM - CentOS/Fedora/RHEL)</h5>
+             <p><small>Run these commands in the terminal. Replace <code>NessusAgent-*.rpm</code> with the actual downloaded filename.</small></p>
+
+             <h6>1. Install Agent</h6>
+             <div class="script-block">
+                <pre><code id="script-linux-rpm-install">{{ scripts.linux_rpm_install }}</code></pre>
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-linux-rpm-install" title="Copy Install Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+
+             <h6>2. Link Agent</h6>
+             <div class="script-block">
+                <pre><code id="script-linux-link-rpm">{{ scripts.linux_link }}</code></pre> {# Use the same link command #}
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-linux-link-rpm" title="Copy Link Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+
+            <h6>3. Start Service</h6>
+             <div class="script-block">
+                <pre><code id="script-linux-start-rpm">{{ scripts.linux_start }}</code></pre> {# Use the same start command #}
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-linux-start-rpm" title="Copy Start Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+        </div>
+
+        {# --- macOS Tab --- #}
+        <div class="tab-pane fade" id="nav-macos" role="tabpanel" aria-labelledby="nav-macos-tab">
+             <h5>macOS Installation</h5>
+             <p><small>Run these commands in the Terminal. You may need to install the <code>.pkg</code> file via the GUI first (double-click the downloaded file). Replace <code>NessusAgent-*.pkg</code> if needed for the command-line install.</small></p>
+
+              <h6>1. Install Agent (Optional CLI method)</h6>
+             <div class="script-block">
+                <pre><code id="script-macos-install">{{ scripts.macos_install }}</code></pre>
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-macos-install" title="Copy Install Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+
+             <h6>2. Link Agent</h6>
+             <div class="script-block">
+                <pre><code id="script-macos-link">{{ scripts.macos_link }}</code></pre>
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-macos-link" title="Copy Link Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+
+            <h6>3. Load and Start Service</h6>
+             <div class="script-block">
+                <pre><code id="script-macos-start">{{ scripts.macos_start }}</code></pre>
+                <button class="btn btn-sm btn-outline-secondary copy-btn" data-clipboard-target="#script-macos-start" title="Copy Start Command">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <hr>
+    <a href="{% url 'tracker:assessor_assessment_detail' pk=assessment.pk %}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Assessment Details
+    </a>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{# Clipboard.js library (ensure it's included, e.g., via CDN or static files) #}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.11/clipboard.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var clipboard = new ClipboardJS('.copy-btn');
+
+        clipboard.on('success', function(e) {
+            const originalTitle = e.trigger.getAttribute('data-original-title') || e.trigger.title;
+            const icon = e.trigger.querySelector('i');
+            const originalIconClass = icon ? icon.className : '';
+
+            e.trigger.setAttribute('data-original-title', originalTitle); // Store original title if not already
+            e.trigger.title = 'Copied!';
+            // Initialize tooltip if using Bootstrap tooltips
+            var tooltip = bootstrap.Tooltip.getInstance(e.trigger);
+            if (tooltip) {
+                tooltip.setContent({ '.tooltip-inner': 'Copied!' });
+                tooltip.show();
+            }
+            if(icon) icon.className = 'fas fa-check text-success'; // Change icon
+
+            // Reset tooltip and icon after a delay
+            setTimeout(function() {
+                e.trigger.title = originalTitle;
+                 if(icon) icon.className = originalIconClass;
+                 if (tooltip) {
+                    tooltip.hide();
+                    // Optional: Restore original content if needed, but title change is often enough
+                    // tooltip.setContent({ '.tooltip-inner': originalTitle });
+                 }
+            }, 2000);
+
+            e.clearSelection();
+        });
+
+        clipboard.on('error', function(e) {
+            console.error('Action:', e.action);
+            console.error('Trigger:', e.trigger);
+            alert('Failed to copy. Please copy manually.');
+        });
+
+        // Initialize Bootstrap tooltips for copy buttons
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('.copy-btn[title]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+          return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+</script>
+{% endblock extra_js %}

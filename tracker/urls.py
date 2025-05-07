@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 
+
 app_name = 'tracker'
 
 urlpatterns = [
@@ -69,14 +70,41 @@ urlpatterns = [
     path('assessor/assessments/<int:assessment_pk>/external-ips/<int:pk>/delete/', views.ExternalIPDeleteView.as_view(), name='externalip_delete'),
     path('assessor/assessments/<int:assessment_pk>/external-ips/<int:pk>/update-scan/', views.ExternalIPScanUpdateView.as_view(), name='externalip_update_scan'),
 
+    path('assessor/assessments/<int:pk>/generate-agent-script/',
+         views.GenerateAgentScriptView.as_view(),
+         name='generate_agent_script'),
+
     path('assessor/assessments/upload_report/', views.UploadExtractReportView.as_view(), name='upload_extract_report'),
     # Client URLs
+
+    path('assessor/availability/', views.AssessorAvailabilityListView.as_view(), name='assessor_availability_list'),
+    # Assessor Manage View (GET/POST for add)
+    path('assessor/availability/<int:pk>/delete/', views.DeleteAssessorAvailabilityView.as_view(),
+         name='assessor_availability_delete'),  # Assessor Delete (POST)
+
+
+    path('assessment/<int:pk>/trigger-tenable-client-tag-sync/',
+         views.TriggerTenableClientTagSyncView.as_view(),
+         name='trigger_tenable_client_tag_sync'), # Renamed task, but URL keeps same name for now
+
+    # Add NEW Client-based trigger for asset tagging task
+    path('manage/clients/<int:client_pk>/trigger-tenable-asset-tag/', # Uses client_pk
+         views.TriggerTenableAssetTaggingView.as_view(), # View now uses client_pk
+         name='trigger_tenable_asset_tagging'), # Name updated to reflect client base
+
+    # Add NEW view for showing agents in a group
+    path('manage/clients/<int:pk>/tenable-group/', # pk here is client_pk
+         views.TenableGroupDetailView.as_view(),
+         name='tenable_group_detail'),
+
     path('client/dashboard/', views.client_dashboard, name='client_dashboard'),
     path('client/assessments/', views.ClientAssessmentListView.as_view(), name='client_assessment_list'),
     path('client/assessments/<int:pk>/', views.ClientAssessmentDetailView.as_view(), name='client_assessment_detail'),
     path('client/assessments/<int:assessment_pk>/scope/', views.ScopeItemManageView.as_view(), name='client_scope_manage'),
     path('client/assessments/<int:assessment_pk>/scope/delete/<int:item_pk>/', views.scope_item_delete, name='client_scope_item_delete'),
     path('client/assessments/<int:assessment_pk>/scope/submit/', views.scope_submit, name='client_scope_submit'),
+
+path('client/assessments/<int:pk>/generate-agent-script/', views.GenerateAgentScriptView.as_view(), name='client_generate_agent_script'),
 
     path('client/assessments/<int:assessment_pk>/scope/<int:pk>/edit/', views.ScopedItemUpdateView.as_view(), name='client_scope_item_edit'),
 
@@ -109,9 +137,28 @@ urlpatterns = [
          views.update_workflow_step_status,
          name='update_workflow_step_status'),
 
+    path('assessment/<int:pk>/trigger-tenable-asset-tag/',
+         views.TriggerTenableAssetTaggingView.as_view(),
+         name='trigger_tenable_asset_tagging'),
+
+    path('assessment/<int:pk>/trigger-tenable-client-tag-sync/',
+         views.TriggerTenableClientTagSyncView.as_view(),
+         name='trigger_tenable_client_tag_sync'),
+
+    path('assessment/<int:assessment_pk>/dates/propose/', views.ProposeAssessmentDateView.as_view(), name='propose_assessment_date'), # POST
+    path('assessment/<int:assessment_pk>/dates/<int:option_pk>/update_status/', views.UpdateAssessmentDateStatusView.as_view(), name='update_assessment_date_status'), # POST
+    path('assessment/<int:assessment_pk>/dates/<int:option_pk>/delete/', views.DeleteAssessmentDateOptionView.as_view(), name='delete_assessment_date_option'), # POST
+
+
+
+    path('assessments/<int:assessment_pk>/map-agents/', views.MapAgentsView.as_view(), name='map_agents'),
+
     # Shared URLs
     path('evidence/<int:evidence_pk>/download/', views.download_evidence, name='download_evidence'),
 
     # Logout (if not using project-level auth URLs exclusively)
     path('logout/', views.LogoutView.as_view(), name='logout'), # Use project level preferably
+
+
+    path('assessments/<int:assessment_pk>/launch-scan/', views.LaunchScanView.as_view(), name='launch_tenable_scan'),
 ]

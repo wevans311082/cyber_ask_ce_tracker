@@ -1,0 +1,92 @@
+{% extends "tracker/base.html" %}
+
+{% block title %}{{ page_title|default:"Manage Unavailable Dates" }}{% endblock %}
+
+{% block content %}
+<h2>{{ page_title|default:"Manage My Unavailable Dates" }}</h2>
+<p class="text-muted">Use this page to block out dates when you are unavailable for assessments (e.g., holidays, training). These dates will prevent clients or yourself from proposing assessments on these days via the scheduling tool.</p>
+
+{# Add New Unavailable Date Form #}
+<div class="card mb-4">
+    <div class="card-header">Add Unavailable Date</div>
+    <div class="card-body">
+        {# The list view handles POST, so action is the current URL #}
+        <form action="{% url 'tracker:assessor_availability_list' %}" method="post" class="row g-3 align-items-end" novalidate>
+            {% csrf_token %}
+            {# Render form fields manually for layout #}
+            <div class="col-md-4">
+                <label for="{{ form.unavailable_date.id_for_label }}" class="form-label">{{ form.unavailable_date.label }}*</label>
+                {{ form.unavailable_date }}
+                {% if form.unavailable_date.errors %}
+                    <div class="invalid-feedback d-block">
+                        {{ form.unavailable_date.errors|striptags }}
+                    </div>
+                {% endif %}
+                 <small class="form-text text-muted">{{ form.unavailable_date.help_text }}</small>
+            </div>
+             <div class="col-md-6">
+                <label for="{{ form.reason.id_for_label }}" class="form-label">{{ form.reason.label }}</label>
+                 {{ form.reason }}
+                 {% if form.reason.errors %}
+                     <div class="invalid-feedback d-block">
+                         {{ form.reason.errors|striptags }}
+                     </div>
+                 {% endif %}
+                 <small class="form-text text-muted">{{ form.reason.help_text }}</small>
+            </div>
+             <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100">Add Block</button>
+            </div>
+             {# Display non-field errors #}
+             {% if form.non_field_errors %}
+                 <div class="col-12 text-danger">
+                     {{ form.non_field_errors|striptags }}
+                 </div>
+             {% endif %}
+        </form>
+    </div>
+</div>
+
+{# List of Existing Unavailable Dates #}
+<div class="card">
+    <div class="card-header">Currently Unavailable Dates</div>
+    <div class="card-body">
+        {% if unavailable_dates %}
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Reason</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for avail in unavailable_dates %}
+                        <tr>
+                            <td>{{ avail.unavailable_date|date:"Y-m-d (D)" }}</td>
+                            <td>{{ avail.reason|default:"-" }}</td>
+                            <td>
+                                {# Form for delete button #}
+                                <form action="{% url 'tracker:assessor_availability_delete' avail.pk %}" method="post" class="d-inline" onsubmit="return confirm('Are you sure you want to remove the block for {{ avail.unavailable_date|date:"Y-m-d" }}?');">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-danger btn-sm" title="Remove Block">
+                                        <i class="fa-solid fa-trash-alt"></i> Remove
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="text-muted">You have no dates marked as unavailable.</p>
+        {% endif %}
+    </div>
+</div>
+
+<hr>
+<a href="{% url 'tracker:assessor_dashboard' %}" class="btn btn-secondary mt-3">Back to Dashboard</a>
+
+{% endblock %}

@@ -1,0 +1,241 @@
+{% extends "tracker/base.html" %}
+{% load static %}
+
+{% block title %}{{ page_title|default:"Generate Agent Script" }}{% endblock %}
+
+{% block content %}
+{# ... (keep style block) ... #}
+<style>
+    /* Styles for script container, copy button etc. */
+    .script-container { background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 1rem; border-radius: 0.25rem; position: relative; margin-bottom: 1rem; }
+    .script-container pre { margin: 0; padding: 0; font-family: SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.9em; white-space: pre-wrap !important; word-wrap: break-word !important; overflow-wrap: break-word !important; display: block !important; }
+    .script-container pre code { display: block !important; white-space: inherit !important; word-wrap: inherit !important; overflow-wrap: inherit !important; }
+    .copy-btn { position: absolute; top: 0.5rem; right: 0.5rem; z-index: 10; background-color: #ffffff; border: 1px solid #ced4da; cursor: pointer; }
+    .copy-btn:hover { background-color: #e9ecef; }
+    .nav-tabs .nav-link { color: var(--bs-primary); }
+    .os-icon { margin-right: 0.5em; min-width: 1.2em; text-align: center; }
+    .script-container.disabled { background-color: #e9ecef; border-color: #ced4da; }
+    .script-container.disabled pre code { color: #6c757d; }
+    /* Styles for download list */
+    .download-list-table th, .download-list-table td { vertical-align: middle; }
+    /* Styles for troubleshooting section */
+    .troubleshooting-section h5 { margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px solid #dee2e6; padding-bottom: 0.5rem; }
+    .troubleshooting-section ul { padding-left: 1.5rem; margin-bottom: 1rem;}
+    .troubleshooting-section li { margin-bottom: 0.5rem; }
+    .troubleshooting-section code { background-color: #e9ecef; padding: 0.2em 0.4em; border-radius: 3px; font-size: 85%; }
+    .troubleshooting-section .command-block { position: relative; margin-bottom: 0.5rem; }
+    .troubleshooting-section .command-block code { display: block; padding: 0.5rem; background-color: #212529; color: #f8f9fa; border-radius: 0.25rem; white-space: pre-wrap; word-break: break-all; }
+    .troubleshooting-section .command-block .copy-btn { top: 0.3rem; right: 0.3rem; background-color: #6c757d; border-color: #6c757d; color: white;}
+    .troubleshooting-section .command-block .copy-btn:hover { background-color: #5a6268; border-color: #545b62;}
+</style>
+
+<div class="container mt-4">
+    {# --- Header & Alerts --- #}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+         <h3 class="mb-0"><i class="fas fa-scroll me-2"></i>Generate Nessus Agent Install Script</h3>
+         <a href="{% url 'tracker:assessor_assessment_detail' pk=assessment.pk %}" class="btn btn-sm btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Back to Assessment
+         </a>
+    </div>
+    <p><strong>Assessment:</strong> #{{ assessment.id }}</p>
+    <p><strong>Client:</strong> {{ client.name }}</p>
+
+    {% if not linking_key_set %}
+    <div class="alert alert-danger" role="alert">
+        <i class="fas fa-exclamation-triangle me-2"></i><strong>Warning:</strong> Tenable Linking Key is not configured. The generated commands will fail or install unlinked agents.
+    </div>
+    {% endif %}
+
+    {# --- Official Command Section --- #}
+    <h4><i class="fas fa-rocket me-2"></i>Official Tenable One-Liner Install Commands</h4>
+    <p>Use these official commands from Tenable to download, install, and link the Nessus Agent in a single step for <strong>{{ client.name }}</strong>.</p>
+    <p class="mb-3"><small>Ensure the target machine has internet access to reach <code>{{ tenable_host_display }}</code>. If these commands fail, refer to the 'Available Agent Downloads' list, the 'Troubleshooting' guide below, or the <a href="{{ agent_download_url }}" target="_blank" rel="noopener noreferrer">Tenable Download Page</a>.</small></p>
+
+    {# --- Tabs for Different OS --- #}
+    <nav>
+        <div class="nav nav-tabs mb-3" id="nav-tab" role="tablist">
+            <button class="nav-link active" id="nav-windows-tab" data-bs-toggle="tab" data-bs-target="#nav-windows" type="button" role="tab" aria-controls="nav-windows" aria-selected="true">
+                <i class="fab fa-windows os-icon"></i> Windows
+            </button>
+            <button class="nav-link" id="nav-linux-tab" data-bs-toggle="tab" data-bs-target="#nav-linux" type="button" role="tab" aria-controls="nav-linux" aria-selected="false">
+                <i class="fab fa-linux os-icon"></i> Linux
+            </button>
+             <button class="nav-link" id="nav-macos-tab" data-bs-toggle="tab" data-bs-target="#nav-macos" type="button" role="tab" aria-controls="nav-macos" aria-selected="false">
+                 <i class="fab fa-apple os-icon"></i> macOS
+            </button>
+        </div>
+    </nav>
+
+    {# --- Tab Content --- #}
+    <div class="tab-content" id="nav-tabContent">
+
+        {# --- Windows Tab --- #}
+        <div class="tab-pane fade show active" id="nav-windows" role="tabpanel" aria-labelledby="nav-windows-tab">
+            <h5>Windows - Official PowerShell Command</h5>
+            {# --- START: Inlined Code --- #}
+            {% if linking_key_set %}
+                <p><small>Run this entire block in an <strong>Administrator</strong> PowerShell window. It downloads and executes Tenable's installer script.</small></p>
+                <div class="script-container">
+                    <pre><code id="script-windows-official">{{ scripts.windows_official }}</code></pre>
+                    <button class="btn btn-sm copy-btn" data-clipboard-target="#script-windows-official" title="Copy Windows Command">
+                        <i class="fa-solid fa-copy"></i>
+                    </button>
+                </div>
+            {% else %}
+                <div class="alert alert-danger" role="alert">
+                   <i class="fas fa-exclamation-circle me-2"></i> Cannot generate command: Tenable Linking Key is not configured.
+                </div>
+            {% endif %}
+             {# --- END: Inlined Code --- #}
+        </div>
+
+        {# --- Linux Tab --- #}
+        <div class="tab-pane fade" id="nav-linux" role="tabpanel" aria-labelledby="nav-linux-tab">
+             <h5>Linux - Official Shell Command</h5>
+             {# --- START: Inlined Code --- #}
+             {% if linking_key_set %}
+                <p><small>Run this command in the terminal (requires <code>sudo</code> and <code>curl</code>). It downloads and executes Tenable's installer script.</small></p>
+                <div class="script-container">
+                    <pre><code id="script-linux-official">{{ scripts.linux_macos_official }}</code></pre>
+                    <button class="btn btn-sm copy-btn" data-clipboard-target="#script-linux-official" title="Copy Linux Command">
+                        <i class="fa-solid fa-copy"></i>
+                    </button>
+                </div>
+             {% else %}
+                 <div class="alert alert-danger" role="alert">
+                    <i class="fas fa-exclamation-circle me-2"></i> Cannot generate command: Tenable Linking Key is not configured.
+                 </div>
+             {% endif %}
+              {# --- END: Inlined Code --- #}
+        </div>
+
+        {# --- macOS Tab --- #}
+        <div class="tab-pane fade" id="nav-macos" role="tabpanel" aria-labelledby="nav-macos-tab">
+              <h5>macOS - Official Shell Command</h5>
+               {# --- START: Inlined Code --- #}
+               {% if linking_key_set %}
+                   <p><small>Run this command in the Terminal (requires <code>sudo</code> and <code>curl</code>). It downloads and executes Tenable's installer script.</small></p>
+                   <div class="script-container">
+                    <pre><code id="script-macos-official">{{ scripts.linux_macos_official }}</code></pre> {# Use the same script as Linux #}
+                    <button class="btn btn-sm copy-btn" data-clipboard-target="#script-macos-official" title="Copy macOS Command">
+                        <i class="fa-solid fa-copy"></i>
+                    </button>
+                  </div>
+               {% else %}
+                   <div class="alert alert-danger" role="alert">
+                      <i class="fas fa-exclamation-circle me-2"></i> Cannot generate command: Tenable Linking Key is not configured.
+                   </div>
+               {% endif %}
+                {# --- END: Inlined Code --- #}
+        </div>
+
+    </div> {# End Tab Content #}
+
+    {# --- Available Agent Downloads Section --- #}
+    <hr class="my-4">
+    <h4><i class="fas fa-list me-2"></i>Available Agent Downloads (for Manual Installation)</h4>
+    <p>If the official scripts fail or you need a specific version, you can download an installer manually from this list (based on data scraped from Tenable) or the official <a href="{{ agent_download_url }}" target="_blank" rel="noopener noreferrer">Tenable Download Page</a>.</p>
+
+    {% if all_agent_urls %}
+    <div class="table-responsive">
+        <table class="table table-sm table-striped table-hover download-list-table">
+            <thead>
+                <tr>
+                    <th>OS</th>
+                    <th>Architecture</th>
+                    <th>OS Details</th>
+                    <th>Agent Ver.</th>
+                    <th>Filename</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for agent_url in all_agent_urls %}
+                <tr>
+                    <td>
+                        {% include 'tracker/partials/os_icon.html' with os_name=agent_url.os_name %}
+                        {{ agent_url.os_name|default:"N/A" }}
+                    </td>
+                    <td>{{ agent_url.architecture|default:"N/A" }}</td>
+                    <td>{{ agent_url.os_version_details|default:"N/A" }}</td>
+                    <td>{{ agent_url.agent_version|default:"N/A" }}</td>
+                    <td><code>{{ agent_url.file_name|default:"N/A" }}</code></td>
+                    <td>
+                        <a href="{{ agent_url.download_url }}" class="btn btn-sm btn-primary" target="_blank" rel="noopener noreferrer" title="Download {{ agent_url.file_name }}">
+                            <i class="fas fa-download"></i> Download
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="alert alert-secondary">No manual agent download URLs found in the database. Please ensure the scraping task has run successfully if you need this list.</div>
+    {% endif %}
+
+    {# --- Troubleshooting & Manual Installation Section --- #}
+    <hr class="my-4">
+    <div class="troubleshooting-section">
+        {# ... Keep the troubleshooting content ... #}
+        <h4><i class="fas fa-wrench me-2"></i>Troubleshooting & Manual Installation</h4>
+        <h5><i class="fas fa-question-circle me-2"></i>Official Script Fails?</h5>
+        <ul>
+            <li>Check the command output for errors (network, permissions, key).</li>
+            <li>Ensure target machine can reach <code>{{ tenable_host_display }}</code> on port 443.</li>
+            <li>Verify the Linking Key in system settings.</li>
+            <li>Try downloading manually from the list above or Tenable's site, then use manual linking commands below.</li>
+        </ul>
+        <h5><i class="fas fa-link me-2"></i>Linking the Agent (Manual)</h5>
+         <ul>
+            {% if linking_key_set %}
+            <li><strong>Windows (Admin PowerShell):</strong><div class="command-block"><code>&amp; 'C:\Program Files\Tenable\Nessus Agent\nessuscli.exe' agent link --key={{ config.TENABLE_LINKING_KEY }} --host={{ tenable_host_display }} --port=443 --groups="{{ config.TENABLE_CLIENT_TAG_CATEGORY }}/{{ client.name }}"</code><button class="btn btn-sm copy-btn" data-clipboard-text="& 'C:\Program Files\Tenable\Nessus Agent\nessuscli.exe' agent link --key={{ config.TENABLE_LINKING_KEY }} --host={{ tenable_host_display }} --port=443 --groups='{{ config.TENABLE_CLIENT_TAG_CATEGORY }}/{{ client.name }}'" title="Copy Win Link Cmd"><i class="fa-solid fa-copy"></i></button></div></li>
+            <li><strong>Linux (root/sudo):</strong><div class="command-block"><code>sudo /opt/nessus_agent/sbin/nessuscli agent link --key={{ config.TENABLE_LINKING_KEY }} --host={{ tenable_host_display }} --port=443 --groups="{{ config.TENABLE_CLIENT_TAG_CATEGORY }}/{{ client.name }}"</code><button class="btn btn-sm copy-btn" data-clipboard-text="sudo /opt/nessus_agent/sbin/nessuscli agent link --key={{ config.TENABLE_LINKING_KEY }} --host={{ tenable_host_display }} --port=443 --groups='{{ config.TENABLE_CLIENT_TAG_CATEGORY }}/{{ client.name }}'" title="Copy Linux Link Cmd"><i class="fa-solid fa-copy"></i></button></div></li>
+            <li><strong>macOS (sudo):</strong><div class="command-block"><code>sudo /Library/NessusAgent/run/sbin/nessuscli agent link --key={{ config.TENABLE_LINKING_KEY }} --host={{ tenable_host_display }} --port=443 --groups="{{ config.TENABLE_CLIENT_TAG_CATEGORY }}/{{ client.name }}"</code><button class="btn btn-sm copy-btn" data-clipboard-text="sudo /Library/NessusAgent/run/sbin/nessuscli agent link --key={{ config.TENABLE_LINKING_KEY }} --host={{ tenable_host_display }} --port=443 --groups='{{ config.TENABLE_CLIENT_TAG_CATEGORY }}/{{ client.name }}'" title="Copy macOS Link Cmd"><i class="fa-solid fa-copy"></i></button></div></li>
+            {% else %}<li>Manual linking requires the Tenable Linking Key (not configured).</li>{% endif %}
+        </ul>
+        <h5><i class="fas fa-unlink me-2"></i>Unlinking the Agent</h5>
+         <ul><li><strong>Windows:</strong> <code>&amp; 'C:\Program Files\Tenable\Nessus Agent\nessuscli.exe' agent unlink --delete-token</code></li><li><strong>Linux:</strong> <code>sudo /opt/nessus_agent/sbin/nessuscli agent unlink --delete-token</code></li><li><strong>macOS:</strong> <code>sudo /Library/NessusAgent/run/sbin/nessuscli agent unlink --delete-token</code></li></ul>
+        <h5><i class="fas fa-shield-alt me-2"></i>Firewall Requirements</h5>
+        <ul><li><strong>Dest Host:</strong> <code>{{ tenable_host_display }}</code></li><li><strong>Dest Port:</strong> <code>443</code> (TCP)</li><li>Allow outbound connection. Check proxies.</li></ul>
+        <h5><i class="fas fa-redo me-2"></i>Restarting the Agent Service</h5>
+        <ul><li><strong>Windows:</strong> <code>Restart-Service NessusAgent</code></li><li><strong>Linux (systemd):</strong> <code>sudo systemctl restart nessusagent</code></li><li><strong>macOS:</strong> <code>sudo launchctl stop com.tenablesecurity.nessusagent; sudo launchctl start com.tenablesecurity.nessusagent</code></li></ul>
+        <h5><i class="fas fa-trash-alt me-2"></i>Uninstalling the Agent</h5>
+        <ul><li><strong>Windows:</strong> Use 'Add/Remove Programs' or <code>msiexec /x {GUID} /qn</code>.</li><li><strong>Linux (DEB):</strong> <code>sudo dpkg -P NessusAgent</code></li><li><strong>Linux (RPM):</strong> <code>sudo rpm -e NessusAgent</code></li><li><strong>macOS:</strong> Follow Tenable docs; usually involves unlink, unload daemon, rm -rf, pkgutil forget.</li></ul>
+    </div> {# End Troubleshooting Section #}
+
+</div> {# End Container #}
+{% endblock %}
+
+{% block extra_js %}
+{# ... (Keep clipboard.js script) ... #}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/clipboard.js/2.0.11/clipboard.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var clipboard = new ClipboardJS('.copy-btn');
+        clipboard.on('success', function(e) {
+            const originalTitle = e.trigger.getAttribute('data-original-title') || e.trigger.getAttribute('title') || 'Copy';
+            const icon = e.trigger.querySelector('i');
+            const originalIconClass = icon ? icon.className : '';
+            e.trigger.setAttribute('data-bs-original-title', 'Copied!');
+            if (icon) icon.className = 'fas fa-check text-success';
+            var tooltip = bootstrap.Tooltip.getInstance(e.trigger);
+            if (!tooltip) { tooltip = new bootstrap.Tooltip(e.trigger); }
+             tooltip.setContent({ '.tooltip-inner': 'Copied!' });
+             tooltip.show();
+            setTimeout(function() {
+                e.trigger.setAttribute('data-bs-original-title', originalTitle);
+                if (icon) icon.className = originalIconClass;
+                if (tooltip) { tooltip.hide(); }
+            }, 2000);
+            e.clearSelection();
+        });
+        clipboard.on('error', function(e) { console.error('Clipboard Error:', e); alert('Failed to copy automatically.'); });
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('.copy-btn[title]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+           tooltipTriggerEl.setAttribute('data-bs-original-title', tooltipTriggerEl.getAttribute('title'));
+           return new bootstrap.Tooltip(tooltipTriggerEl);
+         });
+    });
+</script>
+{% endblock extra_js %}

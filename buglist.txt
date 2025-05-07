@@ -1,2 +1,1 @@
-Edit items in the managed scope button not working
-once a scopee is submitted the table view doesn't show the operating systemn or the multiple add doesn't save the operating system version per item
+When an assessor generates a sample

@@ -1,0 +1,73 @@
+{# File: tracker/templates/admin/tracker/tenable_scanner_list.html #}
+{% extends "admin/base_site.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}{{ block.super }}<link rel="stylesheet" href="{% static "admin/css/changelists.css" %}">{% endblock %}
+
+{% block content_title %}<h1>{{ title }}</h1>{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    {% if messages %}
+    <ul class="messagelist">{% for message in messages %}
+      <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message.message|capfirst }}</li>
+    {% endfor %}</ul>
+    {% endif %}
+
+    {% if error_message %}
+    <p class="errornote">
+        {{ error_message }}
+    </p>
+    {% endif %}
+
+    <div class="module" id="changelist">
+        <div class="results">
+            <p>This page lists the scanners and scanner groups available in your connected Tenable.io instance. Find the scanner or group you want to use for agent scans (usually 'Cloud Scanners') and copy its UUID into the <a href="{% url 'admin:constance_config_changelist' %}?q=TENABLE_SCANNER_UUID" target="_blank">Constance settings</a>.</p>
+            <p><small>The default 'Cloud Scanners' group typically has the UUID: <code>00000000-0000-0000-0000-0000000000000000000000000000</code></small></p>
+            <br>
+            <table id="result_list">
+                <thead>
+                    <tr>
+                        <th scope="col">
+                            <div class="text"><span>Scanner Name</span></div>
+                        </th>
+                        <th scope="col">
+                            <div class="text"><span>UUID</span></div>
+                        </th>
+                         <th scope="col">
+                            <div class="text"><span>Type</span></div>
+                        </th>
+                        <th scope="col">
+                            <div class="text"><span>Status</span></div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for scanner in scanners %} {# Use 'scanners' from context #}
+                    <tr class="{% cycle 'row1' 'row2' %}">
+                        <td>
+                            {{ scanner.name|default:"N/A" }}
+                        </td>
+                        <td>
+                            <code>{{ scanner.uuid|default:"-" }}</code>
+                        </td>
+                        <td>
+                            {{ scanner.type|default:"-"|capfirst }}
+                        </td>
+                         <td>
+                            {{ scanner.status|default:"-"|capfirst }}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr class="{% cycle 'row1' 'row2' %}"><td colspan="4">{% trans "No scanners found or retrieved." %}</td></tr> {# Adjusted colspan #}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+         <div class="actions">
+             <a href="{% url 'admin:index' %}" class="button">{% trans "Back to Admin Home" %}</a>
+              <a href="{% url 'admin:constance_config_changelist' %}?q=TENABLE_SCANNER_UUID" class="button" target="_blank">{% trans "Go to Constance Settings" %}</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
