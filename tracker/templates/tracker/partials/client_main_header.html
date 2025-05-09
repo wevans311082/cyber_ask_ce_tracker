@@ -1,0 +1,29 @@
+{% load i18n %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+  <h1 class="h2"><i class="fas fa-clipboard-list"></i> {% translate "Assessment Details" %}: #{{ assessment.id }}</h1>
+  <span class="badge bg-primary fs-6">{{ assessment.get_assessment_type_display }}</span>
+</div>
+
+{% if assessment.status == 'Scoping_Client' %}
+  <div class="alert alert-info" role="alert">
+    <strong>{% translate "Action Required" %}:</strong>
+    {% translate "Please define the items in scope for this assessment." %}
+    <a href="{% url 'tracker:client_scope_manage' assessment.pk %}" class="alert-link">
+      {% translate "Manage Scope Items" %}
+    </a>. {% translate "Once complete, submit the scope for review." %}
+  </div>
+{% elif assessment.status == 'Scoping_Review' %}
+  <div class="alert alert-secondary" role="alert">
+    {% translate "Your scope has been submitted and is currently under review by the assessor." %}
+  </div>
+{% endif %}
+
+{% if scope_summary.has_unsupported_or_eol %}
+  <div class="alert alert-danger d-flex align-items-center" role="alert">
+    <i class="fa-solid fa-triangle-exclamation fa-lg me-2"></i>
+    <div>
+      <strong>{% translate "Warning" %}:</strong>
+      {% translate "One or more operating systems in scope are unsupported or past End-of-Life. ..." %}
+    </div>
+  </div>
+{% endif %}

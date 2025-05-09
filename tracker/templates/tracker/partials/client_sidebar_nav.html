@@ -1,0 +1,172 @@
+{% load i18n %}
+<nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar">
+  <div class="position-sticky pt-3" style="top: 1rem;">
+    <a href="{% url 'tracker:client_assessment_list' %}" class="btn btn-outline-secondary d-block mb-3">
+      <i class="fas fa-arrow-left"></i> {% translate "Back to My Assessments" %}
+    </a>
+
+    <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+      <span>{% translate "On This Page" %}</span>
+    </h6>
+    <div class="accordion accordion-flush" id="leftNavAccordion">
+
+      <!-- Scope -->
+      <div class="card mb-2">
+        <div class="card-header p-0 bg-transparent border-0">
+          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
+                  data-bs-toggle="collapse" data-bs-target="#collapseScopeNav"
+                  aria-expanded="false" aria-controls="collapseScopeNav">
+            <i class="fas fa-sitemap fa-fw me-2"></i> {% translate "Scope" %} ({{ scope_summary.total_items|default:0 }})
+          </button>
+        </div>
+        <div id="collapseScopeNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
+          <div class="card-body small">
+            <a href="#scope-management-section" class="nav-link text-primary d-block mb-2">
+              {% translate "View Summary" %}
+            </a>
+            {% if can_edit_scope %}
+              <a href="{% url 'tracker:client_scope_manage' assessment.pk %}" class="btn btn-sm btn-primary d-block">
+                <i class="fas fa-edit"></i> {% translate "Manage Scope Items" %}
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Networks -->
+      <div class="card mb-2">
+        <div class="card-header p-0 bg-transparent border-0">
+          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
+                  data-bs-toggle="collapse" data-bs-target="#collapseNetworksNav"
+                  aria-expanded="false" aria-controls="collapseNetworksNav">
+            <i class="fas fa-network-wired fa-fw me-2"></i> {% translate "Networks" %} ({{ assessment.networks.count }})
+          </button>
+        </div>
+        <div id="collapseNetworksNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
+          <div class="card-body small">
+            <a href="#networks-section" class="nav-link text-primary d-block mb-2">
+              {% translate "View Details" %}
+            </a>
+            {% if not assessment.status|slice:":8" == 'Complete' %}
+              <a href="{% url 'tracker:client_network_list' assessment.pk %}" class="btn btn-sm btn-primary d-block">
+                <i class="fas fa-edit"></i> {% translate "Manage Networks" %}
+              </a>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Cloud Services -->
+      <div class="card mb-2">
+        <div class="card-header p-0 bg-transparent border-0">
+          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
+                  data-bs-toggle="collapse" data-bs-target="#collapseCloudServicesNav"
+                  aria-expanded="false" aria-controls="collapseCloudServicesNav">
+            <i class="fas fa-cloud fa-fw me-2"></i> {% translate "Cloud Services" %} ({{ assessment.assessment_cloud_services.count }})
+          </button>
+        </div>
+        <div id="collapseCloudServicesNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
+          <div class="card-body small">
+            <a href="#cloud-services-section" class="nav-link text-primary d-block mb-2">
+              {% translate "View Details" %}
+            </a>
+            <a href="{% url 'tracker:client_assessment_cloud_service_list' assessment.pk %}" class="btn btn-sm btn-primary d-block">
+              <i class="fas fa-edit"></i> {% translate "Manage Cloud Services" %}
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- External IPs -->
+      <div class="card mb-2">
+        <div class="card-header p-0 bg-transparent border-0">
+          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
+                  data-bs-toggle="collapse" data-bs-target="#collapseExternalIPsNav"
+                  aria-expanded="false" aria-controls="collapseExternalIPsNav">
+            <i class="fas fa-crosshairs fa-fw me-2"></i> {% translate "External IPs" %} ({{ assessment.external_ips.count }})
+          </button>
+        </div>
+        <div id="collapseExternalIPsNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
+          <div class="card-body small">
+            <a href="#external-ips-section" class="nav-link text-primary d-block mb-2">
+              {% translate "View Details" %}
+            </a>
+            <a href="{% url 'tracker:client_externalip_list' assessment.pk %}" class="btn btn-sm btn-primary d-block">
+              <i class="fas fa-edit"></i> {% translate "Manage Targets" %}
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workflow -->
+      <div class="card mb-2">
+        <div class="card-header p-0 bg-transparent border-0">
+          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
+                  data-bs-toggle="collapse" data-bs-target="#collapseWorkflowNav"
+                  aria-expanded="false" aria-controls="collapseWorkflowNav">
+            <i class="fas fa-tasks fa-fw me-2"></i> {% translate "Workflow" %}
+          </button>
+        </div>
+        <div id="collapseWorkflowNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
+          <div class="card-body small">
+            <a href="#workflow-visual-section" class="nav-link text-primary d-block mb-1">
+              {% translate "View Visual" %}
+            </a>
+            <a href="#workflow-checklist-section" class="nav-link text-primary d-block">
+              {% translate "View Checklist" %}
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- CE+ Sample -->
+      {% if assessment.assessment_type == 'CE+' %}
+      <div class="card mb-2">
+        <div class="card-header p-0 bg-transparent border-0">
+          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
+                  data-bs-toggle="collapse" data-bs-target="#collapseCESampleNav"
+                  aria-expanded="false" aria-controls="collapseCESampleNav">
+            <i class="fas fa-vial fa-fw me-2"></i> {% translate "CE+ Sample" %}
+          </button>
+        </div>
+        <div id="collapseCESampleNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
+          <div class="card-body small">
+            <a href="#ce-plus-sample-section" class="nav-link text-primary d-block">
+              {% translate "View Details" %}
+            </a>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Downloads -->
+      <div class="card mb-2">
+        <div class="card-header p-0 bg-transparent border-0">
+          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
+                  data-bs-toggle="collapse" data-bs-target="#collapseDownloadsNav"
+                  aria-expanded="false" aria-controls="collapseDownloadsNav">
+            <i class="fas fa-download fa-fw me-2"></i> {% translate "Downloads" %}
+          </button>
+        </div>
+        <div id="collapseDownloadsNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
+          <div class="card-body small">
+            <a href="#downloads-section" class="nav-link text-primary d-block">
+              {% translate "View Files" %}
+            </a>
+          </div>
+        </div>
+      </div>
+
+    </div> {# End Accordion #}
+
+    <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
+      <span>{% translate "Other Actions" %}</span>
+    </h6>
+    <div class="list-group list-group-flush">
+      <button type="button" class="list-group-item list-group-item-action"
+              data-bs-toggle="modal" data-bs-target="#logModal">
+        <i class="fas fa-history fa-fw me-2"></i> {% translate "View Assessment Log" %}
+      </button>
+    </div>
+  </div>
+</nav>

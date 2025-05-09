@@ -1,0 +1,59 @@
+{% load i18n %}
+<div class="card mb-4" id="workflow-visual-section">
+  <div class="card-header">{% translate "Workflow Progress" %}</div>
+  <div class="card-body">
+    {% if workflow_steps %}
+      <style>
+        .workflow-map { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; padding: 10px 0; overflow-x: auto; }
+        .workflow-map-step { border: 1px solid #ccc; padding: 5px 10px; border-radius: 15px; text-align: center; font-size: 0.8rem; background-color: #f8f9fa; color: #6c757d; position: relative; flex-shrink: 0; min-width: 30px; }
+        .workflow-map-step.complete { background-color: #d1e7dd; border-color: #a3cfbb; color: #0a3622; }
+        .workflow-map-step.current { background-color: #cff4fc; border-color: #9eeaf9; color: #055160; font-weight: bold; }
+        .workflow-map-step.help-needed { background-color: #fff3cd; border-color: #ffe69c; color: #664d03; }
+        .workflow-map-step.skipped { background-color: #e2e3e5; border-color: #d3d6d8; color: #41464b; text-decoration: line-through;}
+        .workflow-map-connector { flex-grow: 1; height: 2px; background-color: #ccc; min-width: 20px; margin: 0 -2px; }
+        .workflow-map-step.complete + .workflow-map-connector { background-color: #a3cfbb; }
+        .workflow-map-step.current::after { content: ''; position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #055160; }
+        .workflow-map-step.help-needed::before { font-family: "Font Awesome 6 Free"; font-weight: 900; content: "\f071"; position: absolute; top: -12px; left: 50%; transform: translateX(-50%); color: #ffc107; font-size: 0.8em; background-color: white; border-radius: 50%; padding: 1px 2px; }
+      </style>
+      <div class="workflow-map">
+        {% for step in workflow_steps %}
+          <div class="workflow-map-step
+                      {% if step.status == 'Complete' %}complete{% endif %}
+                      {% if step == current_step and step.status != 'HelpNeeded' %}current{% endif %}
+                      {% if step.status == 'Skipped' %}skipped{% endif %}
+                      {% if step.status == 'HelpNeeded' %}help-needed{% endif %}"
+               title="{{ step.step_definition.step_order }}. {{ step.step_definition.name }} ({{ step.get_status_display }})">
+            {{ step.step_definition.step_order }}
+          </div>
+          {% if not forloop.last %}
+            <div class="workflow-map-connector"></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      {% if current_step %}
+        <p class="mt-3 mb-0 text-center
+                  {% if current_step.step_definition.assignee_type in 'Applicant,Both' %}text-primary fw-bold{% else %}text-muted{% endif %}">
+          <strong>
+            {% if current_step.status == 'HelpNeeded' %}
+              <span class="text-warning">{% translate "Step Needing Help" %}</span>
+            {% else %}
+              {% translate "Current Step" %}
+            {% endif %}
+            {% if current_step.step_definition.assignee_type in 'Applicant,Both' %}
+              ({% translate "Action: You" %})
+            {% else %}
+              ({% translate "Action:" %} {{ current_step.step_definition.get_assignee_type_display }})
+            {% endif %}: {{ current_step.step_definition.step_order }}. {{ current_step.step_definition.name }}
+          </strong>
+        </p>
+      {% elif workflow_steps.0.status == 'Complete' %}
+        <p class="mt-3 mb-0 text-center text-success">
+          <strong><i class="fa-solid fa-check-circle me-1"></i>{% translate "Workflow Complete!" %}</strong>
+        </p>
+      {% endif %}
+    {% else %}
+      <p class="text-muted">{% translate "Workflow steps not yet available." %}</p>
+    {% endif %}
+  </div>
+</div>

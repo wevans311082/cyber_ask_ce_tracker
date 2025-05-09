@@ -1,0 +1,966 @@
+/* CHANGES BEGIN */
+.nav-logout-button {
+  background: none;          /* Remove background */
+  border: none;            /* Remove border */
+  padding: 0;              /* Remove padding */
+  margin: 0;               /* Remove margin */
+  outline: none;           /* Remove focus outline */
+  color: var(--white);     /* Match link color */
+  font-weight: 600;        /* Match link font weight */
+  font-size: 1rem;         /* Match link font size */
+  font-family: inherit;    /* Use the surrounding font */
+  cursor: pointer;         /* Show pointer cursor */
+  vertical-align: baseline;/* Align with surrounding text */
+  text-align: left;        /* Ensure text alignment if needed */
+}
+
+/* Add hover effect to match navigation links */
+.nav-logout-button:hover {
+  color: var(--accent-teal);
+  text-decoration: none; /* Ensure no underline appears on hover */
+}
+
+.alert {
+  padding: 15px;
+  margin-bottom: 20px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  position: relative; /* Needed for absolute positioning of close button */
+}
+
+.alert-warning {
+  color: #856404;
+  background-color: #fff3cd;
+  border-color: #ffeeba;
+}
+
+.alert-dismissible {
+  padding-right: 40px; /* Make space for the close button */
+}
+
+.alert-dismissible .btn-close {
+  position: absolute;
+  top: 50%;
+  right: 15px;
+  transform: translateY(-50%);
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  font-weight: bold;
+  line-height: 1;
+  color: #000;
+  text-shadow: 0 1px 0 #fff;
+  opacity: 0.5;
+  cursor: pointer;
+}
+
+.alert-dismissible .btn-close:hover {
+  opacity: 0.8;
+}
+
+.header-icon {
+    color: #FFA500; /* Orange color */
+    margin-right: 10px; /* Space between icon and text */
+    font-size: 1.6rem; /* Slightly smaller than title, adjust as needed */
+    vertical-align: middle; /* Helps align icon with text vertically */
+}
+
+/* Optional: Adjust header h1 if needed for alignment */
+header h1 {
+    /* Ensure flex alignment works well if needed, though vertical-align might be enough */
+     display: inline-flex; /* Use flex to better control alignment */
+     align-items: center; /* Center items vertically within the h1 */
+}
+
+/* Ensure the link inside h1 inherits color correctly */
+header h1 a {
+    color: inherit;
+    text-decoration: none;
+    vertical-align: middle; /* Align link text too */
+}
+
+.wizard-actions {
+  display: flex; /* Enable Flexbox */
+  justify-content: center; /* Center items horizontally */
+  align-items: center; /* Align items vertically (optional, good practice) */
+  gap: 15px; /* Adds space BETWEEN the buttons/links */
+  flex-wrap: wrap; /* Allow buttons to wrap on small screens if needed */
+}
+
+/* Optional: Ensure buttons/links inside behave correctly with flex */
+.wizard-actions .btn,
+.wizard-actions button,
+.wizard-actions a {
+  margin: 5px 0; /* Remove default browser margins that might interfere */
+  /* Your existing .btn styles should apply padding, color etc. */
+}
+
+.auth-card {
+  max-width: 500px; /* Adjust width as needed */
+  margin: 40px auto; /* Centers the card horizontally, adds top/bottom margin */
+  padding: 30px 40px; /* Inner spacing */
+  background-color: var(--white); /* White background */
+  border: 1px solid #e2e8f0; /* Subtle border */
+  border-radius: 10px; /* Rounded corners */
+  box-shadow: 0 5px 15px var(--shadow); /* Use shadow variable */
+  text-align: center; /* Center headings and potentially buttons */
+}
+
+.auth-card h1 {
+    font-size: 1.8rem; /* Match header maybe? */
+    color: var(--primary-blue);
+    margin-bottom: 10px; /* Space below title */
+    text-align: center;
+}
+
+.auth-card p {
+    margin-bottom: 20px; /* Space below paragraph */
+    color: var(--dark-bg);
+    font-size: 1rem;
+    text-align: center;
+}
+
+/* Optional: Style form fields within the card */
+.auth-form label {
+    /* Styles for labels if needed */
+    color: var(--dark-bg);
+    font-weight: 600;
+}
+
+.auth-form input[type="text"],
+.auth-form input[type="password"],
+.auth-form input[type="email"],
+.auth-form input[type="number"] {
+    display: block; /* Make inputs take full width */
+    width: 100%;
+    padding: 10px 12px; /* Adjust padding */
+    margin-top: 5px; /* Space below label */
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-family: inherit; /* Use body font */
+    font-size: 1rem;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1); /* Subtle inner shadow */
+}
+
+/* Center the button */
+.auth-form button.btn {
+    display: inline-block; /* Keep as inline-block for centering via text-align */
+    /* Add any specific button margin needed */
+}
+
+:root {
+    --primary-blue: #1E3A8A; /* Deep blue for primary actions and headers */
+    --accent-teal: #2DD4BF;   /* Teal for accents, highlights, and secondary actions */
+    --dark-bg: #0F172A;       /* Very dark blue/slate for text and dark backgrounds */
+    --light-bg: #F8FAFC;      /* Very light grey/off-white for page backgrounds */
+    --white: #FFFFFF;         /* Pure white for text on dark backgrounds and card backgrounds */
+    --shadow: rgba(0, 0, 0, 0.15); /* Soft shadow for depth */
+
+    /* Material Design 3 Inspired Semantic Colors (examples) */
+    --md-sys-color-primary: var(--primary-blue);
+    --md-sys-color-on-primary: var(--white);
+    --md-sys-color-primary-container: #D6E3FF; /* A light blue */
+    --md-sys-color-on-primary-container: #001B3E;
+
+    --md-sys-color-secondary: var(--accent-teal);
+    --md-sys-color-on-secondary: var(--dark-bg);
+    --md-sys-color-secondary-container: #A2F2E8; /* A light teal */
+    --md-sys-color-on-secondary-container: #00201D;
+
+    --md-sys-color-tertiary: #7D5260; /* Example tertiary color */
+    --md-sys-color-on-tertiary: var(--white);
+    --md-sys-color-tertiary-container: #FFD8E4;
+    --md-sys-color-on-tertiary-container: #31111D;
+
+    --md-sys-color-error: #B3261E;
+    --md-sys-color-on-error: var(--white);
+    --md-sys-color-error-container: #F9DEDC;
+    --md-sys-color-on-error-container: #410E0B;
+
+    --md-sys-color-background: var(--light-bg);
+    --md-sys-color-on-background: var(--dark-bg);
+
+    --md-sys-color-surface: var(--white); /* For cards, sheets, menus */
+    --md-sys-color-on-surface: var(--dark-bg);
+    --md-sys-color-surface-variant: #E7E0EC; /* Slightly different surface color */
+    --md-sys-color-on-surface-variant: #49454F;
+    --md-sys-color-outline: #79747E; /* Borders, dividers */
+
+    /* Typography */
+    --md-sys-typescale-headline-large-font-family-name: 'Poppins', sans-serif;
+    --md-sys-typescale-headline-large-font-weight: 700;
+    --md-sys-typescale-headline-large-font-size: 2rem; /* 32px */
+    --md-sys-typescale-headline-large-line-height: 2.5rem; /* 40px */
+
+    --md-sys-typescale-title-large-font-family-name: 'Poppins', sans-serif;
+    --md-sys-typescale-title-large-font-weight: 600;
+    --md-sys-typescale-title-large-font-size: 1.375rem; /* 22px */
+    --md-sys-typescale-title-large-line-height: 1.75rem; /* 28px */
+
+    --md-sys-typescale-body-large-font-family-name: 'Poppins', sans-serif;
+    --md-sys-typescale-body-large-font-weight: 400;
+    --md-sys-typescale-body-large-font-size: 1rem; /* 16px */
+    --md-sys-typescale-body-large-line-height: 1.5rem; /* 24px */
+
+    --md-sys-typescale-label-large-font-family-name: 'Poppins', sans-serif;
+    --md-sys-typescale-label-large-font-weight: 600; /* Medium is 500, but 600 for more emphasis */
+    --md-sys-typescale-label-large-font-size: 0.875rem; /* 14px */
+    --md-sys-typescale-label-large-line-height: 1.25rem; /* 20px */
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: var(--md-sys-typescale-body-large-font-family-name);
+    background: var(--md-sys-color-background);
+    color: var(--md-sys-color-on-background);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+    font-size: var(--md-sys-typescale-body-large-font-size);
+    overflow-x: hidden;
+    padding-top: 80px; /* Adjust based on header height */
+}
+
+header {
+    background: var(--md-sys-color-primary); /* Using Material semantic color */
+    color: var(--md-sys-color-on-primary);
+    padding: 15px 20px;
+    text-align: center;
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+    box-shadow: 0 4px 15px var(--shadow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    animation: slideDown 0.6s ease-out;
+}
+
+@keyframes slideDown {
+    from { transform: translateY(-100%); }
+    to { transform: translateY(0); }
+}
+
+header h1 {
+    font-family: var(--md-sys-typescale-headline-large-font-family-name);
+    font-weight: var(--md-sys-typescale-headline-large-font-weight);
+    font-size: 1.5rem; /* Adjusted for header context */
+    color: var(--accent-teal); /* Keeping accent for brand, could be on-primary */
+    letter-spacing: 1px;
+    transition: color 0.3s ease;
+    margin: 0;
+}
+
+header h1 a {
+    color: inherit;
+    text-decoration: none;
+}
+
+header h1:hover, header h1 a:hover {
+    color: var(--white); /* Fallback or specific hover */
+}
+
+nav ul {
+    list-style: none;
+    display: flex;
+    margin: 0;
+    padding: 0;
+}
+
+nav ul li {
+    margin-left: 25px;
+}
+
+nav ul li a {
+    font-family: var(--md-sys-typescale-label-large-font-family-name);
+    font-weight: var(--md-sys-typescale-label-large-font-weight);
+    font-size: var(--md-sys-typescale-label-large-font-size);
+    color: var(--md-sys-color-on-primary);
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+
+nav ul li a:hover {
+    color: var(--accent-teal); /* Or a lighter shade of on-primary */
+}
+
+.menu-toggle {
+    display: none; /* Hidden by default, shown in media query */
+    color: var(--md-sys-color-on-primary);
+    font-size: 1.5rem;
+    cursor: pointer;
+}
+
+/* Responsive Menu Styles */
+@media (max-width: 768px) {
+    nav ul {
+        display: none; /* Hide nav links by default on small screens */
+        flex-direction: column;
+        position: absolute;
+        top: 70px; /* Adjust based on header height */
+        left: 0;
+        width: 100%;
+        background: var(--md-sys-color-primary);
+        padding: 10px 0;
+        box-shadow: 0 4px 15px var(--shadow);
+    }
+    nav ul.active {
+        display: flex; /* Show nav links when active */
+    }
+    nav ul li {
+        margin: 10px 20px;
+        text-align: center;
+    }
+    .menu-toggle {
+        display: block; /* Show hamburger icon */
+    }
+}
+
+.hero4 {
+    height: calc(100vh - 80px); /* Adjust height considering header */
+    min-height: 500px; /* Minimum height */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 20px;
+    position: relative;
+}
+
+.btn {
+    padding: 12px 30px; /* Adjusted padding for Material feel */
+    font-family: var(--md-sys-typescale-label-large-font-family-name);
+    font-weight: var(--md-sys-typescale-label-large-font-weight);
+    font-size: var(--md-sys-typescale-label-large-font-size);
+    background: var(--md-sys-color-secondary); /* Use secondary for main CTAs */
+    color: var(--md-sys-color-on-secondary);
+    border: none;
+    border-radius: 20px; /* MD3 often uses fuller rounded corners for buttons */
+    cursor: pointer;
+    transition: all 0.3s ease; /* Smoother transition */
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+    text-decoration: none;
+    display: inline-block;
+    text-transform: uppercase; /* Often used for buttons */
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2); /* Subtle shadow for buttons */
+}
+
+.btn:hover {
+    background: #1DA89B; /* Slightly darker teal on hover */
+    transform: translateY(-2px) scale(1.02);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+}
+
+/* Ripple effect for buttons (optional but nice for MD) */
+.btn::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.3); /* Ripple color */
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s ease, height 0.6s ease;
+    z-index: -1;
+}
+
+.btn:active::after { /* Trigger ripple on active state */
+    width: 300px; /* Adjust size as needed */
+    height: 300px;
+}
+
+
+section {
+    padding: 60px 20px; /* Adjusted padding */
+    text-align: center;
+    background: var(--md-sys-color-surface); /* Use surface for section backgrounds */
+    border-bottom: 1px solid var(--md-sys-color-outline); /* Use outline for dividers */
+    opacity: 0;
+    transform: translateY(40px);
+    transition: opacity 0.8s ease-out, transform 0.8s ease-out;
+}
+
+section.visible {
+     opacity: 1;
+     transform: translateY(0);
+}
+
+body > section:nth-of-type(even):not(.hero) {
+     background: var(--md-sys-color-surface-variant); /* Alternate with surface-variant */
+}
+
+section h2 {
+    font-family: var(--md-sys-typescale-headline-large-font-family-name);
+    font-weight: var(--md-sys-typescale-headline-large-font-weight);
+    font-size: var(--md-sys-typescale-headline-large-font-size);
+    line-height: var(--md-sys-typescale-headline-large-line-height);
+    margin-bottom: 40px; /* Adjusted space */
+    color: var(--md-sys-color-primary);
+    position: relative;
+}
+
+section h2::after {
+    content: '';
+    width: 60px;
+    height: 4px;
+    background: var(--md-sys-color-secondary); /* Use secondary as accent for underline */
+    position: absolute;
+    bottom: -15px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+#about p, #about ul li {
+    font-family: var(--md-sys-typescale-body-large-font-family-name);
+    font-size: var(--md-sys-typescale-body-large-font-size);
+    line-height: var(--md-sys-typescale-body-large-line-height);
+    color: var(--md-sys-color-on-surface);
+}
+
+#about p {
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+    margin-bottom: 20px;
+    text-align: left;
+}
+
+#about ul {
+   list-style: none;
+   padding: 0;
+   margin: 20px auto;
+   max-width: 700px;
+   text-align: left;
+}
+
+#about ul li {
+   margin-bottom: 10px;
+   position: relative;
+   padding-left: 25px;
+}
+
+#about ul li::before {
+   content: "\f058"; /* Font Awesome check icon */
+   font-family: "Font Awesome 6 Free";
+   font-weight: 900;
+   position: absolute;
+   left: 0;
+   top: 2px;
+   color: var(--md-sys-color-secondary); /* Use secondary color */
+}
+
+#credentials .credential-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px; /* Adjusted gap */
+    margin-top: 30px;
+}
+
+#credentials .credential-item {
+    background: var(--md-sys-color-surface-variant); /* Use surface-variant for cards */
+    color: var(--md-sys-color-on-surface-variant);
+    padding: 20px;
+    border-radius: 12px; /* MD3 often uses larger border radii */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06); /* Softer shadow */
+    text-align: center;
+    width: 200px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+#credentials .credential-item:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.1); /* Enhanced shadow */
+}
+
+#credentials .credential-item i {
+    font-size: 2.2rem;
+    color: var(--md-sys-color-primary); /* Primary color for icons in cards */
+    margin-bottom: 12px;
+}
+
+ #credentials .credential-item p {
+    font-family: var(--md-sys-typescale-label-large-font-family-name);
+    font-weight: var(--md-sys-typescale-label-large-font-weight);
+    font-size: 0.9rem;
+    color: var(--md-sys-color-on-surface-variant);
+    margin: 0;
+ }
+
+/* Services Section Styles */
+#services ul {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+    padding: 0;
+    list-style: none;
+}
+#services li {
+    background: var(--md-sys-color-surface);
+    color: var(--md-sys-color-on-surface);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+    width: 280px; /* Adjusted width */
+    padding: 20px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    cursor: pointer;
+    text-align: center;
+}
+#services li:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.1);
+}
+#services li i {
+    font-size: 2.2rem;
+    color: var(--md-sys-color-secondary); /* Secondary for service icons */
+    margin-bottom: 12px;
+}
+#services li h3 {
+    font-family: var(--md-sys-typescale-title-large-font-family-name);
+    font-weight: var(--md-sys-typescale-title-large-font-weight);
+    font-size: 1.15rem; /* Adjusted size */
+    color: var(--md-sys-color-primary);
+    margin-bottom: 8px;
+}
+#services li p {
+    font-family: var(--md-sys-typescale-body-large-font-family-name);
+    font-size: 0.9rem;
+    color: var(--md-sys-color-on-surface);
+    line-height: 1.4;
+}
+
+/* Credential Description Typewriter Effect */
+.credential-description {
+    background: var(--md-sys-color-primary-container);
+    color: var(--md-sys-color-on-primary-container);
+    padding: 15px 20px;
+    margin: 30px auto 20px auto;
+    max-width: 80%;
+    border-radius: 8px; /* Consistent border radius */
+    overflow: hidden;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.credential-description p {
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    border-right: .15em solid var(--md-sys-color-secondary); /* Typing cursor */
+    font-size: 1rem;
+    width: 0;
+    animation: typing 3.5s steps(40, end) forwards,
+               blink-caret .75s step-end infinite;
+}
+
+@keyframes typing {
+    from { width: 0 }
+    to { width: 100% }
+}
+
+@keyframes blink-caret {
+    from, to { border-color: transparent }
+    50% { border-color: var(--md-sys-color-secondary); }
+}
+
+.placeholder-section h3 {
+     font-size: 1.3rem;
+     color: var(--md-sys-color-on-surface);
+     margin-bottom: 15px;
+     margin-top: -20px;
+     font-weight: 400;
+}
+.placeholder-section p {
+     max-width: 700px;
+     margin: 0 auto 30px auto;
+     font-size: 1rem;
+     color: var(--md-sys-color-on-surface-variant);
+}
+
+#contact a {
+    color: var(--md-sys-color-primary);
+    text-decoration: none;
+    transition: color 0.3s ease;
+}
+#contact a:hover {
+    color: var(--md-sys-color-secondary);
+}
+#contact p {
+    font-size: 1rem;
+    margin-bottom: 15px;
+    color: var(--md-sys-color-on-surface);
+}
+#contact i {
+    margin-right: 8px;
+    color: var(--md-sys-color-secondary);
+}
+#contact .btn {
+    margin-top: 20px;
+}
+
+footer {
+    background: var(--dark-bg); /* Keep dark for footer contrast */
+    color: var(--light-bg);
+    text-align: center;
+    padding: 20px;
+    margin-top: 0;
+    border-top: 3px solid var(--accent-teal); /* Keep brand accent */
+}
+
+#cookie-banner {
+    display: none;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: var(--md-sys-color-surface-variant); /* Surface variant for banner */
+    color: var(--md-sys-color-on-surface-variant);
+    padding: 15px 20px;
+    z-index: 1500;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 -2px 10px var(--shadow);
+}
+ #cookie-banner p {
+     margin: 0;
+     margin-right: 15px;
+     font-size: 0.9rem;
+ }
+ #cookie-banner button {
+     padding: 8px 15px;
+     background: var(--md-sys-color-primary);
+     color: var(--md-sys-color-on-primary);
+     border: none;
+     border-radius: 16px; /* Fuller radius */
+     cursor: pointer;
+     font-weight: 600;
+     transition: background 0.3s ease;
+     font-size: 0.85rem;
+ }
+ #cookie-banner button:hover {
+      background: #1A2D6D; /* Darker primary */
+ }
+
+.popup-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(15, 23, 42, 0.7); /* Dark overlay, slightly less opaque */
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    opacity: 0;
+    transition: opacity 0.3s ease-out;
+    backdrop-filter: blur(3px);
+}
+
+.popup-overlay.visible {
+    display: flex;
+    opacity: 1;
+}
+
+.popup-content {
+    background: var(--md-sys-color-surface); /* Surface for popup */
+    color: var(--md-sys-color-on-surface);
+    padding: 25px 30px;
+    border-radius: 16px; /* Larger radius for dialogs/popups */
+    max-width: 600px;
+    width: 90%;
+    position: relative;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.2); /* Standard MD shadow */
+    max-height: 85vh;
+    overflow-y: auto;
+    transform: scale(0.95);
+    transition: transform 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28), opacity 0.3s ease-out;
+    opacity: 0; /* Start hidden for transition */
+}
+
+.popup-overlay.visible .popup-content {
+     transform: scale(1);
+     opacity: 1;
+}
+
+.popup-content h3 {
+     font-family: var(--md-sys-typescale-headline-large-font-family-name);
+     font-size: 1.6rem; /* Adjusted */
+     color: var(--md-sys-color-primary);
+     margin-bottom: 15px;
+     text-align: center;
+}
+
+ .popup-content p {
+     margin-bottom: 12px;
+     line-height: 1.6;
+     font-size: 1rem;
+     color: var(--md-sys-color-on-surface);
+ }
+ .popup-content ul {
+     list-style: none;
+     padding-left: 0;
+     margin-bottom: 15px;
+ }
+  .popup-content li {
+     margin-bottom: 8px;
+     position: relative;
+     padding-left: 25px;
+     font-size: 1rem;
+ }
+  .popup-content li::before {
+     content: "\f138"; /* Font Awesome right arrow */
+     font-family: "Font Awesome 6 Free";
+     font-weight: 900;
+     position: absolute;
+     left: 0;
+     top: 3px;
+     color: var(--md-sys-color-secondary);
+ }
+
+.close-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font-size: 1.8rem;
+    color: var(--md-sys-color-on-surface-variant); /* For less prominent icons */
+    cursor: pointer;
+    transition: color 0.3s ease, transform 0.3s ease;
+    line-height: 1;
+    background: transparent; /* No background for cleaner look */
+    border-radius: 50%;
+    width: 36px; /* Standard touch target size */
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-btn:hover {
+    color: var(--md-sys-color-primary); /* Primary on hover */
+    transform: rotate(90deg);
+    background: rgba(0,0,0,0.05); /* Subtle hover background */
+}
+/* CHANGES END */
+.login-page-container {
+    /* This attempts to fill height below the 80px fixed header */
+    min-height: calc(100vh - 80px);
+    display: flex;
+    align-items: stretch; /* Make columns equal height */
+    background-color: var(--md-sys-color-background); /* Page background */
+}
+
+.login-page-container > .row {
+    flex-grow: 1; /* Allow row to grow and fill container */
+}
+
+.login-image-panel {
+    background-image: url('https://images.unsplash.com/photo-1518770660439-4636190af475?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80'); /* Replace with your image */
+    background-size: cover;
+    background-position: center;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--white);
+    text-align: center;
+    padding: 40px;
+}
+
+.login-image-panel .image-overlay {
+    background-color: rgba(0,0,0, 0.5); /* Dark overlay for text readability */
+    padding: 30px;
+    border-radius: 10px;
+    animation: fadeIn 1s ease-out;
+}
+
+.login-image-panel h2 {
+    font-family: var(--md-sys-typescale-headline-large-font-family-name);
+    font-weight: var(--md-sys-typescale-headline-large-font-weight);
+    font-size: 2.5rem; /* Example size */
+    color: var(--accent-teal);
+    margin-bottom: 15px;
+}
+
+.login-image-panel p {
+    font-family: var(--md-sys-typescale-title-large-font-family-name);
+    font-size: 1.2rem; /* Example size */
+}
+
+.login-form-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px; /* Padding for smaller screens */
+    background-color: var(--md-sys-color-surface); /* White/light background for the panel area */
+    animation: slideInFromRight 0.8s ease-out;
+}
+
+.login-form-content {
+    width: 100%;
+    max-width: 450px; /* Max width of the form box itself */
+    padding: 30px 40px;
+    background-color: var(--white); /* Explicitly white for the box */
+    border-radius: var(--border-radius, 10px); /* Use existing or new variable */
+    box-shadow: 0 5px 20px var(--shadow);
+    /* text-align: center; /* from your auth-card, adjust if needed */
+}
+
+.login-form-content h2 {
+    font-family: var(--md-sys-typescale-headline-large-font-family-name);
+    color: var(--primary-blue);
+    text-align: center;
+    margin-bottom: 25px;
+}
+
+/* Make sure .auth-form input styles apply as intended */
+.login-form-content .auth-form input[type="text"],
+.login-form-content .auth-form input[type="password"],
+.login-form-content .auth-form input[type="email"],
+.login-form-content .auth-form input[type="number"] {
+    /* Styles are already defined in your style.css under .auth-form input */
+    /* Ensure they are specific enough or adjust if needed */
+    margin-bottom: 10px; /* Add some space below inputs */
+}
+
+.login-form-content .auth-form label {
+    /* Styles are already defined in your style.css under .auth-form label */
+    text-align: left; /* If labels were centered by auth-card */
+    display: block; /* Ensure it takes width if needed */
+    margin-bottom: 2px; /* Small space between label and input */
+}
+
+
+.login-form-content .btn-primary {
+    background-color: var(--md-sys-color-primary);
+    border-color: var(--md-sys-color-primary);
+    color: var(--md-sys-color-on-primary);
+    font-weight: var(--md-sys-typescale-label-large-font-weight);
+    padding: 12px 20px; /* Match your global .btn */
+    border-radius: 20px; /* Match your global .btn */
+    text-transform: uppercase; /* Match your global .btn */
+}
+
+.login-form-content .btn-primary:hover {
+    background-color: #1A2D6D; /* Darker primary, or use a variable */
+    border-color: #1A2D6D;
+    transform: translateY(-2px) scale(1.02); /* from your .btn:hover */
+    box-shadow: 0 4px 10px rgba(0,0,0,0.25); /* from your .btn:hover */
+}
+
+.login-form-content p a {
+    color: var(--primary-blue);
+    text-decoration: none;
+}
+.login-form-content p a:hover {
+    color: var(--accent-teal);
+    text-decoration: underline;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+@keyframes slideInFromRight {
+    from {
+        opacity: 0;
+        transform: translateX(50px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* Responsive adjustments */
+@media (max-width: 991.98px) { /* Below LG breakpoint where image panel is hidden */
+    .login-form-panel {
+        /* Ensure it takes up full height available if image panel is hidden */
+         min-height: calc(100vh - 80px); /* Or adjust as needed */
+    }
+    .login-page-container {
+        min-height: 0; /* Allow natural height on smaller screens */
+    }
+}
+
+@media (max-width: 768px) {
+    .login-form-content {
+        padding: 20px; /* Less padding on smaller screens */
+        box-shadow: none; /* Optional: remove shadow on mobile for cleaner look */
+        border: none; /* Optional */
+    }
+     .login-form-panel {
+        background-color: var(--white); /* Make the whole panel white on mobile */
+    }
+}
+
+/* Add these to your tracker/static/tracker/css/style.css */
+
+/* User dropdown menu item styling */
+.navbar .dropdown-menu .dropdown-item {
+    color: var(--md-sys-color-on-surface); /* Default dark color for dropdown items (uses --dark-bg) */
+    /* background-color: transparent; */ /* Bootstrap handles default background */
+    padding: .5rem 1rem; /* Consistent padding, adjust as needed */
+}
+
+.navbar .dropdown-menu .dropdown-item:hover,
+.navbar .dropdown-menu .dropdown-item:focus {
+    color: var(--accent-teal);
+    /* For background on hover, you can use a very light version of teal or a standard light grey */
+    /* Option 1: Light teal background (define --accent-teal-rgb or use rgba directly) */
+    /* background-color: rgba(45, 212, 191, 0.1); */
+    /* Option 2: Standard light grey hover (Bootstrap like) */
+    background-color: #e9ecef; /* A light grey, similar to Bootstrap's hover */
+}
+
+.navbar .dropdown-menu .dropdown-item.active,
+.navbar .dropdown-menu .dropdown-item:active {
+    color: var(--white); /* White text for active item */
+    background-color: var(--primary-blue); /* Primary blue background for active item */
+    text-decoration: none;
+}
+
+/* Your existing .nav-logout-button style makes the logout button text white by default.
+   This is fine if it's an intentional design choice to make it stand out or match main nav links.
+   The CSS above for .dropdown-item will not override .nav-logout-button's specific color
+   due to the specificity of .nav-logout-button.
+   Its hover color (var(--accent-teal)) will also be retained from its own rule.
+*/
+.nav-logout-button {
+  background: none;
+  border: none;
+  padding: .5rem 1rem; /* Match dropdown-item padding for alignment */
+  margin: 0;
+  outline: none;
+  color: var(--white); /* This makes it white */
+  font-weight: 600;
+  font-size: 1rem; /* Match dropdown-item font size */
+  font-family: inherit;
+  cursor: pointer;
+  vertical-align: baseline;
+  text-align: left;
+  width: 100%; /* Make button take full width like other dropdown items */
+}
+
+.nav-logout-button:hover {
+  color: var(--accent-teal);
+  background-color: rgba(45, 212, 191, 0.1); /* Consistent hover background */
+  /* text-decoration: none; */ /* Already handled by .dropdown-item potentially */
+}

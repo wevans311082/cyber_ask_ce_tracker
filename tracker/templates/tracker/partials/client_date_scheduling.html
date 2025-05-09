@@ -1,0 +1,158 @@
+{% load i18n %}
+<div class="card mb-4" id="date-scheduling-section">
+  <div class="card-header">{% translate "Assessment Date Scheduling" %}</div>
+  <div class="card-body">
+    {% if display_confirmed_assessment_date %}
+      <div class="alert alert-success" role="alert">
+        <strong>{% translate "Confirmed Assessment Date" %}:
+          {{ display_confirmed_assessment_date|date:"l, F j, Y" }}
+        </strong>
+      </div>
+    {% elif not assessment_allows_date_management %}
+      <div class="alert alert-secondary" role="alert">
+        {% translate "Assessment date negotiation is not currently active. Status" %}:
+        {{ assessment.get_status_display }}.
+      </div>
+    {% else %}
+      <div class="alert alert-info" role="alert">
+        {% translate "Please suggest or indicate your preference for assessment dates below. The assessor" %}
+        ({{ assessment.assessor.username|default:_("Not Assigned") }})
+        {% translate "will confirm the final date." %}
+      </div>
+    {% endif %}
+
+    {% if assessment.assessment_type == 'CE+' %}
+      <div class="alert alert-warning" role="alert">
+        <small>
+          <i class="fa-solid fa-circle-info me-1"></i>
+          <strong>{% translate "CE+ Scheduling Window" %}:</strong>
+          {% if ce_plus_window_start_date and ce_plus_window_end_date %}
+            {% translate "Based on the CE Self-Assessment pass date of" %}
+            {{ ce_plus_window_start_date|date:"Y-m-d" }},
+            {% translate "the CE+ assessment must be completed by" %}
+            <strong>{{ ce_plus_window_end_date|date:"Y-m-d" }}</strong> ({% translate "within 90 days" %}).
+          {% elif assessment.date_ce_passed %}
+            {% translate "Error calculating 90-day window from CE pass date" %}
+            {{ assessment.date_ce_passed|date:"Y-m-d" }}.
+          {% else %}
+            {% translate "The CE Self-Assessment Pass Date has not been recorded yet. ..." %}
+          {% endif %}
+        </small>
+      </div>
+    {% endif %}
+    <hr>
+
+    <h5>{% translate "Proposed Dates" %}</h5>
+    {% if assessment_date_options %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle">
+          <thead>
+            <tr>
+              <th>{% translate "Proposed Date" %}</th>
+              <th>{% translate "Status" %}</th>
+              <th>{% translate "Proposed By" %}</th>
+              <th>{% translate "Notes" %}</th>
+              {% if assessment_allows_date_management %}<th>{% translate "Actions" %}</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for option in assessment_date_options %}
+              <tr>
+                <td>{{ option.proposed_date|date:"Y-m-d (D)" }}</td>
+                <td>
+                  {% if option.status == option.Status.CONFIRMED %}
+                    <span class="badge bg-success">
+                      <i class="fa-solid fa-check-circle me-1"></i>{{ option.get_status_display }}
+                    </span>
+                  {% elif option.status == option.Status.CLIENT_PREFERRED %}
+                    <span class="badge bg-info text-dark">{{ option.get_status_display }}</span>
+                  {% elif option.status == option.Status.REJECTED %}
+                    <span class="badge bg-danger">{{ option.get_status_display }}</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ option.get_status_display }}</span>
+                  {% endif %}
+                </td>
+                <td>{{ option.proposed_by.username|default:"N/A" }}</td>
+                <td>{{ option.notes|default:"-"|linebreaksbr }}</td>
+                {% if assessment_allows_date_management %}
+                  <td>
+                    <div class="btn-group btn-group-sm" role="group">
+                      {% if option.status == option.Status.SUGGESTED %}
+                        <form action="{% url 'tracker:update_assessment_date_status' assessment_pk=assessment.pk option_pk=option.pk %}"
+                              method="POST" class="d-inline">
+                          {% csrf_token %}
+                          <input type="hidden" name="new_status" value="{{ option.Status.CLIENT_PREFERRED }}">
+                          <button type="submit" class="btn btn-outline-info" title="{% translate 'Mark as Preferred' %}">
+                            <i class="fa-solid fa-star"></i> {% translate "Prefer" %}
+                          </button>
+                        </form>
+                      {% endif %}
+                      {% if option.proposed_by == request.user and option.status == option.Status.SUGGESTED %}
+                        <form action="{% url 'tracker:delete_assessment_date_option' assessment_pk=assessment.pk option_pk=option.pk %}"
+                              method="POST" class="d-inline"
+                              onsubmit="return confirm('{% translate 'Delete this date suggestion?' %}')">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-outline-danger" title="{% translate 'Delete Suggestion' %}">
+                            <i class="fa-solid fa-trash-alt"></i>
+                          </button>
+                        </form>
+                      {% endif %}
+                    </div>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="text-muted">{% translate "No assessment dates have been proposed yet." %}</p>
+    {% endif %}
+
+    {% if assessment_allows_date_management %}
+      <hr>
+      <h5>{% translate "Suggest a New Date" %}</h5>
+      <form action="{% url 'tracker:propose_assessment_date' assessment_pk=assessment.pk %}"
+            method="post" class="row g-3 align-items-end" novalidate>
+        {% csrf_token %}
+        <div class="col-md-4">
+          {% with propose_date_form.proposed_date as field %}
+            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+            <input type="date" name="{{ field.name }}" id="{{ field.id_for_label }}"
+                   class="form-control {% if field.errors %}is-invalid{% endif %}"
+                   required {% if field.value %} value="{{ field.value|date:'Y-m-d' }}" {% endif %}
+                   data-unavailable-dates="{{ assessor_unavailable_dates_json|escapejs }}">
+            {% if field.errors %}
+              <div class="invalid-feedback d-block">{{ field.errors|striptags }}</div>
+            {% endif %}
+            <small class="form-text text-muted">{{ field.help_text }}</small>
+          {% endwith %}
+        </div>
+        <div class="col-md-6">
+          {% with propose_date_form.notes as field %}
+            <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+            <textarea name="{{ field.name }}" id="{{ field.id_for_label }}"
+                      class="form-control {% if field.errors %}is-invalid{% endif %}" rows="2">
+              {{ field.value|default:"" }}
+            </textarea>
+            {% if field.errors %}
+              <div class="invalid-feedback d-block">{{ field.errors|striptags }}</div>
+            {% endif %}
+            <small class="form-text text-muted">{{ field.help_text }}</small>
+          {% endwith %}
+        </div>
+        <div class="col-md-2">
+          <button type="submit" class="btn btn-primary w-100">{% translate "Suggest Date" %}</button>
+        </div>
+        {% if propose_date_form.non_field_errors %}
+          <div class="col-12 mt-2 text-danger">
+            {{ propose_date_form.non_field_errors|join:", " }}
+          </div>
+        {% endif %}
+      </form>
+      <small class="d-block mt-2 text-muted">
+        {% translate "Note: Assessor's unavailable dates are disabled in the calendar but will be checked upon submission." %}
+      </small>
+    {% endif %}
+  </div>
+</div>

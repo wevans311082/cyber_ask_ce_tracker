@@ -1,0 +1,35 @@
+{% load i18n %}
+<div class="card mb-4" id="cloud-services-section">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>{% translate "Cloud Services in Scope" %}</span>
+    <a href="{% url 'tracker:client_assessment_cloud_service_list' assessment.pk %}" class="btn btn-outline-primary btn-sm">
+      {% translate "Manage Cloud Services" %}
+    </a>
+  </div>
+  <div class="card-body">
+    {% with assessment.assessment_cloud_services.all as services %}
+      {% if services.exists %}
+        <ul>
+          {% for service in services|slice:":5" %}
+            <li>
+              {{ service.cloud_service_definition.name }}
+              {% if not service.is_compliant and service.cloud_service_definition.requires_mfa_for_ce %}
+                <span class="badge bg-danger">{% translate "MFA Check Needed" %}</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+          {% if services.count > 5 %}
+            <li>… {% translate "and" %} {{ services.count|add:"-5" }} {% translate "more." %}</li>
+          {% endif %}
+        </ul>
+      {% else %}
+        <p class="text-muted">{% translate "No cloud services added yet." %}</p>
+      {% endif %}
+    {% endwith %}
+    <div class="text-center mt-2">
+      <a href="{% url 'tracker:client_assessment_cloud_service_list' assessment.pk %}" class="btn btn-outline-secondary btn-sm">
+        {% translate "View/Manage All Cloud Services" %}
+      </a>
+    </div>
+  </div>
+</div>

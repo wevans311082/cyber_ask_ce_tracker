@@ -31,6 +31,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'tracker.apps.TrackerConfig',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -40,7 +41,7 @@ INSTALLED_APPS = [
     'constance',
     'constance.backends.database',
     'django_celery_results',
-    'tracker.apps.TrackerConfig',
+
 ]
 
 print(f"--- DEBUG: Value of INSTALLED_APPS (in settings.py): {INSTALLED_APPS}")
@@ -122,7 +123,7 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -154,6 +155,8 @@ CONSTANCE_CONFIG = {
     'TENABLE_SCAN_POLICY_UUID': ('2e7d8b44-7b38-733c-2ff3-15cc4956d494f632d534fffed23c', 'UUID of the Tenable Scan Policy/Template to use for agent scans', str),
     'TENABLE_SCAN_POLICY_ID': ('71','ID of the Tenable SCan Policy/Template to use for agent scans', int),
     'TENABLE_SCANNER_UUID': ('2e7d8b44-7b38-733c-2ff3-15cc4956d494f632d534fffed23c', 'UUID of the Tenable Scanner/Group to use (Default is Cloud Scanner)', str),
+    'TENABLE_DEFAULT_POLICY_ID': (71, 'Default Tenable Policy ID for CE+ Scans', int),
+    'TENABLE_DEFAULT_SCANNER_UUID': ('2e7d8b44-7b38-733c-2ff3-15cc4956d494f632d534fffed23c','Default Tenable Scanner UUID for CE+ Scans (e.g., Cloud Scanner)', str),
     # CHANGES END
     # Add Tenable API URL if not default cloud.tenable.com
      'TENABLE_URL': ('https://cloud.tenable.com', 'Tenable Instance URL', str)
@@ -162,7 +165,7 @@ CONSTANCE_CONFIG = {
 CONSTANCE_CONFIG_FIELDSETS = {
     'Tenable API Settings': ('TENABLE_URL', 'TENABLE_ACCESS_KEY', 'TENABLE_SECRET_KEY', 'TENABLE_LINKING_KEY',
                              "TENABLE_CLIENT_TAG_CATEGORY",'TENABLE_SCAN_POLICY_UUID',
-        'TENABLE_SCANNER_UUID', "TENABLE_SCAN_POLICY_ID"),
+        'TENABLE_SCANNER_UUID', "TENABLE_SCAN_POLICY_ID","TENABLE_DEFAULT_POLICY_ID",'TENABLE_DEFAULT_SCANNER_UUID',),
 }
 
 
@@ -256,3 +259,10 @@ CELERY_BEAT_SCHEDULE = {
     },
      # ... other scheduled tasks ...
 }
+
+import os
+STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
+
+
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+

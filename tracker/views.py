@@ -24,6 +24,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.contrib.auth.mixins import LoginRequiredMixin, UserPassesTestMixin
 from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from django.contrib.auth.views import LoginView, LogoutView
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
@@ -33,8 +34,10 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Min, ProtectedError, Value, CharField, Q
 from django.db.models.functions import Coalesce, Concat
 from django.forms import modelformset_factory
-from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseRedirect,JsonResponse
+from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseRedirect, JsonResponse, HttpRequest, \
+    HttpResponse
 
+from django.utils.translation import gettext_lazy as _
 from django.utils import timezone as django_timezone
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy, NoReverseMatch
@@ -69,6 +72,7 @@ from .forms import (
     AssessmentDateOption,
     AssessmentCloudService,
     OperatingSystem,
+    AccountSettingsForm
 
 )
 from .models import (
@@ -165,6 +169,56 @@ logger = logging.getLogger(__name__)
 
 
 
+User = get_user_model()
+
+
+@login_required
+def account_settings_view(request):
+    """
+    View for users to update their account settings.
+    """
+    # CHANGES BEGIN
+    try:
+        user_profile = request.user.userprofile
+    except UserProfile.DoesNotExist:
+        # This case should ideally not happen for an existing, logged-in user
+        # if UserProfile is created upon user registration (e.g., via a signal).
+        # If it can happen, create a UserProfile instance.
+        user_profile = UserProfile.objects.create(user=request.user)
+        messages.info(request, _("Your user profile was just created. Please review your settings."))
+
+    if request.method == 'POST':
+        # Pass the current user instance and their profile instance to the form
+        form = AccountSettingsForm(request.POST, instance=user_profile, user_instance=request.user)
+        if form.is_valid():
+            try:
+                form.save() # The form's save method handles both User and UserProfile
+                # Provide UTC timestamp for debug log
+                from django.utils import timezone
+                now_utc = timezone.now()
+                print(f"[DEBUG] Account settings saved for {request.user.username} at {now_utc.isoformat()} UTC")
+                messages.success(request, _("Your account settings have been updated successfully."))
+                return redirect('account_settings') # Redirect to the same page to show changes
+            except Exception as e:
+                # Log the exception e for debugging
+                print(f"[ERROR] Error saving account settings for {request.user.username}: {e}")
+                messages.error(request, _("An unexpected error occurred while saving your settings. Please try again."))
+        else:
+            messages.error(request, _("Please correct the errors below."))
+    else:
+        # For a GET request, initialize the form with the user's current UserProfile instance
+        # and also pass the User instance for populating User model fields.
+        form = AccountSettingsForm(instance=user_profile, user_instance=request.user)
+
+    context = {
+        'form': form,
+        'page_title': _("Account Settings") # For use in the template's title tag or header
+    }
+    # We'll create 'tracker/account_settings.html' in the next step
+    return render(request, 'tracker/account_settings.html', context)
+    # CHANGES END
+
+
 @login_required
 def dashboard(request):
     user = request.user
@@ -239,9 +293,6 @@ class UserUpdateView(AdminRequiredMixin, UpdateView):
     def form_invalid(self, form):
         messages.error(self.request, "Please correct the errors below.")
         return super().form_invalid(form)
-
-
-
 
 @login_required
 @user_passes_test(is_admin_or_assessor) # Allow Admins or Assessors
@@ -343,9 +394,7 @@ def validate_client_companies_house(request, client_pk):
     else:
         messages.error(request, "Could not retrieve data from Companies House.")
         return redirect(redirect_url)
-# --- END MODIFY View (Step 1) ---
 
-# --- MODIFY Companies House Confirmation View (Step 2: Handle POST) ---
 @login_required
 @user_passes_test(is_admin_or_assessor)
 @require_http_methods(["POST"])
@@ -408,12 +457,6 @@ def confirm_update_from_companies_house(request, client_pk):
         client.save()
 
     return redirect(redirect_url)
-# --- END MODIFY View (Step 2) ---
-
-# --- END NEW View (Step 2) ---
-
-# --- END MODIFY View ---
-
 
 @login_required
 @user_passes_test(is_assessor, login_url=reverse_lazy('login'))
@@ -430,8 +473,6 @@ def assessor_dashboard(request):
         'pending_approval_count': pending_approval_count, # <-- Add to context
     }
     return render(request, 'tracker/assessor/assessor_dashboard.html', context)
-
-
 class AssessorAssessmentListView(AssessorRequiredMixin, ListView):
     model = Assessment
     template_name = 'tracker/assessor/assessment_list.html'
@@ -439,7 +480,6 @@ class AssessorAssessmentListView(AssessorRequiredMixin, ListView):
 
     def get_queryset(self):
         return Assessment.objects.filter(assessor=self.request.user).select_related('client').order_by('status', 'date_target_end')
-
 class AssessorAssessmentDetailView(AssessorOrAdminRequiredMixin, DetailView):
     model = Assessment
     template_name = 'tracker/assessor/assessment_detail.html'
@@ -567,15 +607,6 @@ class AssessorAssessmentDetailView(AssessorOrAdminRequiredMixin, DetailView):
                  logger.warning(f"Could not create datetime for countdown timer from date_target_end: {assessment.date_target_end}")
 
         return context
-
-
-
-
-
-
-
-
-
 class EvidenceUploadView(AssessorOrAdminRequiredMixin, FormView): # Allow Admin too
     form_class = EvidenceForm
     # Typically part of detail view, needs context if rendered standalone
@@ -619,7 +650,6 @@ class EvidenceUploadView(AssessorOrAdminRequiredMixin, FormView): # Allow Admin 
               return reverse('tracker:admin_assessment_list') # Adjust if admin detail view exists
          else: # Assessor
               return reverse('tracker:assessor_assessment_detail', kwargs={'pk': self.assessment.pk})
-
 
 class ScopeItemManageView(ClientRequiredMixin, View):
     """
@@ -1165,7 +1195,6 @@ class NetworkDeleteView(LoginRequiredMixin, DeleteView): # Remove AssessorOrAdmi
              return reverse('tracker:client_network_list', kwargs={'assessment_pk': self.assessment.pk})
         else: # Admin or Assessor
              return reverse('tracker:network_list', kwargs={'assessment_pk': self.assessment.pk})
-
 class ProposeAssessmentDateView(LoginRequiredMixin, CreateView):
     model = AssessmentDateOption
     form_class = AssessmentDateOptionForm
@@ -1244,9 +1273,6 @@ class ProposeAssessmentDateView(LoginRequiredMixin, CreateView):
             return reverse('tracker:client_assessment_detail', kwargs={'pk': self.assessment.pk})
         else: # Assessor or Admin (or other roles if permissions allow)
             return reverse('tracker:assessor_assessment_detail', kwargs={'pk': self.assessment.pk})
-
-
-
 class UpdateAssessmentDateStatusView(LoginRequiredMixin, View):
     """ Handles POST requests to update the status of an AssessmentDateOption """
 
@@ -1434,8 +1460,6 @@ class UpdateAssessmentDateStatusView(LoginRequiredMixin, View):
             return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
         else: # Assessor or Admin
             return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
-
-
 class DeleteAssessmentDateOptionView(LoginRequiredMixin, View):
     """ Handles POST requests to delete an AssessmentDateOption """
 
@@ -1511,8 +1535,6 @@ class DeleteAssessmentDateOptionView(LoginRequiredMixin, View):
             return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
         else: # Assessor or Admin
             return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
-
-
 class LaunchScanView(LoginRequiredMixin, View):
     """
     Handles the POST request to trigger the Tenable scan launch task.
@@ -1599,37 +1621,6 @@ class LaunchScanView(LoginRequiredMixin, View):
             return redirect('tracker:dashboard') # Or appropriate main dashboard
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 @require_POST # Only allow POST requests
 @login_required
 @csrf_protect # Ensure CSRF token is checked
@@ -1701,8 +1692,6 @@ def update_workflow_step_status(request, assessment_pk, step_pk):
         print(f"Error updating workflow step status for step {step.pk}: {e}")
         # Log the error more formally using Python logging if configured
         return JsonResponse({'success': False, 'error': 'An internal error occurred while updating the status.'}, status=500)
-
-
 class ExternalIPListView(LoginRequiredMixin, ListView):
     model = ExternalIP
     template_name = 'tracker/external_ip_management/externalip_list.html' # Template to create
@@ -1730,7 +1719,6 @@ class ExternalIPListView(LoginRequiredMixin, ListView):
         # Check if user can currently add/edit items based on role and status
         context['can_edit'] = user_can_edit_assessment_external_ips(self.request.user, self.assessment)
         return context
-
 class ExternalIPCreateView(LoginRequiredMixin, CreateView):
     model = ExternalIP
     form_class = ExternalIPForm
@@ -1782,7 +1770,6 @@ class ExternalIPCreateView(LoginRequiredMixin, CreateView):
 
     def get_success_url(self):
         return reverse_lazy('tracker:externalip_list', kwargs={'assessment_pk': self.assessment.pk})
-
 class ExternalIPUpdateView(LoginRequiredMixin, UpdateView):
     model = ExternalIP
     form_class = ExternalIPForm # Using the same form for now
@@ -1848,7 +1835,6 @@ class ExternalIPUpdateView(LoginRequiredMixin, UpdateView):
 
     def get_success_url(self):
         return reverse_lazy('tracker:externalip_list', kwargs={'assessment_pk': self.assessment.pk})
-
 class ExternalIPDeleteView(LoginRequiredMixin, DeleteView):
     model = ExternalIP
     template_name = 'tracker/external_ip_management/externalip_confirm_delete.html' # Template to create
@@ -1886,9 +1872,6 @@ class ExternalIPDeleteView(LoginRequiredMixin, DeleteView):
 
     def get_success_url(self):
         return reverse_lazy('tracker:externalip_list', kwargs={'assessment_pk': self.assessment.pk})
-
-
-
 class ExternalIPScanUpdateView(AssessorOrAdminRequiredMixin, UpdateView):
     model = ExternalIP
     form_class = ExternalIPScanUpdateForm # Use the specific form
@@ -1937,8 +1920,6 @@ class ExternalIPScanUpdateView(AssessorOrAdminRequiredMixin, UpdateView):
     def get_success_url(self):
         # Redirect back to the main list view (used by assessors)
         return reverse_lazy('tracker:externalip_list', kwargs={'assessment_pk': self.assessment.pk})
-
-
 class ScopedItemUpdateView(ClientRequiredMixin, UpdateView):
     model = ScopedItem
     form_class = ScopedItemUpdateForm # Use the new update form
@@ -2018,7 +1999,6 @@ class ScopedItemUpdateView(ClientRequiredMixin, UpdateView):
     def get_success_url(self):
         """Redirect back to the scope management page."""
         return reverse_lazy('tracker:client_scope_manage', kwargs={'assessment_pk': self.assessment.pk})
-
 class UploadExtractReportView(LoginRequiredMixin, View):
     form_class = UploadReportForm
     template_name = 'tracker/upload_report.html'
@@ -2094,10 +2074,6 @@ class UploadExtractReportView(LoginRequiredMixin, View):
             'extraction_errors': extracted_data.get('errors') if extracted_data else ['Processing Error'], # Pass errors separately
             'uploaded_report': upload_instance
         })
-
-
-
-
 class TriggerTenableAssetTaggingView(AdminRequiredMixin, View): # Use Admin Required
     def post(self, request, *args, **kwargs):
         # Change pk lookup from Assessment to Client
@@ -2112,9 +2088,6 @@ class TriggerTenableAssetTaggingView(AdminRequiredMixin, View): # Use Admin Requ
 
         # Redirect back to the new group detail view
         return HttpResponseRedirect(reverse('tracker:tenable_group_detail', kwargs={'pk': client.id}))
-
-
-
 class TriggerTenableClientTagSyncView(AssessorRequiredMixin, TemplateView): # Use Assessor permission
     """
     Manually triggers the Celery task to create or update the Tenable.io tag
@@ -2139,11 +2112,6 @@ class TriggerTenableClientTagSyncView(AssessorRequiredMixin, TemplateView): # Us
 
         # Redirect back to the assessment detail page
         return HttpResponseRedirect(reverse('tracker:assessor_assessment_detail', kwargs={'pk': assessment_id}))
-
-
-
-
-
 class GenerateAgentScriptView(LoginRequiredMixin, TemplateView): # Use LoginRequiredMixin as base
     template_name = 'tracker/assessor/generate_agent_script_v2.html' # Consider renaming/moving if client uses it heavily
 
@@ -2254,9 +2222,6 @@ class GenerateAgentScriptView(LoginRequiredMixin, TemplateView): # Use LoginRequ
         context['user_role'] = self.request.user.userprofile.role if hasattr(self.request.user, 'userprofile') else None
 
         return context
-
-
-
 class TenableGroupDetailView(AdminRequiredMixin, DetailView):
     model = Client
     template_name = 'tracker/tenable/group_detail.html'
@@ -2341,13 +2306,6 @@ class TenableGroupDetailView(AdminRequiredMixin, DetailView):
              context['error_message'] = f"Unexpected error finding agent group: {e}" # Keep simple for user
 
         return context
-
-
-
-
-
-
-
 class AssessorAvailabilityListView(AssessorOrAdminRequiredMixin, ListView):
     """
     View for Assessors/Admins to see and manage their unavailable dates.
@@ -2396,8 +2354,6 @@ class AssessorAvailabilityListView(AssessorOrAdminRequiredMixin, ListView):
         self.object_list = self.get_queryset()
         context = self.get_context_data(form=form)
         return self.render_to_response(context)
-
-
 class DeleteAssessorAvailabilityView(AssessorOrAdminRequiredMixin, DeleteView):
     """ Handles deleting an AssessorAvailability record. """
     model = AssessorAvailability
@@ -2421,8 +2377,6 @@ class DeleteAssessorAvailabilityView(AssessorOrAdminRequiredMixin, DeleteView):
         context = super().get_context_data(**kwargs)
         context['page_title'] = f"Remove Unavailability for {self.object.unavailable_date.strftime('%Y-%m-%d')}"
         return context
-
-
 def user_can_manage_assessment_dates(user, assessment, option=None):
     """ Checks if a user can manage dates for an assessment/option """
     if not user or not user.is_authenticated:
@@ -2462,9 +2416,6 @@ def user_can_manage_assessment_dates(user, assessment, option=None):
     # Specific action permissions (can be added later if needed, e.g., only proposer can delete 'Suggested')
     # For now, if user has basic permission and status allows, return True
     return True
-
-
-
 class UpdateAssessmentDateStatusView(LoginRequiredMixin, View):
     """ Handles POST requests to update the status of an AssessmentDateOption """
 
@@ -2593,9 +2544,6 @@ class UpdateAssessmentDateStatusView(LoginRequiredMixin, View):
             return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
         else:
             return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
-
-
-
 class DeleteAssessmentDateOptionView(LoginRequiredMixin, View):
     """ Handles POST requests to delete an AssessmentDateOption """
     # Keep the previous implementation, but ensure the permission check is appropriate
@@ -2649,9 +2597,6 @@ class DeleteAssessmentDateOptionView(LoginRequiredMixin, View):
             return redirect('tracker:client_assessment_detail', pk=self.assessment.pk)
         else:
             return redirect('tracker:assessor_assessment_detail', pk=self.assessment.pk)
-
-
-# Ensure ProposeAssessmentDateView uses the helper if needed, though its internal checks might suffice
 class ProposeAssessmentDateView(LoginRequiredMixin, CreateView):
     model = AssessmentDateOption
     form_class = AssessmentDateOptionForm
@@ -2719,8 +2664,6 @@ class ProposeAssessmentDateView(LoginRequiredMixin, CreateView):
             return reverse('tracker:client_assessment_detail', kwargs={'pk': self.assessment.pk})
         else:
             return reverse('tracker:assessor_assessment_detail', kwargs={'pk': self.assessment.pk})
-
-# CHANGES BEGIN (Whole Class Modified/Replaced - Using print for DEBUG)
 class MapAgentsView(LoginRequiredMixin, View):
     template_name = 'tracker/map_agents.html'
 
@@ -3006,8 +2949,6 @@ class MapAgentsView(LoginRequiredMixin, View):
                 return redirect('tracker:assessor_dashboard')
         return redirect('tracker:admin_dashboard')
 
-# CHANGES END
-
 @staff_member_required
 def tenable_policy_template_list_view(request):
     """
@@ -3124,9 +3065,6 @@ def tenable_policy_template_list_view(request):
     }
     # Template path remains the same
     return render(request, 'tracker/admin/tenable_policy_list.html', context)
-# CHANGES END
-
-
 
 @staff_member_required
 def tenable_scanner_list_view(request):
@@ -3222,3 +3160,236 @@ def tenable_scanner_list_view(request):
     }
     # Use a new template file name
     return render(request, 'tracker/admin/tenable_scanner_list.html', context)
+def get_tenable_scan_status_ajax(request, assessment_id):
+    # Basic permission check (enhance as needed for your roles)
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Authentication required.'}, status=401)
+
+    assessment = get_object_or_404(Assessment, pk=assessment_id)
+
+    # Add more granular permission checks if necessary, e.g.,
+    # if not request.user.is_staff and assessment.assessor != request.user and assessment.client.user_profile.user != request.user:
+    #     return JsonResponse({'error': 'Permission denied.'}, status=403)
+
+    scan_id_to_query = assessment.tenable_scan_id
+
+    if not scan_id_to_query:
+        return JsonResponse({
+            'status': assessment.scan_status,
+            'status_display': assessment.get_scan_status_display(),
+            'message': assessment.scan_status_message or "No Tenable scan is currently linked to this assessment.",
+            'progress': 0,
+            'raw_tenable_status': 'not_linked',
+            'can_launch': True # Can attempt to launch if not linked
+        })
+
+    logger.debug(f"AJAX poll: Fetching Tenable status for scan ID {scan_id_to_query} (Assessment {assessment_id})")
+    tenable_scan_details = get_scan_details_by_uuid_or_id(scan_id_to_query)
+
+    if tenable_scan_details:
+        raw_tenable_status = tenable_scan_details.get('status') # Common place for status
+        if not raw_tenable_status and 'info' in tenable_scan_details: # Some scans nest it
+            raw_tenable_status = tenable_scan_details['info'].get('status')
+
+        # --- Update local assessment status based on Tenable's report ---
+        # This logic can be refined to be more comprehensive
+        current_local_status = assessment.scan_status
+        new_local_status = current_local_status
+        status_message = assessment.scan_status_message # Keep existing unless overridden
+
+        if raw_tenable_status == 'completed':
+            if current_local_status not in [Assessment.SCAN_COMPLETED, Assessment.SCAN_PROCESSING, Assessment.SCAN_IMPORTED]:
+                new_local_status = Assessment.SCAN_COMPLETED
+                status_message = "Scan completed by Tenable. Ready for result processing."
+        elif raw_tenable_status == 'running':
+            if current_local_status != Assessment.SCAN_LAUNCHED: # Assuming LAUNCHED implies it could be running
+                new_local_status = Assessment.SCAN_LAUNCHED
+            status_message = "Scan is actively running in Tenable."
+        elif raw_tenable_status in ['canceled', 'aborted', 'stopped', 'error']: # 'error' is a guess, check API docs
+            if current_local_status != Assessment.SCAN_ERROR:
+                new_local_status = Assessment.SCAN_ERROR
+                status_message = f"Scan in Tenable ended with status: {raw_tenable_status}."
+        elif raw_tenable_status == 'pending': # Or 'queued', 'pending launch' etc.
+            if current_local_status != Assessment.SCAN_PENDING: # If you have SCAN_PENDING
+                new_local_status = Assessment.SCAN_PENDING
+            status_message = "Scan is pending/queued in Tenable."
+        # Add other status mappings as needed (e.g., 'paused')
+
+        if new_local_status != current_local_status or status_message != assessment.scan_status_message:
+            assessment.scan_status = new_local_status
+            assessment.scan_status_message = status_message
+            assessment.save()
+        # --- End local status update ---
+
+        progress = 0 # Agent scans don't usually provide granular progress via this API
+        can_launch_new_scan = True # Default
+
+        if raw_tenable_status == 'running':
+            progress = 50 # Arbitrary visual cue for "in progress"
+            can_launch_new_scan = False
+        elif raw_tenable_status == 'completed':
+            progress = 100
+            can_launch_new_scan = True # Can re-launch a completed scan
+        elif raw_tenable_status in ['pending', 'queued', 'paused']: # Check exact Tenable terms
+            progress = 25 # Arbitrary
+            can_launch_new_scan = False
+        elif raw_tenable_status in ['canceled', 'aborted', 'error']:
+            progress = 0
+            can_launch_new_scan = True # Can try again if it errored
+
+        return JsonResponse({
+            'status': assessment.scan_status, # Return our (potentially updated) local status
+            'status_display': assessment.get_scan_status_display(),
+            'message': assessment.scan_status_message,
+            'progress': progress,
+            'raw_tenable_status': raw_tenable_status or 'unknown',
+            'can_launch': can_launch_new_scan,
+            'last_modified_tenable': tenable_scan_details.get('last_modification_date') # Unix timestamp
+        })
+    else:
+        # Failed to get details from Tenable (scan might be deleted, or API error)
+        logger.warning(f"AJAX poll: Could not retrieve details for scan ID {scan_id_to_query} from Tenable.")
+        # Potentially update local status to error if scan consistently not found
+        # For now, return current local status to avoid rapid changes on transient errors
+        return JsonResponse({
+            'status': assessment.scan_status,
+            'status_display': assessment.get_scan_status_display(),
+            'message': assessment.scan_status_message or "Could not fetch live status from Tenable at this moment.",
+            'progress': 0,
+            'raw_tenable_status': 'error_fetching',
+            'can_launch': True # Default to allow launch if status is uncertain
+        })
+
+@login_required # Ensure the user is logged in, add more specific permissions as needed
+def launch_tenable_scan_trigger_view(request, assessment_id: int):
+    """
+    View to trigger the Celery task for launching a Tenable scan for a given assessment.
+    This view is typically called by a button press via a POST request.
+    """
+    assessment = get_object_or_404(Assessment, pk=assessment_id)
+
+    # Optional: Add more specific permission checks here if needed
+    # e.g., check if request.user is the client contact or an assessor for this assessment.
+    # For example:
+    # if not (request.user.is_staff or assessment.client.user_profile.user == request.user):
+    #     messages.error(request, "You do not have permission to launch this scan.")
+    #     # Redirect to a safe page, e.g., the assessment detail page itself
+    #     return redirect(reverse('tracker:client_assessment_detail', args=[assessment.id]))
+
+
+    if request.method == 'POST':
+        logger.info(f"User {request.user} manually triggered Tenable scan launch for Assessment ID: {assessment_id} via web UI.")
+        # Call the Celery task asynchronously
+        launch_tenable_scan_task.delay(assessment_id)
+        messages.success(request, f"Tenable scan launch process initiated for Assessment {assessment.id}. The status will update automatically on this page.")
+    else:
+        # This view should ideally only be accessed via POST from the form
+        messages.warning(request, "Invalid request method to launch scan. Please use the button.")
+
+    # Redirect back to the assessment detail page the user was on.
+    # The error occurred in ClientAssessmentDetailView for URL /client/assessments/14/
+    # So, we assume the URL name for that view is 'client_assessment_detail'
+    # and it takes the assessment_id (or pk) as an argument.
+    # Adjust if your URL pattern for ClientAssessmentDetailView is different.
+    try:
+        # Attempt to redirect back to the client assessment detail view
+        # This assumes your ClientAssessmentDetailView URL pattern is named 'client_assessment_detail'
+        # and takes the assessment's pk as an argument.
+        redirect_url = reverse('tracker:client_assessment_detail', kwargs={'pk': assessment_id})
+    except Exception: # Catch NoReverseMatch if the name or args are different
+        logger.warning(f"Could not reverse 'tracker:client_assessment_detail' for assessment {assessment_id}. Falling back.")
+        # Fallback redirect - adjust to a sensible default if the above fails
+        # For example, to the client's dashboard or a general assessment list
+        if hasattr(assessment.client, 'get_absolute_url'):
+            redirect_url = assessment.client.get_absolute_url()
+        elif hasattr(request.user, 'get_absolute_url'): # e.g. user profile / dashboard
+             redirect_url = request.user.get_absolute_url()
+        else: # Absolute fallback
+            redirect_url = reverse('tracker:client_dashboard') # Assuming you have a client_dashboard URL
+
+    return redirect(redirect_url)
+
+from django.shortcuts import redirect # Add redirect if not already there
+from django.urls import reverse # Add reverse if not already there
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def dashboard_redirect_view(request: HttpRequest) -> HttpResponse:
+    """
+    Redirects authenticated users to their role-specific dashboard.
+    """
+    user = request.user
+    print(f"[DEBUG] dashboard_redirect_view called for user: {user.username}")
+    try:
+        if hasattr(user, 'userprofile') and user.userprofile:
+            role = user.userprofile.role
+            print(f"[DEBUG] User role: {role}")
+            if role == 'admin':
+                return redirect(reverse('tracker:admin_dashboard'))
+            elif role == 'assessor':
+                return redirect(reverse('tracker:assessor_dashboard'))
+            elif role == 'client':
+                return redirect(reverse('tracker:client_dashboard'))
+            else:
+                # Fallback for authenticated users with an unknown role
+                print(f"[DEBUG] Unknown role '{role}' for user {user.username}. Redirecting to client dashboard as a default.")
+                messages.warning(request, ("Your user role is not properly configured. Please contact support."))
+                return redirect(reverse('tracker:client_dashboard')) # Or a more generic page or error
+        else:
+            # Fallback for authenticated users without a UserProfile
+            print(f"[DEBUG] User {user.username} has no userprofile. Redirecting to login.")
+            messages.error(request, ("User profile not found. Please contact support."))
+            return redirect(reverse('login')) # Or a page to create a profile
+    except Exception as e:
+        print(f"[DEBUG] Error in dashboard_redirect_view: {e}")
+        messages.error(request, ("An error occurred while redirecting you to your dashboard."))
+        return redirect(reverse('login')) # Fallback in case of any unexpected error
+class ClientWorkflowVisualPartialView(ClientRequiredMixin, DetailView):
+    """ Renders just the workflow visual partial for AJAX updates. """
+    model = Assessment
+    template_name = 'tracker/partials/client_workflow_visual.html' # Render only the partial
+    context_object_name = 'assessment' # The partial expects 'assessment'
+
+    def get_queryset(self):
+        """ Ensure client can only access their own assessment's visual """
+        # Note: ClientRequiredMixin already ensures user is a client and has profile.client
+        profile = self.request.user.userprofile
+        if not profile.client:
+            # This case should ideally be handled by the mixin, but as a safeguard:
+            logger.warning(f"User {self.request.user.username} attempting to access workflow visual but has no linked client.")
+            return Assessment.objects.none()
+
+        # Filter assessments for the user's client
+        queryset = Assessment.objects.filter(client=profile.client)
+
+        # Prefetch data needed by the client_workflow_visual.html partial
+        # Adjust prefetch based on what client_workflow_visual.html actually uses
+        queryset = queryset.prefetch_related(
+            'workflow_steps__step_definition' # Likely needed to determine current step/status
+        )
+        return queryset
+
+    def get(self, request, *args, **kwargs):
+        """ Handle GET request and render the partial or handle errors. """
+        try:
+            # get_object will use get_queryset, enforcing client permission
+            self.object = self.get_object()
+            context = self.get_context_data(object=self.object)
+
+            # Rule 4: Add UTC Debug Print
+            now_utc = timezone.now()
+            print(f"[DEBUG ClientWorkflowVisualPartialView GET {self.object.pk}] Rendering visual partial. Current UTC time: {now_utc.isoformat()}")
+
+            # Rule 5 & 8: Render the template
+            return render(request, self.template_name, context)
+
+        except Http404:
+            # Rule 6: Handle foreseeable error (Object not found / Permission via queryset)
+            logger.warning(f"User {request.user.username} triggered 404 accessing workflow visual for assessment PK {kwargs.get('pk')}")
+            # Return an empty response or simple error message suitable for AJAX replacement
+            return HttpResponse("", status=404)
+        except Exception as e:
+            # Rule 6: Handle other errors
+            logger.error(f"Error rendering workflow visual for assessment PK {kwargs.get('pk')}: {e}", exc_info=True)
+            # Return an empty response or simple error message suitable for AJAX replacement
+            return HttpResponse("", status=500)

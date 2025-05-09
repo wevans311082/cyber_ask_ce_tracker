@@ -1,0 +1,33 @@
+{% load i18n %}
+<div class="modal fade" id="logModal" tabindex="-1" aria-labelledby="logModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="logModalLabel"><i class="fas fa-history me-2"></i>{% translate "Assessment Log" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% translate 'Close' %}"></button>
+      </div>
+      <div class="modal-body">
+        {% if logs %}
+          <ul class="list-unstyled">
+            {% for log in logs %}
+              <li class="mb-2 border-bottom pb-1">
+                <small class="text-muted">
+                  {{ log.timestamp|date:"Y-m-d H:i:s" }} (UTC) -
+                  {% firstof log.user.username _('System') %}:
+                </small><br>
+                {{ log.event }}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-muted">{% translate "No log entries yet." %}</p>
+        {% endif %}
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          {% translate "Close" %}
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,54 @@
+{% load i18n %}
+<div id="external-ips-section" class="mb-4 pt-2 card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>{% translate "External Scan Targets (IPs/Hostnames)" %}</span>
+    <a href="{% url 'tracker:client_externalip_list' assessment.pk %}" class="btn btn-outline-primary btn-sm">
+      {% translate "Manage Targets" %}
+    </a>
+  </div>
+  <div class="card-body">
+    {% with assessment.external_ips.all as targets %}
+      {% if targets.exists %}
+        <p><small>{% translate "Currently listed targets" %}:</small></p>
+        <ul>
+          {% for target in targets|slice:":5" %}
+            <li>
+              <code>{{ target.ip_address_or_hostname }}</code>
+              {% with target.scan_status as status %}
+                {% if status == 'ScannedOK' %}
+                  <span class="badge bg-success ms-1">{{ target.get_scan_status_display }}</span>
+                {% elif status == 'ScannedIssues' %}
+                  <span class="badge bg-danger ms-1">{{ target.get_scan_status_display }}</span>
+                {% elif status == 'Remediated' %}
+                  <span class="badge bg-info text-dark ms-1">{{ target.get_scan_status_display }}</span>
+                {% elif status == 'Excluded' %}
+                  <span class="badge bg-secondary ms-1">{{ target.get_scan_status_display }}</span>
+                {% elif status != 'Pending' %}
+                  <span class="badge bg-light text-dark border ms-1">{{ target.get_scan_status_display }}</span>
+                {% endif %}
+                {% if target.notes %}
+                  <small class="text-muted d-block">Notes: {{ target.notes|truncatewords:10 }}</small>
+                {% endif %}
+
+              {% endwith %}
+              {% if not target.consent_given %}
+                <span class="badge bg-warning text-dark ms-1">{% translate "Consent Needed" %}</span>
+              {% endif %}
+            </li>
+
+          {% endfor %}
+          {% if targets.count > 5 %}
+            <li>… {% translate "and" %} {{ targets.count|add:"-5" }} {% translate "more." %}</li>
+          {% endif %}
+        </ul>
+      {% else %}
+        <p class="text-muted">{% translate "No external targets added yet." %}</p>
+      {% endif %}
+    {% endwith %}
+    <div class="text-center mt-2">
+      <a href="{% url 'tracker:client_externalip_list' assessment.pk %}" class="btn btn-outline-secondary btn-sm">
+        {% translate "View/Manage All Targets" %}
+      </a>
+    </div>
+  </div>
+</div>

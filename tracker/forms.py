@@ -1,15 +1,119 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 # Ensure ValidationError is imported if needed, though forms.ValidationError works
 # from django.core.exceptions import ValidationError
 import ipaddress
+from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from .models import (
     Client, UserProfile, Assessment, ScopedItem, Evidence, AssessmentLog,
     OperatingSystem, Network, CloudServiceDefinition, AssessmentCloudService, ExternalIP, UploadedReport, AssessmentDateOption, AssessorAvailability  # Ensure this is imported
 )
+
+
+User = get_user_model()
+
+
+class AccountSettingsForm(forms.ModelForm):
+    """
+    Form for users to update their account settings.
+    Handles fields from both the User model and UserProfile model.
+    """
+    # Fields from the User model
+    first_name = forms.CharField(
+        label=_("First Name"),
+        max_length=150,
+        required=False,  # Standard User model allows blank first_name
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+    last_name = forms.CharField(
+        label=_("Last Name"),
+        max_length=150,
+        required=False,  # Standard User model allows blank last_name
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
+    email = forms.EmailField(
+        label=_("Email Address"),
+        required=True,  # Email is typically required
+        widget=forms.EmailInput(attrs={'class': 'form-control'})
+    )
+
+    # Fields from the UserProfile model
+    phone_number = forms.CharField(
+        label=_("Phone Number"),
+        max_length=20,
+        required=False,  # As defined in the model (blank=True)
+        widget=forms.TextInput(attrs={'class': 'form-control', 'placeholder': _('e.g., +44 7700 900000')})
+    )
+    mfa_enabled = forms.BooleanField(
+        label=_("Enable Multi-Factor Authentication"),
+        required=False,  # CheckboxInput handles boolean
+        widget=forms.CheckboxInput(attrs={'class': 'form-check-input'})
+    )
+
+    class Meta:
+        # We specify UserProfile here because it's the "primary" model for this form
+        # in terms of unique fields we added. We'll handle User model fields manually.
+        # However, since we are not directly using ModelForm's automatic field generation
+        # for User fields, the 'model' and 'fields' in Meta are more for UserProfile.
+        model = UserProfile
+        fields = ['phone_number', 'mfa_enabled']  # Only UserProfile specific fields listed here
+
+    def __init__(self, *args, **kwargs):
+        """
+        Initialize the form with instance data for both User and UserProfile.
+        The 'instance' kwarg here is expected to be the UserProfile instance.
+        """
+        self.user_instance = kwargs.pop('user_instance', None)  # Pop user_instance if passed
+        super().__init__(*args, **kwargs)
+
+        if self.user_instance:
+            # Populate User model fields
+            self.fields['first_name'].initial = self.user_instance.first_name
+            self.fields['last_name'].initial = self.user_instance.last_name
+            self.fields['email'].initial = self.user_instance.email
+
+        # If UserProfile instance is provided (self.instance), ModelForm handles its fields.
+        # If not (e.g., creating a new UserProfile for a user who doesn't have one),
+        # initial values for phone_number and mfa_enabled will be blank/default.
+
+    def clean_email(self):
+        """
+        Validate that the email is unique, excluding the current user's email.
+        """
+        email = self.cleaned_data.get('email')
+        if self.user_instance and User.objects.filter(email=email).exclude(pk=self.user_instance.pk).exists():
+            raise forms.ValidationError(_("This email address is already in use by another account."))
+        return email
+
+    def save(self, commit=True):
+        """
+        Save the form data to both User and UserProfile models.
+        """
+        # The UserProfile instance is self.instance (from ModelForm)
+        profile = super().save(commit=False)  # Save UserProfile fields
+
+        if self.user_instance:
+            # Update User model fields
+            self.user_instance.first_name = self.cleaned_data.get('first_name', self.user_instance.first_name)
+            self.user_instance.last_name = self.cleaned_data.get('last_name', self.user_instance.last_name)
+            self.user_instance.email = self.cleaned_data.get('email', self.user_instance.email)
+
+            if commit:
+                self.user_instance.save()
+
+        # Ensure the profile is linked to the user_instance if it's a new profile
+        # (though for an account settings page, profile should always exist)
+        if hasattr(profile, 'user') and not profile.user and self.user_instance:
+            profile.user = self.user_instance
+
+        if commit:
+            profile.save()
+
+        return profile
 
 # --- User/Profile Forms ---
 
@@ -720,3 +824,5 @@ class AssessorAvailabilityForm(forms.ModelForm):
             raise ValidationError("Cannot block out a date in the past.")
         # Note: unique_together check ('assessor', 'unavailable_date') is handled by Django
         return date_to_block
+
+

@@ -1,0 +1,184 @@
+
+    /* --- General Page Structure & Layout --- */
+    body { background-color: var(--md-sys-color-background, #F8FAFC); }
+    .page-container { display: flex; margin-top: 1rem; }
+    .left-nav-container {
+        width: 260px; position: fixed; top: 70px; left: 0;
+        height: calc(100vh - 70px); background-color: var(--md-sys-color-surface-container-low, #F0F4F8);
+        padding: 1rem 0.5rem 1rem 1rem; overflow-y: auto;
+        border-right: 1px solid var(--md-sys-color-outline-variant, #CAC4D0); z-index: 999;
+    }
+    .main-content-area {
+        flex-grow: 1; padding-left: 280px; /* Nav width + margin */
+        padding-right: 1.5rem; padding-top: 0.5rem; padding-bottom: 2rem;
+        /* CHANGES BEGIN: Removed flex display for single column */
+        /* display: flex; gap: 1.5rem; */
+        /* CHANGES END */
+    }
+    .primary-content-column { width: 100%; } /* Takes full width */
+    /* Right sidebar removed */
+
+    /* --- Left Navigation Styling --- */
+    .left-nav-container h5 {
+        color: var(--md-sys-color-primary, #1E3A8A); margin: 0 0.5rem 0.75rem 0.5rem;
+        font-size: 1rem; font-weight: 600; padding-bottom: 0.5rem;
+        border-bottom: 1px solid var(--md-sys-color-outline-variant, #CAC4D0);
+    }
+    .left-nav-container h5 i { margin-right: 0.5em; }
+    .left-nav-list { list-style: none; padding-left: 0; margin-bottom: 1.5rem; }
+    /* CHANGES BEGIN: Ensure LIs stack vertically */
+    .left-nav-list li { display: block; }
+    /* CHANGES END */
+    .left-nav-list li a {
+        display: flex; align-items: center; padding: 0.5rem 0.75rem;
+        color: var(--md-sys-color-on-surface-variant, #49454F);
+        text-decoration: none; border-radius: 6px; font-size: 0.85rem;
+        transition: background-color 0.2s ease, color 0.2s ease;
+        margin-bottom: 0.25rem; position: relative;
+    }
+    .left-nav-list li a:hover,
+    .left-nav-list li a.active {
+        background-color: var(--md-sys-color-secondary-container, #A2F2E8);
+        color: var(--md-sys-color-on-secondary-container, #00201D); font-weight: 600;
+    }
+    .left-nav-list li a i { margin-right: 0.6em; width: 16px; text-align: center; }
+
+    /* --- Top Horizontal Stepper --- */
+    .top-workflow-stepper-container {
+        background-color: var(--md-sys-color-surface-container-low, #F0F4F8);
+        padding: 0.75rem 1rem; margin-bottom: 1.5rem; border-radius: 12px;
+        border: 1px solid var(--md-sys-color-outline-variant, #E0E0E0);
+        overflow-x: auto; white-space: nowrap; /* Keep steps in one line */
+         -ms-overflow-style: none; scrollbar-width: none; /* Hide scrollbar */
+    }
+    .top-workflow-stepper-container::-webkit-scrollbar { display: none; } /* Hide scrollbar */
+    .top-workflow-stepper { display: inline-flex; align-items: center; gap: 0; padding-bottom: 5px; /* Space for potential scrollbar if visible */ }
+    .top-step {
+        display: flex; flex-direction: column; align-items: center;
+        padding: 0.5rem 0.75rem; cursor: pointer; text-align: center;
+        position: relative; min-width: 80px;
+    }
+    .top-step-icon {
+        width: 28px; height: 28px; border-radius: 50%;
+        background-color: var(--md-sys-color-outline, #79747E);
+        color: var(--md-sys-color-surface, #FFFFFF);
+        display: flex; align-items: center; justify-content: center;
+        font-weight: bold; margin-bottom: 0.3rem; font-size: 0.8rem;
+        transition: background-color 0.3s ease, transform 0.3s ease;
+        border: 2px solid var(--md-sys-color-surface-container-low);
+    }
+    .top-step-label {
+        font-size: 0.75rem; font-weight: 500; color: var(--md-sys-color-on-surface-variant);
+        max-width: 70px; white-space: normal; line-height: 1.2;
+    }
+    .top-step-connector {
+        height: 3px; width: 40px; background-color: var(--md-sys-color-outline-variant, #CAC4D0);
+        transition: background-color 0.3s ease; margin: 0 5px; /* Add margin for spacing */
+        align-self: flex-start; /* Align connector with top of icon */
+        margin-top: 12px; /* Position connector vertically centered with icon */
+    }
+    /* Step States */
+    .top-step.complete .top-step-icon { background-color: var(--md-sys-color-secondary, #2DD4BF); }
+    .top-step.complete + .top-step-connector { background-color: var(--md-sys-color-secondary, #2DD4BF); }
+    .top-step.current .top-step-icon { background-color: var(--md-sys-color-primary, #1E3A8A); transform: scale(1.1); }
+    .top-step.current .top-step-label { color: var(--md-sys-color-primary); font-weight: 600; }
+    .top-step.help-needed .top-step-icon { background-color: #FFC107; } /* Warning */
+
+    /* --- Card Styling & Spacing --- */
+    .content-card, .assessment-header-card, .assessment-info-card {
+        background-color: var(--md-sys-color-surface, #FFFFFF); border-radius: 16px;
+        margin-bottom: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.04), 0 4px 8px rgba(0,0,0,0.04);
+        border: 1px solid var(--md-sys-color-outline-variant, #E0E0E0);
+    }
+    .content-card, .assessment-header-card, .assessment-info-card { padding: 1.5rem 2rem; }
+    .content-card-header {
+        font-size: 1.2rem; color: var(--md-sys-color-primary, #1E3A8A); margin-bottom: 1.5rem;
+        padding-bottom: 0.75rem; border-bottom: 1px solid var(--md-sys-color-outline-variant, #E0E0E0);
+        display: flex; justify-content: space-between; align-items: center; font-weight: 600;
+    }
+    .content-card-header i { margin-right: 0.5em; }
+    .content-card-header .btn-sm { padding: 0.25rem 0.75rem; font-size: 0.8rem; }
+
+    /* --- Specific Card Content Styling --- */
+    /* Assessment Header */
+    .assessment-header-card h2 { font-size: 1.6rem; }
+    .assessment-header-card .assessment-type { font-size: 1rem; color: var(--md-sys-color-on-surface-variant); margin-bottom: 1rem; font-weight: 500; }
+    .assessment-header-card .alert { margin-top: 1rem; border-radius: 8px; font-size: 0.9rem; }
+
+    /* Scope Summary Accordion - Improved Look */
+    .scope-summary-accordion .accordion-item { border: none; }
+    .scope-summary-accordion .accordion-button { font-weight: 600; color: var(--md-sys-color-primary); background-color: var(--md-sys-color-surface-container-low, #F0F4F8); font-size: 0.95rem; border-radius: 8px !important; box-shadow: none; }
+    .scope-summary-accordion .accordion-button:not(.collapsed) { background-color: var(--md-sys-color-primary-container, #D6E3FF); color: var(--md-sys-color-on-primary-container, #001B3E); border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+    .scope-summary-accordion .accordion-button::after { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%231E3A8A'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e"); }
+    .scope-summary-accordion .accordion-button:not(.collapsed)::after { background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23001B3E'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e"); transform: rotate(-180deg); }
+    .scope-summary-accordion .accordion-body { background-color: var(--md-sys-color-surface-container-lowest, #F8FAFC); padding: 1rem 1.25rem; font-size: 0.9rem; border: 1px solid var(--md-sys-color-primary-container); border-top: none; border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }
+    .scope-summary-accordion ul { list-style-type: none; padding-left: 0; }
+    .scope-summary-accordion ul ul { padding-left: 0.5rem; list-style-type: none; }
+    .scope-summary-accordion li { margin-bottom: 0.5rem; }
+    .scope-summary-accordion .os-icon-scope { margin-right: 0.5em; font-size: 1.1em; width: 1.2em; text-align: center; display: inline-block; color: var(--md-sys-color-secondary); }
+    .scope-summary-accordion .badge { font-size: 0.75em; vertical-align: middle; }
+    .scope-summary-accordion strong { font-weight: 600; color: var(--md-sys-color-on-surface); }
+
+    /* Current Step Info Display */
+    .current-step-info-display { /* Styles from previous version */ }
+
+    /* Workflow Overview Card - Improved Table */
+    #workflowOverviewCard .table { border-collapse: separate; border-spacing: 0 4px; }
+    #workflowOverviewCard .table th { background-color: transparent; border: none; font-size: 0.8rem; color: var(--md-sys-color-on-surface-variant); text-transform: uppercase; padding-bottom: 0.5rem; }
+    #workflowOverviewCard .table td { font-size: 0.9rem; vertical-align: middle; background-color: var(--md-sys-color-surface-container-lowest, #F8FAFC); border: none; border-bottom: 1px solid var(--md-sys-color-outline-variant, #E0E0E0); padding: 0.75rem; }
+    #workflowOverviewCard .table tr:last-child td { border-bottom: none; }
+    #workflowOverviewCard .table td:first-child { border-top-left-radius: 8px; border-bottom-left-radius: 8px; }
+    #workflowOverviewCard .table td:last-child { border-top-right-radius: 8px; border-bottom-right-radius: 8px; text-align: right; }
+    #workflowOverviewCard .table .badge { font-size: 0.8em; padding: 0.4em 0.6em; }
+    #workflowOverviewCard .overview-view-step-btn,
+    #workflowOverviewCard .overview-status-change-btn { padding: 0.2rem 0.5rem; font-size: 0.8rem; margin-left: 0.25rem;}
+    #workflowOverviewCard .overview-view-step-btn i,
+    #workflowOverviewCard .overview-status-change-btn i { margin-right: 0.3em;}
+    #workflowOverviewCard .status-cell span.badge { display: inline-flex; align-items: center; min-width: 90px; justify-content: center;}
+    #workflowOverviewCard .status-cell i { margin-right: 0.4em; }
+
+    /* Workflow Item Cards */
+    .workflow-item-card { /* Styles from previous version */ }
+    /* ... other existing styles ... */
+
+    /* Assessment Info Card (Now in main column) */
+    .assessment-info-card {
+        background-color: var(--md-sys-color-surface); /* Changed back to white */
+    }
+    .assessment-info-card h5 {
+        font-size: 1.1rem; color: var(--md-sys-color-primary); margin-bottom: 1rem;
+        padding-bottom: 0.5rem; border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    /* CHANGES BEGIN: Key Dates Styling */
+    .assessment-info-card .key-dates-header {
+        font-size: 1rem; color: var(--md-sys-color-primary); font-weight: 600;
+        margin-top: 1.5rem; margin-bottom: 0.75rem; padding-bottom: 0.4rem;
+        border-bottom: 1px solid var(--md-sys-color-primary-container);
+        display: flex; align-items: center;
+    }
+    .assessment-info-card .key-dates-header i {
+        margin-right: 0.5em; color: var(--md-sys-color-secondary);
+    }
+     /* CHANGES END */
+    .assessment-info-card dl.row { margin-bottom: 0.75rem; }
+    .assessment-info-card dl.row dt { font-size: 0.8rem; font-weight: 600; color: var(--md-sys-color-on-surface-variant); padding-right: 0.5rem; text-transform: uppercase; opacity: 0.8; }
+    .assessment-info-card dl.row dd { font-size: 0.95rem; color: var(--md-sys-color-on-surface); margin-bottom: 0.5rem; font-weight: 500; }
+    /* CHANGES BEGIN: Outcome Badge Styling */
+    .assessment-info-card .outcome-badge {
+        font-size: 0.9em; padding: 0.4em 0.7em; vertical-align: middle;
+    }
+    /* CHANGES END */
+    .assessment-info-card .countdown-section { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--md-sys-color-outline-variant); }
+    .assessment-info-card .countdown-section h6 { font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; }
+    .assessment-info-card .countdown-item { display: flex; align-items: center; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    .assessment-info-card .countdown-item i { color: var(--md-sys-color-primary); margin-right: 0.5em; width: 1.2em; text-align: center; }
+    .assessment-info-card .countdown-item span { font-weight: 600; color: var(--md-sys-color-primary); }
+
+
+    /* Other shared styles */
+    .status-badge { /* Styles from previous version */ }
+    .form-in-card { /* Styles from previous version */ }
+    .table-within-card { /* Styles from previous version */ }
+    .fas, .fa-solid, .fa-brands { vertical-align: -0.125em; }
+    .d-none { display: none !important; }
+

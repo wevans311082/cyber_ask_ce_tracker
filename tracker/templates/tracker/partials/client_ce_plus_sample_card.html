@@ -1,0 +1,103 @@
+{% load i18n %}
+{% if assessment.assessment_type == 'CE+' %}
+<div class="card mb-4" id="ce-plus-sample-section">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>{% translate "CE+ Sample Selected for Testing" %}</span>
+    {% if ce_plus_sample_items %}
+      <a href="{% url 'tracker:map_agents' assessment_pk=assessment.pk %}" class="btn btn-warning btn-sm">
+        <i class="fas fa-link me-1"></i> {% translate "Map/View Nessus Agents" %}
+      </a>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% if ce_plus_sample_items %}
+      <p>{% translate "Initial Sample for Preparation" %}:</p>
+      <div class="table-responsive mb-3">
+        <table class="table table-sm table-bordered">
+          <thead>
+            <tr>
+              <th>{% translate "Type" %}</th>
+              <th>{% translate "Identifier" %}</th>
+              <th>{% translate "OS / Version" %}</th>
+              <th>{% translate "Make/Model" %}</th>
+              <th>{% translate "Network" %}</th>
+              <th>{% translate "Status" %}</th>
+              <th class="text-center">{% translate "Agent Linked?" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in ce_plus_sample_items %}
+              <tr>
+                <td>{{ item.get_item_type_display }}</td>
+                <td>{{ item.identifier|default:'-' }}</td>
+                <td>
+                  {% include "tracker/partials/os_icon.html" with os_name=item.operating_system.name|default:'' vendor_hint=item.operating_system.vendor|default:''|lower %}
+                  {{ item.operating_system|default:'N/A' }}
+                </td>
+                <td>{{ item.make_model|default:'-' }}</td>
+                <td>{{ item.network.name|default:'-' }}</td>
+                <td>
+                  {% if item.eol_status == 'ok' %}
+                    <span class="badge bg-success">{% translate "OK" %}</span>
+                  {% elif item.eol_status == 'unsupported' %}
+                    <span class="badge bg-danger">{% translate "Unsupported" %}</span>
+                  {% elif item.eol_status == 'eol' %}
+                    <span class="badge bg-danger">{% translate "End-of-Life" %}</span>
+                  {% else %}
+                    <span class="badge bg-warning text-dark">{% translate "OS Unknown" %}</span>
+                  {% endif %}
+                </td>
+                <td class="text-center">
+                  {% if item.linked_tenable_agent_uuid %}
+                    <i class="fas fa-check-circle text-success" title="{% translate 'Agent link recorded' %}"></i>
+                    <span class="visually-hidden">{% translate "Yes" %}</span>
+                  {% else %}
+                    <i class="fas fa-times-circle text-danger" title="{% translate 'Agent not linked' %}"></i>
+                    <span class="visually-hidden">{% translate "No" %}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <hr class="my-3">
+      <div class="d-flex flex-wrap gap-3 align-items-center">
+        <div class="flex-grow-1">
+          <a href="{% url 'tracker:client_generate_agent_script' assessment.pk %}" class="btn btn-primary btn-sm">
+            <i class="fa-solid fa-file-code me-1"></i> {% translate "Generate Agent Install Scripts" %}
+          </a><br>
+          <small class="text-muted">
+            {% translate "A Nessus Agent must be installed on all sampled endpoints." %}
+          </small>
+        </div>
+        <div class="text-center">
+          <form action="{% url 'tracker:launch_tenable_scan' assessment_pk=assessment.pk %}"
+                method="post" class="d-inline"
+                onsubmit="return confirm('{% translate "Launch a Tenable agent scan for your tagged devices?" %}')">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success btn-lg"
+                    {% if not scan_launch_status.can_launch %} disabled title="{{ scan_launch_status.reason }}"{% endif %}>
+              <i class="fa-solid fa-rocket me-1"></i> {% translate "Launch Required Scan" %}
+            </button>
+          </form>
+          <div class="mt-1">
+            {% if scan_launch_status.can_launch %}
+              <small class="text-muted d-block">
+                <i class="fa-solid fa-circle-info me-1"></i>{% translate "Scan prerequisites met." %}
+              </small>
+            {% else %}
+              <small class="text-danger d-block">
+                <i class="fa-solid fa-triangle-exclamation me-1"></i>{{ scan_launch_status.reason }}
+              </small>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <p class="text-muted">{% translate "CE+ sample not yet selected by assessor." %}</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

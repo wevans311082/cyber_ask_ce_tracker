@@ -94,7 +94,6 @@ class Client(models.Model):
     contact_email = models.EmailField()
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-
     organization_number = models.CharField(_("UK Companies House Number"), max_length=20, blank=True, null=True, help_text="Optional: UK Companies House registration number.")
     website_address = models.URLField(_("Website Address"), max_length=255, blank=True, null=True)
     companies_house_validated = models.BooleanField(_("Companies House Validated"), default=False, help_text="Indicates if details were successfully validated against Companies House.")
@@ -102,24 +101,68 @@ class Client(models.Model):
     # Internal fields to track data used for validation check
     validated_name = models.CharField(max_length=200, blank=True, null=True, editable=False, help_text="Internal: Name used for last validation.")
     validated_number = models.CharField(max_length=20, blank=True, null=True, editable=False, help_text="Internal: Number used for last validation.")
-    tenable_tag_uuid = models.CharField(
-        max_length=36,  # UUIDs are typically 36 chars as string
-        null=True,
+    tenable_tag_uuid = models.UUIDField(
+        _("Tenable Tag UUID"),
         blank=True,
-        help_text="Tenable.io Tag Value UUID for this client's assets",
-        verbose_name="Tenable Tag UUID"
+        null=True,
+        help_text=_("UUID of the tag in Tenable.io used to identify assets for this client.")
     )
-    tenable_agent_group_id = models.IntegerField(null=True, blank=True, help_text=_(
-        "Numeric ID of the corresponding agent group in Tenable.io"))
+    tenable_agent_group_id = models.IntegerField(
+        _("Tenable Agent Group ID"),
+        blank=True,
+        null=True,
+        help_text=_("Integer ID of the Tenable.io agent group for this client.")
+    )
+    tenable_agent_group_uuid = models.CharField(
+        _("Tenable Agent Group UUID"),
+        max_length=36,  # Standard UUID length (e.g., "a1b2c3d4-e5f6-7788-9900-aabbccddeeff")
+        blank=True,
+        null=True,
+        help_text=_("UUID (string) of the Tenable.io agent group, fetched from Tenable.io based on the Agent Group ID.")
+    )
+    tenable_agent_group_target_name = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="The exact name of the Tenable.io Agent Group to use for this client's scans (e.g., 'TEST WE')."
+    )
+
 
 
     def __str__(self): return self.name
 class UserProfile(models.Model):
-    ROLE_CHOICES = (('Admin', 'Administrator'),('Assessor', 'Assessor'),('Client', 'Client'),)
+    ROLE_CHOICES = (
+        ('Admin', 'Administrator'),
+        ('Assessor', 'Assessor'),
+        ('Client', 'Client'),
+    )
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
-    client = models.ForeignKey(Client, on_delete=models.SET_NULL, null=True, blank=True, help_text="Required only if role is 'Client'")
-    def __str__(self): return f"{self.user.username} ({self.get_role_display()})"
+    client = models.ForeignKey(
+        'Client', # Use string 'Client' if Client model is defined later in the file
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Required only if role is 'Client'"
+    )
+    phone_number = models.CharField(
+        _("Phone Number"),
+        max_length=20,
+        blank=True,
+        help_text=_("Optional: Your contact phone number.")
+    )
+    mfa_enabled = models.BooleanField(
+        _("MFA Enabled"),
+        default=False,
+        help_text=_("Enable Multi-Factor Authentication for your account.")
+    )
+
+    def __str__(self):
+        return f"{self.user.username} ({self.get_role_display()})"
+
+
+
+
 class Assessment(models.Model):
     STATUS_CHOICES = (('Draft', 'Draft'),('Scoping_Client', 'Scoping (Client Input)'),('Scoping_Review', 'Scoping (Assessor Review)'),('Testing', 'Testing'),('Remediation', 'Remediation'),('Report_Pending', 'Report Pending'),('Complete_Passed', 'Complete (Passed)'),('Complete_Failed', 'Complete (Failed)'),)
     ASSESSMENT_TYPES = (('CE', 'Cyber Essentials'),('CE+', 'Cyber Essentials Plus'),)
@@ -148,6 +191,36 @@ class Assessment(models.Model):
         verbose_name="Tenable Scan UUID",
         help_text="UUID of the last launched Tenable scan for this assessment"
     )
+    SCAN_NONE = 'none'
+    SCAN_PENDING = 'pending_launch'  # <<< THIS IS LIKELY MISSING OR COMMENTED OUT
+    SCAN_LAUNCHED = 'launched'
+    SCAN_COMPLETED = 'completed'
+    SCAN_PROCESSING = 'processing'
+    SCAN_IMPORTED = 'imported'
+    SCAN_ERROR = 'error'
+    SCAN_TIMEOUT = 'timeout'
+
+    SCAN_STATUS_CHOICES = [
+        (SCAN_NONE, 'Not Scanned'),
+        (SCAN_PENDING, 'Scan Pending Launch'), # <<< AND MISSING HERE
+        (SCAN_LAUNCHED, 'Scan Launched'),
+        (SCAN_COMPLETED, 'Scan Completed by Tenable'),
+        (SCAN_PROCESSING, 'Processing Results'),
+        (SCAN_IMPORTED, 'Scan Results Imported'),
+        (SCAN_ERROR, 'Error During Scan Operations'),
+        (SCAN_TIMEOUT, 'Scan Operation Timed Out'),
+    ]
+
+    scan_status = models.CharField(
+        max_length=30,
+        choices=SCAN_STATUS_CHOICES,
+        default=SCAN_NONE,
+        verbose_name="Tenable Scan Status"
+    )
+    scan_status_message = models.TextField(blank=True, null=True, verbose_name="Scan Status Message")
+    tenable_scan_id = models.IntegerField(null=True, blank=True, verbose_name="Tenable Scan Integer ID")
+    def get_scan_status_display(self):  # Ensure this method exists if used in logs/templates
+        return dict(self.SCAN_STATUS_CHOICES).get(self.scan_status, self.scan_status)
 
     def __str__(self): return f"{self.client.name} - {self.get_assessment_type_display()} ({self.id})"
 
@@ -208,8 +281,6 @@ class Assessment(models.Model):
         print("[DEBUG Assessment.can_launch_ce_plus_scan] Result: True (All checks passed)")  # DEBUG
         return {'can_launch': True, 'reason': _("Ready to launch scan.")}
     # CHANGES END
-
-
 class Evidence(models.Model):
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='evidence_files')
     file = models.FileField(upload_to='evidence/%Y/%m/%d/')

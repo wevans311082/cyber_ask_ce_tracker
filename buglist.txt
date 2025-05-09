@@ -1,1 +1,161 @@
-When an assessor generates a sample
+MVP Task List
+New Features (Prioritized)
+Feature:1 (High) Implement Tenable scan result fetching, parsing, and basic display for Assessors.
+Feature:2 (High) Implement automated checks/reporting against CE+ vulnerability standards based on imported scan results.
+Feature:3 (High) Implement functionality to trigger External IP Scans within Tenable via the application.
+Feature:4 (High) Add MFA support for user login to the application.
+Feature:5 (High) Integrate EOL/Unsupported OS checks actively into the assessment pass/fail workflow logic.
+Feature:6 (High) Ensure “Help Needed” workflow status clearly alerts/notifies the relevant party (Assessor/Client).
+Feature:7 (High) Client Self-Service Scoping Input: Allow clients to pre-populate or suggest scoped items (devices, cloud services, networks) for assessor review, with guided forms.
+Feature:8 (High) Evidence Linking per Scoped Item/Control: Ability for clients and assessors to upload and link specific evidence files to individual scoped items or CE+ controls/questions.
+Feature:9 (High) Tenable Agent Status Dashboard: View status of Tenable agents linked to scoped items (online, offline, version, last seen).
+Feature:10 (High) Client Portal for Evidence Upload & Tracking: Dedicated area for clients to see required evidence and upload files per control/item, with status tracking.
+Feature:11 (High) Direct Nessus Scan Import & Parsing: Allow direct upload and parsing of Nessus scan files (.nessus) for environments not using Tenable.io, mapping results to scoped items.
+Feature:12 (Medium) Automated CE+ Sample Validation Rules: Assist assessors by highlighting if the selected sample meets CE+ diversity criteria (e.g., OS types, device roles, network segments).
+Feature:13 (Medium) Custom Report Templates & Branding: Allow admins to define basic templates for generated assessment reports and add company branding (logo, colors).
+Feature:14 (Medium) Bulk Actions for Scoped Items: E.g., bulk update OS, assign to network, mark as EOL, or add notes for multiple scoped items simultaneously.
+Feature:15 (Medium) Assessment Scheduling & Assessor Calendar View: Visual calendar for assessors to see their scheduled assessments, mark unavailability, and view team capacity.
+Feature:16 (Medium) Pre-Assessment Questionnaires: Customizable questionnaires for clients to provide initial information (e.g., IT infrastructure overview, key contacts) before formal scoping begins.
+Feature:17 (Medium) Multi-Language Support for UI & Key Reports: Provide UI translations and support generating key reports in multiple languages.
+Feature:18 (Medium) Change Control Log for Assessment Scope: Automatically track and display significant changes made to the assessment scope after initial client agreement.
+Feature:19 (Medium) Asset Tagging & Grouping within Application: Allow custom tagging and grouping of scoped items for better organization and filtering.
+Feature:20 (Medium) Basic Assessment Report Generation: Generate a downloadable summary report (e.g., PDF) for an assessment, including scope, key findings, and final outcome.
+Feature:21 (Medium) Dashboard Key Metrics & Visualizations: Enhance dashboards with key metrics (e.g., assessments nearing CE+ window expiry, EOL devices in scope) and simple charts.
+Feature:22 (Medium) Remediation Tracking for Vulnerabilities: Track remediation status of critical/high vulnerabilities identified on sampled systems.
+Feature:23 (Medium) Assessor Justification for CE+ Sample Selection: Add a dedicated field for assessors to record justification for including/excluding specific items in the CE+ random sample.
+Feature:24 (Medium) Add primary_contact_name, email, phone fields to the Assessment model, including display logic and editing.
+Feature:25 (Medium) Upload Final Certificate PDF: Allow Assessors/Admins to attach the final certificate PDF to completed assessment records.
+Feature:26 (Medium) Basic Email Notifications: Send email alerts for critical status changes and actions requiring user attention.
+Feature:27 (Medium) Assessment-Level Notes Field: Add a notes section for tracking overall remediation summary.
+Feature:28 (Medium) Capture Assessment User Details: Record staff involved in an assessment and allow mapping to scoped devices.
+Feature:29 (Low) Capture secondary contact details for an Assessment.
+Feature:30 (Low) Client/Assessor Communication Log: A simple, timestamped Q&A log within each assessment.
+Feature:31 (Low) Configurable Notification Preferences (User-level).
+Feature:32 (Low) Knowledge Base/FAQ Section: In-app, searchable help editable by Admins.
+Feature:33 (Low) Read-Only API for Data Retrieval: Expose high-level assessment status or client details for external dashboards.
+
+
+Improvements (Prioritized)
+High
+Improvement:1 (High) Add comprehensive unit & integration tests covering permissions, validation, and core workflow logic.
+Improvement:2 (High) Wrap all Tenable API calls in a dedicated service layer for improved robustness, error handling, and maintainability.
+Improvement:3 (High) Review and tighten CSRF protection and HTTP-method enforcement across all views.
+Improvement:4 (High) Enhanced UI/UX for Scope Definition: Improve the scope-definition experience for clients and assessors, possibly via a guided wizard.
+Improvement:5 (High) Detailed Tenable API Error Feedback: Surface specific, user-friendly error messages (e.g., “Invalid Credentials,” “Scan Policy Not Found,” “Agent Group Mismatch,” “No active agents in group”).
+Improvement:6 (High) Tenable Scan Result Diffing: On re-scans, clearly show new, resolved, and existing vulnerabilities per asset or sample.
+Improvement:7 (High) Global Search Functionality: Add a universal search bar to find clients, assessments, scoped items, users, etc., from anywhere.
+Improvement:8 (High) Consistent Visual Feedback for Actions: Use loading spinners/indicators for background tasks and clear success/error/warning icons.
+
+Medium
+Improvement:9 (Medium) Enhanced Audit Logging: More detailed, searchable logs for admin & system events.
+Improvement:10 (Medium) Session Timeout Config & Warning: Admins set timeout durations and show inactivity warnings.
+Improvement:11 (Medium) Contextual Help Text & Tooltips for all form fields.
+Improvement:12 (Medium) Improved Mobile/Tablet Responsiveness for field use.
+Improvement:13 (Medium) Granular User Role/Permission Review & Refinement.
+Improvement:14 (Medium) Optimize Database Queries for key lists & reports (select_related, indexing, etc.).
+Improvement:15 (Medium) Standardize Date/Time Display & Timezone Handling throughout the app.
+Improvement:16 (Medium) Extract repeated “get assessment + permission check” logic into a reusable mixin/decorator.
+Improvement:17 (Medium) Consolidate duplicate views into single, robust implementations.
+Improvement:18 (Medium) Improve form-submission error handling: render inline validation errors.
+Improvement:19 (Medium) Move business-logic rules (e.g., CE+ date windows, EOL policies) into form validation or model clean methods.
+Improvement:20 (Medium) Refine exception handling: catch specific exceptions and use logger.exception.
+Improvement:21 (Medium) Harden MapAgentsView POST parsing against malformed map_item_<pk> keys.
+Improvement:22 (Medium) Refactor large view files into smaller, focused modules.
+Improvement:23 (Medium) Ensure all state-changing actions log events via the log_assessment_event utility.
+Improvement:24 (Medium) Improve accuracy & robustness of the pdf_extractor tool for CE reports.
+Improvement:25 (Medium) Centralize redirect-URL logic to reduce NoReverseMatch errors.
+Improvement:26 (Medium) Workflow Step Guidance & Resources: Link each AssessmentWorkflowStep to detailed instructions or docs.
+Improvement:27 (Medium) Advanced Search & Filtering: Allow multi-criteria filters (status, date ranges, OS type, custom tags).
+Improvement:28 (Medium) Accessibility (a11y) Review against WCAG 2.1 AA standards.
+Improvement:29 (Medium) Data Export: Enable CSV/Excel exports for assessments, scope details, vulnerability summaries, user lists.
+Improvement:30 (Medium) Enhanced Table Design & Interactivity: Better spacing, alternating rows, clear sort indicators, client-side pagination/search.
+Improvement:31 (Medium) Standardized Iconography: Adopt a single icon set (e.g., Font Awesome).
+Improvement:32 (Medium) Clearer Form Field Focus States for usability and a11y.
+Improvement:33 (Medium) Informative Empty State Designs with calls to action.
+Improvement:34 (Medium) Breadcrumb Navigation for nested views.
+Improvement:35 (Medium) Enhanced Keyboard Navigation & Accessibility (full tab-flow, focus management).
+Improvement:36 (Medium) Consistent Modal Dialog Styling & Behavior.
+
+Low
+Improvement:37 (Low) Redesign/restyle client workflow step buttons for better usability.
+Improvement:38 (Low) Enhance the application’s main title bar (layout, content).
+Improvement:39 (Low) User Onboarding/Contextual Help icons/tooltips throughout the app.
+Improvement:40 (Low) User Profile Pictures/Avatars.
+Improvement:41 (Low) “Dark Mode” theme option.
+Improvement:42 (Low) Customizable dashboard widgets.
+Improvement:43 (Low) Implement pagination or optimize queries for large lists if needed.
+Improvement:44 (Low) Standardize tone & format of user-facing flash messages.
+Improvement:45 (Low) Codebase-wide cleanup of imports and unused variables.
+Improvement:46 (Low) Visual Progress Indicators for multi-step processes (e.g., wizards).
+Improvement:47 (Low) Improved visual hierarchy on key detail pages.
+Improvement:48 (Low) Enhanced file upload UI (progress bars, type validation, previews).
+Improvement:49 (Low) Clearer error-message styling & placement.
+Improvement:50 (Low) User-friendly date/time picker components.
+Improvement:51 (Low) “Sticky” table headers or action bars on long pages.
+Improvement:52 (Low) More obvious visual cues for required form fields.
+Improvement:53 (Low) Consistent spacing, padding, and alignment across the UI.
+Improvement:54 (Low) Interactive table-column sorting UI.
+Improvement:55 (Low) Distinct visual styling for destructive actions, with confirmations.
+Improvement:56 (Low) Loading skeletons for data-intensive views.
+Improvement:57 (Low) “View All” links for truncated lists/text.
+
+
+
+AI-Powered Enhancements
+High Priority
+AI:1 Automated vulnerability risk scoring & prioritization based on CVSS, asset criticality and historical remediation timelines.
+AI:2 Natural-language summary of scan results that highlights critical issues, trends and required actions.
+AI:3 AI-driven CE+ compliance checks that auto-generate pass/fail rationales per control.
+AI:4 Intelligent CE+ sample selection ensuring statistical diversity (OS types, device roles, networks).
+AI:5 Automated evidence extraction & classification from uploaded PDFs, screenshots and email attachments via NLP/OCR.
+AI:6 Draft audit-report generation: produce a first-pass, editable CE+ report including scope, findings and recommendations.
+AI:7 Conversational assistant for assessors: ask questions (“Which assets missing evidence?”) and get instant guidance.
+AI:8 Context-aware remediation recommendations that map vulnerabilities to tailored fix steps and knowledge‐base articles.
+AI:9 Predictive analytics forecasting which assets are most likely to show new critical findings on next scan.
+AI:10 Anomaly detection across sequential scans to flag unexpected changes or potential false positives.
+AI:41 Automated executive summary generation conforming exactly to the CE+ standard report format, including scope, methodology, key findings and next-step recommendations.
+
+Medium Priority
+AI:11 Auto-fill scoping forms based on historical client engagements and common configurations.
+AI:12 Intelligent questionnaire optimization: suggest additional questions based on detected scope gaps.
+AI:13 Automated mapping of CVEs to CE+ controls, with recommended evidence artifacts.
+AI:14 Real-time AI translation for UI, reports and client communications in multiple languages.
+AI:15 Sentiment analysis on client messages to surface frustration or delay risks.
+AI:16 Audit-log summarization: compress long trails into human-readable timelines and call-outs.
+AI:17 Contextual tooltips autogenerated by AI explaining complex form fields or workflow steps.
+AI:18 Smart scheduling suggestions that balance assessor workload, travel and deadlines.
+AI:19 Automated classification & tagging of scan findings by business impact and compliance relevance.
+AI:20 Client-facing chatbot to answer status, next steps, and evidence requirements.
+AI:21 Image-recognition to validate uploaded screenshots of configuration settings or logs.
+AI:22 Automated detection of missing evidence items based on CE+ control matrix.
+AI:23 Natural-language search across assessments, policies, KB articles and logs.
+AI:24 Recommendation engine for report templates, branding styles and content blocks.
+AI:25 Next-step workflow predictions: suggest which workflow action or form the assessor should tackle next.
+AI:26 AI-driven risk heatmaps on dashboards, showing hot spots by severity, asset type or network segment.
+
+Low Priority
+AI:27 Voice-to-text input for field assessors to log observations hands-free.
+AI:28 AI-generated infographics and visual assets for client reports (charts, diagrams).
+AI:29 Competitive benchmarking insights: AI-curated summary of public CE+ posture in your industry.
+AI:30 AI-curated knowledge-base article suggestions when certain errors or patterns are detected.
+AI:31 Code-snippet suggestions for custom integration scripts (e.g., API calls, CSV exports).
+AI:32 Automated accessibility auditing & fix recommendations (WCAG compliance).
+AI:33 Scenario-based test data generation for unit/integration tests using learned patterns.
+AI:34 Behavioral anomaly detection in user activity to spot unusual assessor or client actions.
+AI:35 Generative design recommendations for UI themes based on company branding guidelines.
+AI:36 Regulatory-update summarization: AI-distilled briefs when CE+ or related standards change.
+AI:37 Auto-scheduling of reminders based on project milestones or risk-level triggers.
+AI:38 AI-powered email-draft suggestions for communicating findings or requests to clients.
+AI:39 Language-polishing of assessor notes and client-facing narratives for clarity and tone.
+AI:40 Post-engagement feedback analysis: sentiment-and-theme extraction from client survey responses.
+
+
+
+
+
+Bug Report
+Bug:1 (High) Fix non-functional workflow action buttons (Start/Done/Reopen) for Clients.
+Bug:2 (High) Resolve issue where Tenable code to get scan status is not working correctly.
+Bug:3 (High) Prevent duplicate scans being created by the Tenable scan-launch code.
+Bug:4 (High) Verify and ensure default Tenable Scan Policy/Scanner settings are correctly configured and used by scan-launch tasks.
+Bug:5 (Medium) Ensure all relevant user actions are recorded in the Assessment Log audit trail.

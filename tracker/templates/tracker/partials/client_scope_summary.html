@@ -1,0 +1,52 @@
+{% load i18n %}
+<div id="scope-management-section" class="mb-4 pt-2 card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span><i class="fas fa-sitemap"></i> {% translate "Scope Summary" %}</span>
+    {% if can_edit_scope %}
+      <a href="{% url 'tracker:client_scope_manage' assessment.pk %}" class="btn btn-warning btn-sm">
+        {% translate "Manage Scope Items" %}
+      </a>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <h5>{% translate "Scoped Items Overview" %} ({{ scope_summary.total_items|default:0 }})</h5>
+    {% if scope_summary.total_items > 0 %}
+      <ul>
+        {% for category, data in scope_summary.items %}
+          {% if data.count > 0 and category not in 'total_items has_unsupported_or_eol' %}
+            <li>
+              <strong>{{ category|title }}:</strong> {{ data.count }}
+              {% if data.os_types %}
+                <ul>
+                  {% for os_key, os_data in data.os_types.items %}
+                    <li>
+                      {% include "tracker/partials/os_icon.html" with os_name=os_key.0 vendor_hint=os_key.1 %}
+                      {{ os_key.0 }}: {{ os_data.count }}
+                      {% if not os_data.is_supported %}
+                        <span class="badge bg-danger">{% translate "Unsupported/EOL" %}</span>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+      <div class="text-center mt-3">
+        <a href="{% url 'tracker:client_scope_manage' assessment.pk %}" class="btn btn-outline-secondary btn-sm">
+          {% translate "View/Manage Full Scope Details" %}
+        </a>
+      </div>
+    {% else %}
+      <p class="text-muted">{% translate "No scope items defined yet." %}</p>
+      {% if can_edit_scope %}
+        <div class="text-center mt-3">
+          <a href="{% url 'tracker:client_scope_manage' assessment.pk %}" class="btn btn-primary">
+            {% translate "Define Scope Items" %}
+          </a>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>

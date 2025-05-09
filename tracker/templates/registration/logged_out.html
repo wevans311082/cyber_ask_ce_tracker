@@ -1,0 +1,24 @@
+{% extends "tracker/base.html" %}
+{% load i18n %}
+
+{% block title %}{% translate "Logged Out" %}{% endblock %}
+
+{% block content %}
+<div class="container py-5"> {# py-5 for padding, respecting the fixed header's space #}
+  <div class="row justify-content-center">
+    <div class="col-lg-6 col-md-8 col-sm-10">
+      <div class="auth-card"> {# Using your existing .auth-card style #}
+        <h1>{% translate "You Have Been Logged Out" %}</h1>
+        <div class="alert alert-info mt-3" role="alert">
+          {% translate "Thank you for using CyberASK. You have successfully logged out." %}
+        </div>
+        <div class="mt-4 d-flex justify-content-center gap-3">
+          <a href="{% url 'login' %}" class="btn btn-primary">{% translate "Log In Again" %}</a>
+          <a href="/" class="btn btn-outline-secondary">{% translate "Go to Homepage" %}</a>
+          {# Or replace "/" with a specific named URL for your homepage if you have one, e.g., {% url 'homepage' %} #}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

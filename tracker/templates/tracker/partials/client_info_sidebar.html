@@ -1,0 +1,72 @@
+{% load i18n %}
+<div class="card sticky-top bg-white shadow-sm" style="top: 1rem; margin-top: 1.5rem;">
+  <div class="card-header">
+    <h4><i class="fas fa-info-circle"></i> {% translate "Assessment Info" %}</h4>
+  </div>
+  <div class="card-body">
+    <dl class="row">
+      <dt class="col-sm-5">{% translate "Client" %}</dt><dd class="col-sm-7">{{ assessment.client.name }}</dd>
+      <dt class="col-sm-5">{% translate "Assessor" %}</dt><dd class="col-sm-7">{{ assessment.assessor.username|default:_("Awaiting Assignment") }}</dd>
+      <dt class="col-sm-5">{% translate "Status" %}</dt>
+      <dd class="col-sm-7">
+        <span class="badge
+             {% if assessment.status == 'Pending' %}bg-warning text-dark
+             {% elif assessment.status == 'InProgress' %}bg-info text-dark
+             {% elif assessment.status == 'Scoping_Client' %}bg-info text-dark
+             {% elif assessment.status == 'Scoping_Review' %}bg-secondary
+             {% elif assessment.status == 'Complete' %}bg-success
+             {% elif assessment.status == 'Cancelled' %}bg-danger
+             {% else %}bg-primary{% endif %}">
+          {{ assessment.get_status_display }}
+        </span>
+      </dd>
+      <dt class="col-sm-5">{% translate "Scope Type" %}</dt><dd class="col-sm-7">{{ assessment.get_scope_type_display|default:"-" }}</dd>
+      <dt class="col-sm-5">{% translate "Scope Desc." %}</dt><dd class="col-sm-7">{{ assessment.scope_description|default:"-"|linebreaksbr }}</dd>
+      <dt class="col-sm-5">{% translate "CE Ref" %}</dt><dd class="col-sm-7">{{ assessment.ce_self_assessment_ref|default:"-" }}</dd>
+      <dt class="col-sm-5">{% translate "Outcome" %}</dt>
+      <dd class="col-sm-7">
+        {% if assessment.final_outcome == 'Pass' %}
+          <span class="badge bg-success">{{ assessment.get_final_outcome_display }}</span>
+        {% elif assessment.final_outcome == 'Fail' %}
+          <span class="badge bg-danger">{{ assessment.get_final_outcome_display }}</span>
+        {% else %}
+          <span class="text-muted">{% translate "Pending" %}</span>
+        {% endif %}
+      </dd>
+    </dl>
+
+    <h6 class="mt-3">{% translate "Key Dates" %}</h6>
+    <dl class="row">
+      <dt class="col-sm-5">{% translate "Scheduled" %}</dt><dd class="col-sm-7">{{ assessment.scheduled_date|date:"d M Y"|default:"-" }}</dd>
+      <dt class="col-sm-5">{% translate "Target End" %}</dt><dd class="col-sm-7">{{ assessment.date_target_end|date:"Y-m-d"|default:"-" }}</dd>
+      <dt class="col-sm-5">{% translate "Actual End" %}</dt><dd class="col-sm-7">{{ assessment.date_actual_end|date:"Y-m-d"|default:"-" }}</dd>
+      <dt class="col-sm-5">{% translate "CE Passed" %}</dt><dd class="col-sm-7">{{ assessment.date_ce_passed|date:"Y-m-d"|default:"N/A" }}</dd>
+      <dt class="col-sm-5">{% translate "Cert Issued" %}</dt><dd class="col-sm-7">{{ assessment.date_cert_issued|date:"Y-m-d"|default:"-" }}</dd>
+      <dt class="col-sm-5">{% translate "Cert Expiry" %}</dt><dd class="col-sm-7">{{ assessment.date_cert_expiry|date:"Y-m-d"|default:"-" }}</dd>
+    </dl>
+    <hr>
+    <p><strong>{% translate "Primary Contact" %}:</strong> {{ assessment.primary_contact_name }}</p>
+    <p><strong>{% translate "Primary Email" %}:</strong> {{ assessment.primary_contact_email }}</p>
+    <p><strong>{% translate "Primary Phone" %}:</strong> {{ assessment.primary_contact_phone }}</p>
+    <hr>
+    {% if assessment.report_file %}
+      <div class="mb-2">
+        <a href="{{ assessment.report_file.url }}" class="btn btn-sm btn-success w-100" target="_blank">
+          <i class="fas fa-download"></i> {% translate "Download Generated Report" %}
+        </a>
+      </div>
+    {% endif %}
+    {% if assessment.uploaded_report %}
+      <div class="mb-2">
+        <a href="{{ assessment.uploaded_report.file.url }}" class="btn btn-sm btn-info w-100" target="_blank">
+          <i class="fas fa-download"></i> {% translate "Download Uploaded Report" %} ({{ assessment.uploaded_report.file_type }})
+        </a>
+        <p class="small text-muted text-center">{% translate "Uploaded" %}: {{ assessment.uploaded_report.uploaded_at|date:"d M Y H:i" }}</p>
+      </div>
+    {% endif %}
+    <hr>
+    <button type="button" class="btn btn-outline-secondary w-100 mt-2" data-bs-toggle="modal" data-bs-target="#logModal">
+      <i class="fas fa-history"></i> {% translate "View Assessment Log" %}
+    </button>
+  </div>
+</div>
