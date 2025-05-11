@@ -173,58 +173,63 @@ CONSTANCE_CONFIG_FIELDSETS = {
 
 LOGGING = {
     'version': 1,
-    'disable_existing_loggers': False, # Keep existing Django loggers
+    'disable_existing_loggers': False,  # Keep existing loggers (like Django's own) active
     'formatters': {
         'verbose': {
             'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
             'style': '{',
         },
         'simple': {
-            'format': '{levelname} {asctime} {module} {message}',
+            'format': '{levelname} {message}',
             'style': '{',
         },
-        'dev': { # Formatter for console output during development
-             'format': '[{asctime}] {levelname} [{name}:{lineno}] {message}',
-             'style': '{',
-             'datefmt': '%Y-%m-%d %H:%M:%S',
-        },
+        'db_formatter': { # Formatter for our database log handler
+            'format': '%(levelname)s %(asctime)s %(module)s %(funcName)s L%(lineno)d: %(message)s',
+            # Includes standard log record attributes that our handler and model expect.
+        }
     },
     'handlers': {
-        'console': {
-            'level': 'DEBUG', # Show DEBUG level messages and higher on console
+        'console': { # Example: Default console handler, you might already have this
+            'level': 'INFO', # Or 'DEBUG' if DEBUG is True
             'class': 'logging.StreamHandler',
-            'formatter': 'dev', # Use the 'dev' formatter for console
+            'formatter': 'simple',
         },
-        # Optional: Add file handler later if needed
-        # 'file': {
-        #     'level': 'INFO',
-        #     'class': 'logging.FileHandler',
-        #     'filename': BASE_DIR / 'logs/django.log', # Create logs directory
+        'db_critical_errors': { # Define our custom database handler
+            'level': 'CRITICAL', # Only capture CRITICAL level messages (or ERROR and above if preferred)
+            'class': 'tracker.logging_handlers.DatabaseLogHandler', # Path to your custom handler class
+            'formatter': 'db_formatter', # Use the specific formatter
+        },
+        # You might have other handlers like 'mail_admins' for errors
+        # 'mail_admins': {
+        #     'level': 'ERROR',
+        #     'class': 'django.utils.log.AdminEmailHandler',
         #     'formatter': 'verbose',
         # },
     },
     'loggers': {
-        'django': { # Configure Django's internal loggers
-            'handlers': ['console'], # Send Django's logs to console too
-            'level': 'INFO', # Or 'WARNING' to reduce Django noise
-            'propagate': False, # Don't pass Django logs to root logger
-        },
-        'tracker': { # Configure logging for your 'tracker' app
-            'handlers': ['console'],
-            'level': 'DEBUG', # Capture DEBUG messages from your app
+        'django': { # Django's own logger
+            'handlers': ['console'], # Add 'mail_admins' here if you want Django errors emailed
+            'level': 'INFO', # Adjust as needed
             'propagate': False, # Don't pass to root logger if handled here
         },
-        # Optional: Configure other specific app loggers
+        'tracker': { # Your app's logger
+            'handlers': ['console', 'db_critical_errors'], # Add db_critical_errors here
+            'level': 'DEBUG', # Capture DEBUG and above for your app
+            'propagate': True, # Allow propagation to root logger if needed
+        },
+        # You can configure other app loggers here, e.g., 'celery'
         # 'celery': {
-        #     'handlers': ['console'],
+        #     'handlers': ['console', 'db_critical_errors'], # Log celery criticals to DB too
         #     'level': 'INFO',
-        #     'propagate': False,
+        #     'propagate': True,
         # },
-        # Optional: Root logger (catches everything not handled above)
-        # '': {
-        #     'handlers': ['console'],
-        #     'level': 'WARNING', # Set a higher level for root to avoid excessive noise
-        # },
+        # Add other third-party app loggers if needed
+    },
+    'root': { # Root logger: catches everything not caught by specific app loggers if propagate=True
+        'handlers': ['console', 'db_critical_errors'], # Add db_critical_errors to root
+        'level': 'WARNING', # Example: Root logger captures WARNING and above
+        # Set a higher level for root if app loggers are more specific,
+        # or set it to DEBUG and control verbosity with handler levels.
     }
 }
 

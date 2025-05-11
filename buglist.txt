@@ -1,5 +1,28 @@
 MVP Task List
 New Features (Prioritized)
+
+Needed Views in Admin Dashboard
+system_log_viewer
+assessment_list_scan_issues
+assessment_list_recently_completed
+tenable_scanner_list (and tenable_scanner_create, tenable_scanner_update, tenable_scanner_delete)
+tenable_policy_list (and tenable_policy_create, tenable_policy_update, tenable_policy_delete)
+client_list_awaiting_tenable_config
+tenable_agent_group_list
+tenable_agent_mapping_list
+assessor_availability_list_pending
+user_list_incomplete_mfa
+global_settings
+audit_log_viewer
+notification_management
+
+Admin Dashboard Views Done
+uploaded_report_list – [done]
+assessment_list_awaiting_scheduling – [done]
+unlinked_ce_reports_list – [done]
+
+
+New Features (Prioritized)
 Feature:1 (High) Implement Tenable scan result fetching, parsing, and basic display for Assessors.
 Feature:2 (High) Implement automated checks/reporting against CE+ vulnerability standards based on imported scan results.
 Feature:3 (High) Implement functionality to trigger External IP Scans within Tenable via the application.
@@ -33,6 +56,24 @@ Feature:30 (Low) Client/Assessor Communication Log: A simple, timestamped Q&A lo
 Feature:31 (Low) Configurable Notification Preferences (User-level).
 Feature:32 (Low) Knowledge Base/FAQ Section: In-app, searchable help editable by Admins.
 Feature:33 (Low) Read-Only API for Data Retrieval: Expose high-level assessment status or client details for external dashboards.
+Feature:34 (Medium) Uploaded reports need to be downloadable from the Assessment Information Panel.
+Feature:35 (Medium) In-browser preview of the CE report to be available to the assessor for quick reference.
+Feature:36 (Low) Admin Dashboard – Celery: Implement a “Clear Failed Task Logs” button and associated view.
+Feature:37 (High) Interactive Scoping Module – guided questionnaire for clients/assessors to define full scope (networks, external IPs, user devices, servers, cloud services, remote setups, third-party devices, web apps), flag out-of-scope items with justification, visual scope diagram (future), plus pre-filled scope templates (IMPRV-011).
+Feature:38 (High) Intelligent CE+ Sampling Assistant – input total devices by OS/version; calculate minimum sample size per CE+/IASME rules; random or assessor-selected sampling ensuring OS diversity; track sampled vs. total devices (IMPRV-008).
+Feature:39 (High) Dynamic Assessor Test Plan Generation – auto-generate per-assessment checklists of required tests mapped to CE controls (e.g. A.2.3, A.3.1).
+Feature:40 (High) Guided Test Execution Modules (per sampled device/service):
+    A. External Scan Management: schedule/track Tenable.io scans; review & pass/fail by CE+ criteria; fix scan-linking (BUG-001).
+    B. Internal Authenticated Scan: guide Nessus Agent deployment; track per-device scans; review patch/unsupported-OS; link ScopedItem ↔ Agent UUID (IMPRV-016).
+    C. Malware Protection Checks: confirm AV status & updates; email- & web-vector tests; structured screenshot uploads; record test-file details (IMPRV-015).
+    D. Secure Configuration Checks: OS version/patch verification; firewall; admin vs. standard user separation (with guidance links); app-whitelisting advice; default-credential removal; evidence uploads.
+    E. MFA Checks (Cloud): verify/enforce MFA for all users (especially admins); capture method/strength; evidence screenshots.
+    F. Mobile Device Checks: OS/patch level; PIN/biometric; no jailbreak/root; encryption; corporate connectivity; malware tests; evidence uploads.
+Feature:41 (High) Centralized Evidence Repository – link client & assessor uploads to specific test steps/controls (IMPRV-002); support diverse file types; distinguish client vs. assessor evidence; timestamp & attribute.
+Feature:42 (High) Remediation Tracking Module – flag failed tests; assign remediation tasks to clients; client view for remediation status & uploads; assessor review & re-test workflow.
+Feature:43 (High) Report Data Collation & Export – collate scope, test plans, results, evidence, remediation; export structured data (JSON/CSV/text) for CE+ reports; future basic PDF report with placeholders (IMPRV-009).
+
+
 
 
 Improvements (Prioritized)
@@ -43,8 +84,11 @@ Improvement:3 (High) Review and tighten CSRF protection and HTTP-method enforcem
 Improvement:4 (High) Enhanced UI/UX for Scope Definition: Improve the scope-definition experience for clients and assessors, possibly via a guided wizard.
 Improvement:5 (High) Detailed Tenable API Error Feedback: Surface specific, user-friendly error messages (e.g., “Invalid Credentials,” “Scan Policy Not Found,” “Agent Group Mismatch,” “No active agents in group”).
 Improvement:6 (High) Tenable Scan Result Diffing: On re-scans, clearly show new, resolved, and existing vulnerabilities per asset or sample.
-Improvement:7 (High) Global Search Functionality: Add a universal search bar to find clients, assessments, scoped items, users, etc., from anywhere.
+Improvement:7 (High) Global Search Functionality: Add a universal search bar to find clients, assessments, scoped items, users, etc.
 Improvement:8 (High) Consistent Visual Feedback for Actions: Use loading spinners/indicators for background tasks and clear success/error/warning icons.
+Improvement:59 (High) Granular Assessment Workflow – expand statuses (“New”, “Scope Definition (Client)”, “Scope Review (Assessor)”, “Awaiting Client Evidence”, “Scheduling Tests”, “Testing in Progress (External)”, “Testing in Progress (Internal)”, “Remediation Required”, “Awaiting Final Review”, “Report Generation”, “Completed”, “Failed”) with visual workflow indicator (IMPRV-004).
+Improvement:60 (High) Enhanced Notification System – in-app & email alerts for scope changes, messages, evidence requests, remediation tasks, assessment status updates (IMPRV-007).
+Improvement:61 (High) Improved Assessor Dashboard – highlight deadlines, overdue tasks, unread client messages, assessments requiring action (IMPRV-003).
 
 Medium
 Improvement:9 (Medium) Enhanced Audit Logging: More detailed, searchable logs for admin & system events.
@@ -75,6 +119,16 @@ Improvement:33 (Medium) Informative Empty State Designs with calls to action.
 Improvement:34 (Medium) Breadcrumb Navigation for nested views.
 Improvement:35 (Medium) Enhanced Keyboard Navigation & Accessibility (full tab-flow, focus management).
 Improvement:36 (Medium) Consistent Modal Dialog Styling & Behavior.
+Improvement:63 (Medium) Bulk Actions for Assessors – e.g., mark multiple scope items tested, request updates en‐masse (IMPRV-005).
+Improvement:64 (Medium) Client Self-Service User Management – main client contacts can add/remove org users with optional assessor approval (IMPRV-006).
+Improvement:65 (Medium) Client Knowledge Base/FAQ – in-app, searchable help editable by Admins (IMPRV-012).
+Improvement:66 (Medium) Mobile Responsiveness – optimize scope item tables and evidence-upload UI for tablets/phones (UI-002).
+Improvement:68 (Medium) Session Timeout Management – configurable timeouts and inactivity warnings (BUG-002).
+Improvement:69 (Medium) CE Requirements Versioning – link each assessment to specific versions of “Requirements for IT infrastructure” and “Test Specification” docs (IMPRV-010).
+Improvement:70 (Medium) Robust Tenable Integration – resolve hostname/scan-linking bugs (BUG-001), add clearer scan status feedback.
+Improvement:71 (Medium) Assessor Capacity Planning View – visualize assessor workload and availability (IMPRV-014).
+Improvement:72 (Medium) Theme Refresh – overhaul UI theme (e.g., Bootstrap 5 or modern alternative) (UI-001).
+Improvement:73 (Medium) Date Picker Consistency – ensure cross-browser/date-library compatibility (BUG-003).
 
 Low
 Improvement:37 (Low) Redesign/restyle client workflow step buttons for better usability.
@@ -98,8 +152,7 @@ Improvement:54 (Low) Interactive table-column sorting UI.
 Improvement:55 (Low) Distinct visual styling for destructive actions, with confirmations.
 Improvement:56 (Low) Loading skeletons for data-intensive views.
 Improvement:57 (Low) “View All” links for truncated lists/text.
-
-
+Improvement:58 (Low) Improve the actions of the admin view all reports list – e.g., allow delete/cleanup, manual linking to an assessment.
 
 AI-Powered Enhancements
 High Priority
@@ -110,7 +163,7 @@ AI:4 Intelligent CE+ sample selection ensuring statistical diversity (OS types, 
 AI:5 Automated evidence extraction & classification from uploaded PDFs, screenshots and email attachments via NLP/OCR.
 AI:6 Draft audit-report generation: produce a first-pass, editable CE+ report including scope, findings and recommendations.
 AI:7 Conversational assistant for assessors: ask questions (“Which assets missing evidence?”) and get instant guidance.
-AI:8 Context-aware remediation recommendations that map vulnerabilities to tailored fix steps and knowledge‐base articles.
+AI:8 Context-aware remediation recommendations that map vulnerabilities to tailored fix steps and knowledge-base articles.
 AI:9 Predictive analytics forecasting which assets are most likely to show new critical findings on next scan.
 AI:10 Anomaly detection across sequential scans to flag unexpected changes or potential false positives.
 AI:41 Automated executive summary generation conforming exactly to the CE+ standard report format, including scope, methodology, key findings and next-step recommendations.
@@ -149,13 +202,18 @@ AI:38 AI-powered email-draft suggestions for communicating findings or requests 
 AI:39 Language-polishing of assessor notes and client-facing narratives for clarity and tone.
 AI:40 Post-engagement feedback analysis: sentiment-and-theme extraction from client survey responses.
 
-
-
-
-
 Bug Report
 Bug:1 (High) Fix non-functional workflow action buttons (Start/Done/Reopen) for Clients.
 Bug:2 (High) Resolve issue where Tenable code to get scan status is not working correctly.
 Bug:3 (High) Prevent duplicate scans being created by the Tenable scan-launch code.
 Bug:4 (High) Verify and ensure default Tenable Scan Policy/Scanner settings are correctly configured and used by scan-launch tasks.
 Bug:5 (Medium) Ensure all relevant user actions are recorded in the Assessment Log audit trail.
+Bug:6 (Medium) Uploaded reports aren’t linking to assessments.
+Bug:7 (Medium) Unlinked Report view in admin dashboard not displaying cert information.
+Bug:8 (Medium) All Uploaded Reports view in admin dashboard not displaying cert information.
+Bug:9 (Medium) Unlinked Report action buttons broken in admin dashboard.
+Bug:10 (Medium) All Uploaded Reports view in admin dashboard (actions/UI issues).
+Bug:11 (Medium) Admin dashboard Assessment Awaiting Scheduling –
+• Assigned Assessor isn’t showing
+• Action buttons not working
+• Assessment ID not showing

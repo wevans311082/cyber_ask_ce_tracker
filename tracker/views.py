@@ -15,6 +15,8 @@ from tenable.errors import APIError, NotFoundError, ForbiddenError
 from .tenable_client import get_tenable_io_client
 from constance import config
 from .pdf_extractor import extract_ce_data_from_pdf
+from django_celery_results.models import TaskResult # UNCOMMENTED
+from celery import states as celery_states
 
 # Django core
 from django.conf import settings
@@ -31,7 +33,8 @@ from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.core.serializers.json import DjangoJSONEncoder
 from django.core.exceptions import PermissionDenied, ObjectDoesNotExist, MultipleObjectsReturned
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Min, ProtectedError, Value, CharField, Q
+from django.db.models import Count, Min, ProtectedError, Value, CharField, Q, BooleanField
+from django.db.models import Exists, OuterRef, Q
 from django.db.models.functions import Coalesce, Concat
 from django.forms import modelformset_factory
 from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseRedirect, JsonResponse, HttpRequest, \
@@ -46,6 +49,17 @@ from django.views import View
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
 from django.views.generic import CreateView, DeleteView, DetailView, FormView, ListView, UpdateView, TemplateView
+
+
+from django.shortcuts import render, get_object_or_404, redirect
+from django.contrib.admin.views.decorators import staff_member_required
+from django.urls import reverse_lazy
+from django.utils import timezone
+from django.contrib import messages
+from django.http import Http404 # Make sure this is imported
+
+from .models import CriticalErrorLog
+
 
 # Local app imports
 from .forms import (
@@ -92,7 +106,8 @@ from .models import (
     NessusAgentURL,
     AssessorAvailability,
     AssessmentDateOption,
-    WorkflowStepDefinition
+    WorkflowStepDefinition,
+    CriticalErrorLog
 )
 
 from .tasks import (
@@ -151,7 +166,8 @@ from .cloud_services_view import (
 CloudServiceDefinitionListView,
 CloudServiceDefinitionUpdateView,
 CloudServiceDefinitionCreateView,
-CloudServiceDefinitionDeleteView
+CloudServiceDefinitionDeleteView,
+CloudServiceDefinition
 
 )
 
@@ -160,16 +176,264 @@ from .mixin import (
 ClientRequiredMixin,
 AdminRequiredMixin,
 AssessorRequiredMixin,
-AssessorOrAdminRequiredMixin
+AssessorOrAdminRequiredMixin,
 
 )
+
+from .tenable_client import get_tenable_io_client
+
 
 
 logger = logging.getLogger(__name__)
 
-
-
 User = get_user_model()
+
+
+class AssessmentAwaitingSchedulingListView(LoginRequiredMixin, UserPassesTestMixin, ListView):
+    """
+    Displays a list of Assessment objects that are considered "awaiting scheduling".
+    An assessment is awaiting scheduling if its 'Agree Date' workflow step is not 'Complete'.
+    Requires user to be logged in and to be a staff member.
+    """
+    model = Assessment
+    template_name = 'tracker/admin/assessment_awaiting_scheduling_list.html'
+    context_object_name = 'assessments_awaiting_scheduling'
+    paginate_by = 20
+
+    # For LoginRequiredMixin
+    login_url = settings.LOGIN_URL
+
+    # For UserPassesTestMixin
+    def test_func(self):
+        return self.request.user.is_active and self.request.user.is_staff
+
+    def handle_no_permission(self):
+        if not self.request.user.is_authenticated:
+            return redirect(self.get_login_url())
+        return redirect('tracker:dashboard')
+
+    def get_queryset(self):
+        """
+        Returns assessments awaiting scheduling based ONLY on the 'Agree Date'
+        AssessmentWorkflowStep not being 'Complete'.
+        """
+        queryset = Assessment.objects.all()  # Start with all assessments
+
+        try:
+            expected_step_name = 'Agree Date'
+            logger.debug(
+                f"AssessmentAwaitingSchedulingListView: Attempting to fetch WorkflowStepDefinition with name: '{expected_step_name}'")
+            print(
+                f"[DEBUG] AssessmentAwaitingSchedulingListView: Attempting to fetch WorkflowStepDefinition with name: '{expected_step_name}'")
+
+            agree_date_step_definition = WorkflowStepDefinition.objects.get(name=expected_step_name)
+
+            logger.debug(
+                f"AssessmentAwaitingSchedulingListView: Successfully fetched WorkflowStepDefinition: {agree_date_step_definition}")
+            print(
+                f"[DEBUG] AssessmentAwaitingSchedulingListView: Successfully fetched WorkflowStepDefinition: {agree_date_step_definition}")
+
+            # Subquery to check for a completed 'Agree Date' workflow step
+            # Uses 'Complete' (title case) as identified from your logs.
+            agree_date_step_complete_subquery = Exists(
+                AssessmentWorkflowStep.objects.filter(
+                    assessment=OuterRef('pk'),
+                    step_definition=agree_date_step_definition,
+                    status='Complete'
+                )
+            )
+
+            queryset = queryset.annotate(
+                has_completed_agree_date_step=agree_date_step_complete_subquery
+            ).filter(
+                has_completed_agree_date_step=False  # Only include if the step is NOT complete
+            )
+
+        except WorkflowStepDefinition.DoesNotExist:
+            logger.error(
+                f"[CRITICAL-ERROR] WorkflowStepDefinition '{expected_step_name}' not found in AssessmentAwaitingSchedulingListView. "
+                "This view cannot accurately determine assessments awaiting scheduling. "
+                "Returning an empty list. Please ensure this WorkflowStepDefinition exists."
+            )
+            print(
+                f"[ERROR] [CRITICAL-ERROR] WorkflowStepDefinition '{expected_step_name}' not found in AssessmentAwaitingSchedulingListView. "
+                "Returning an empty list."
+            )
+            return Assessment.objects.none()  # Return an empty queryset
+
+        # Add select_related and order_by after filtering
+        queryset = queryset.select_related('client', 'assessor').order_by('client__name', 'date_start', 'id')
+
+        logger.debug(f"AssessmentAwaitingSchedulingListView: Final queryset count: {queryset.count()}")
+        print(f"[DEBUG] AssessmentAwaitingSchedulingListView: Final queryset count: {queryset.count()}")
+        # You can also print the SQL query if needed for very detailed debugging:
+        # print(f"[DEBUG] AssessmentAwaitingSchedulingListView: Query SQL: {str(queryset.query)}")
+        return queryset
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['title'] = "Assessments Awaiting Scheduling"
+        # from django.utils import timezone
+        # print(f"[DEBUG] AssessmentAwaitingSchedulingListView context generated at UTC: {timezone.now()}")
+        return context
+
+
+
+
+
+
+
+
+
+class UnlinkedReportListView(LoginRequiredMixin, UserPassesTestMixin, ListView):
+    """
+    Displays a list of UploadedReport objects that are not linked to any Assessment.
+    Requires user to be logged in and to be a staff member.
+    """
+    model = UploadedReport
+    template_name = 'tracker/admin/unlinked_report_list.html'  # New template to be created
+    context_object_name = 'unlinked_reports_list'
+    paginate_by = 20
+
+    # For LoginRequiredMixin
+    login_url = settings.LOGIN_URL
+
+    # For UserPassesTestMixin
+    def test_func(self):
+        """
+        Checks if the user is active and is a staff member.
+        """
+        return self.request.user.is_active and self.request.user.is_staff
+
+    def handle_no_permission(self):
+        """
+        Called when test_func returns False.
+        """
+        if not self.request.user.is_authenticated:
+            return redirect(self.get_login_url())
+        return redirect('tracker:dashboard')  # Or an appropriate 'permission denied' page
+
+    def get_queryset(self):
+        """
+        Returns the queryset of UploadedReport objects that are not linked
+        to an assessment, ordered by upload date, with related uploader pre-fetched.
+        """
+        # print("[DEBUG] UnlinkedReportListView get_queryset called.")
+        return UploadedReport.objects.filter(assessment__isnull=True).select_related(
+            'uploaded_by'
+        ).order_by('-uploaded_at')
+
+    def get_context_data(self, **kwargs):
+        """
+        Adds 'title' to the context and file existence status for each report.
+        """
+        context = super().get_context_data(**kwargs)
+        context['title'] = "Unlinked Uploaded Reports"
+
+        reports_with_status = []
+        report_objects = context.get(self.context_object_name)
+        if report_objects is not None:
+            for report in report_objects:
+                file_exists_on_storage = False
+                if report.report_file and report.report_file.name:
+                    try:
+                        file_exists_on_storage = report.report_file.storage.exists(report.report_file.name)
+                    except Exception as e:
+                        print(
+                            f"[ERROR] Could not check existence for {report.report_file.name} in UnlinkedReportListView: {e}")
+                        file_exists_on_storage = False
+
+                reports_with_status.append({
+                    'object': report,
+                    'file_exists': file_exists_on_storage
+                })
+
+            context[self.context_object_name] = reports_with_status
+        else:
+            context[self.context_object_name] = []
+
+        # from django.utils import timezone
+        # print(f"[DEBUG] UnlinkedReportListView get_context_data. UTC: {timezone.now()}")
+        return context
+class UploadedReportListView(LoginRequiredMixin, UserPassesTestMixin, ListView):
+    """
+    Displays a list of all uploaded reports.
+    Requires user to be logged in and to be a staff member.
+    Includes checks for file existence.
+    """
+    model = UploadedReport
+    template_name = 'tracker/admin/uploaded_report_list.html'
+    context_object_name = 'reports_list'
+    paginate_by = 20
+
+    # For LoginRequiredMixin
+    login_url = settings.LOGIN_URL
+
+    # For UserPassesTestMixin
+    def test_func(self):
+        """
+        Checks if the user is active and is a staff member.
+        """
+        return self.request.user.is_active and self.request.user.is_staff
+
+    def handle_no_permission(self):
+        """
+        Called when test_func returns False.
+        """
+        if not self.request.user.is_authenticated:
+            return redirect(self.get_login_url())
+        # Consider redirecting to a 'permission_denied' page or a specific dashboard
+        return redirect('tracker:dashboard')  # Ensure 'tracker:dashboard' is a valid URL name
+
+    def get_queryset(self):
+        """
+        Returns the queryset of UploadedReport objects, ordered by upload date,
+        with related objects pre-fetched using the correct field names.
+        """
+        # print("[DEBUG] UploadedReportListView get_queryset called.")
+        return UploadedReport.objects.select_related(
+            'uploaded_by',  # Corrected from 'uploader' based on FieldError
+            'assessment',  # This was correct
+            'assessment__client'  # Access client through the assessment
+        ).all().order_by('-uploaded_at')
+
+    def get_context_data(self, **kwargs):
+        """
+        Adds 'title' to the context and file existence status for each report.
+        Uses the correct FileField name 'report_file'.
+        """
+        context = super().get_context_data(**kwargs)
+        context['title'] = "All Uploaded Reports"
+
+        reports_with_status = []
+        report_objects = context.get(self.context_object_name)
+        if report_objects is not None:
+            for report in report_objects:
+                file_exists_on_storage = False
+                # Use 'report_file' instead of 'file'
+                if report.report_file and report.report_file.name:
+                    try:
+                        # Use 'report_file' here as well
+                        file_exists_on_storage = report.report_file.storage.exists(report.report_file.name)
+                    except Exception as e:
+                        # And here
+                        print(f"[ERROR] Could not check existence for {report.report_file.name}: {e}")
+                        file_exists_on_storage = False
+
+                reports_with_status.append({
+                    'object': report,
+                    'file_exists': file_exists_on_storage
+                })
+
+            context[self.context_object_name] = reports_with_status
+        else:
+            context[self.context_object_name] = []
+
+        # from django.utils import timezone
+        # print(f"[DEBUG] UploadedReportListView get_context_data. UTC: {timezone.now()}")
+        return context
+
+
 
 
 @login_required
@@ -242,17 +506,290 @@ def dashboard(request):
 @login_required
 @user_passes_test(is_admin, login_url=reverse_lazy('login')) # Redirect to login if test fails
 def admin_dashboard(request):
-    # --- ADD THIS QUERY ---
+
     pending_approval_count = CloudServiceDefinition.objects.filter(is_globally_approved=False).count()
-    # --- END ADD ---
+    assessments_awaiting_scheduling_count = 0
+    agree_date_step_definition_object = None  # Initialize
+
+    try:
+        # Try to get the 'Agree Date' WorkflowStepDefinition
+        expected_step_name = 'Agree Date'
+        logger.debug(f"Attempting to fetch WorkflowStepDefinition with name: '{expected_step_name}'")
+        print(f"[DEBUG] Attempting to fetch WorkflowStepDefinition with name: '{expected_step_name}'")
+        agree_date_step_definition_object = WorkflowStepDefinition.objects.get(
+            name=expected_step_name)  # Store the object
+        logger.debug(f"Successfully fetched WorkflowStepDefinition: {agree_date_step_definition_object}")
+        print(f"[DEBUG] Successfully fetched WorkflowStepDefinition: {agree_date_step_definition_object}")
+
+        # Subquery to check for a completed 'Agree Date' workflow step
+        # This uses 'Complete' (title case) as identified from your logs.
+        agree_date_step_complete_subquery = Exists(
+            AssessmentWorkflowStep.objects.filter(
+                assessment=OuterRef('pk'),
+                step_definition=agree_date_step_definition_object,  # Use the fetched object
+                status='Complete'
+            )
+        )
+
+        # Annotate all assessments ONLY with the workflow step status
+        all_assessments_annotated = Assessment.objects.annotate(
+            has_completed_agree_date_step=agree_date_step_complete_subquery
+        )
+
+        logger.info("--- Assessments Status for Awaiting Scheduling Count (Simplified Logic) ---")
+        print("[DEBUG] --- Assessments Status for Awaiting Scheduling Count (Simplified Logic) ---")
+        for assessment_obj in all_assessments_annotated:
+            log_message = (
+                f"Assessment ID: {assessment_obj.id}, "
+                f"Has Completed 'Agree Date' Step (Annotation): {assessment_obj.has_completed_agree_date_step}"
+            )
+            logger.info(log_message)
+            print(f"[DEBUG] {log_message}")
+
+            # Detailed check for AssessmentWorkflowStep if agree_date_step_definition_object is available
+            if agree_date_step_definition_object:
+                all_agree_date_workflow_steps = AssessmentWorkflowStep.objects.filter(
+                    assessment=assessment_obj,
+                    step_definition=agree_date_step_definition_object
+                )
+                if not all_agree_date_workflow_steps.exists():
+                    print(f"[DEBUG]   Assessment ID {assessment_obj.id}: No 'Agree Date' WorkflowSteps found at all.")
+                else:
+                    found_complete_step = False
+                    for step in all_agree_date_workflow_steps:
+                        print(
+                            f"[DEBUG]   Assessment ID {assessment_obj.id}: 'Agree Date' WorkflowStep ID {step.id}, Status '{step.status}'")
+                        if step.status == 'Complete':  # Check against 'Complete'
+                            found_complete_step = True
+                    if not found_complete_step:
+                        print(
+                            f"[DEBUG]   Assessment ID {assessment_obj.id}: No 'Agree Date' WorkflowStep with status 'Complete' among existing steps.")
+            else:
+                print(
+                    f"[DEBUG]   Assessment ID {assessment_obj.id}: 'Agree Date' WorkflowStepDefinition not available for detailed check.")
+            print(f"[DEBUG]   -----------------------------------------------------")
+
+        # Filter and count based ONLY on the workflow step being not complete
+        assessments_awaiting_scheduling = all_assessments_annotated.filter(
+            has_completed_agree_date_step=False
+        )
+        assessments_awaiting_scheduling_count = assessments_awaiting_scheduling.count()
+
+        logger.info(
+            f"Assessments IDs counted as awaiting scheduling (Simplified): {[a.id for a in assessments_awaiting_scheduling]}")
+        print(
+            f"[DEBUG] Assessments IDs counted as awaiting scheduling (Simplified): {[a.id for a in assessments_awaiting_scheduling]}")
+        logger.info(
+            f"Final count for assessments_awaiting_scheduling_count (Simplified): {assessments_awaiting_scheduling_count}")
+        print(
+            f"[DEBUG] Final count for assessments_awaiting_scheduling_count (Simplified): {assessments_awaiting_scheduling_count}")
+
+
+    except WorkflowStepDefinition.DoesNotExist:
+        error_message = (
+            f"[CRITICAL-ERROR] WorkflowStepDefinition '{expected_step_name}' not found while calculating "
+            "count for admin_dashboard. The 'Assessments Awaiting Scheduling' count will be 0. "
+            "Please ensure this WorkflowStepDefinition exists with the exact name."
+        )
+        logger.error(error_message)
+        print(f"[ERROR] {error_message}")
+
+        available_steps = list(WorkflowStepDefinition.objects.values_list('name', flat=True))
+        logger.info(f"Available WorkflowStepDefinition names in DB: {available_steps}")
+        print(f"[DEBUG] Available WorkflowStepDefinition names in DB: {available_steps}")
+
+        # If the crucial step definition is missing, the count is unreliable, so set to 0.
+        assessments_awaiting_scheduling_count = 0
+        logger.warning(
+            f"Due to missing '{expected_step_name}' WorkflowStepDefinition, "
+            f"assessments_awaiting_scheduling_count is set to 0."
+        )
+        print(
+            f"[WARNING] Due to missing '{expected_step_name}' WorkflowStepDefinition, "
+            f"assessments_awaiting_scheduling_count is set to 0."
+        )
+
+    # --- Tenable.io API Status Check ---
+    tenable_api_status = "Not Configured"  # Default status
+    tenable_access_key = getattr(config, 'TENABLE_ACCESS_KEY', None)
+    tenable_secret_key = getattr(config, 'TENABLE_SECRET_KEY', None)
+    tenable_url = getattr(config, 'TENABLE_URL', None)
+
+    if tenable_access_key and tenable_secret_key and tenable_url:
+        logger.debug("AdminDashboard: Tenable API settings found. Attempting to get client.")
+        print("[DEBUG] AdminDashboard: Tenable API settings found. Attempting to get client.")
+        tio_client = get_tenable_io_client()  # This function already has logging
+        if tio_client:
+            # To confirm connection, we can try a lightweight API call.
+            # The get_tenable_io_client itself might attempt one implicitly or explicitly.
+            # If get_tenable_io_client returns a client, we assume basic connectivity.
+            # For a more definitive check, you could add a specific health check API call here.
+            # For now, if client is not None, assume 'Connected'.
+            try:
+                # Example lightweight call to confirm the client is truly working
+                tio_client.scanners.list()  # Fetch just one page of users
+                tenable_api_status = "Connected"
+                logger.info("AdminDashboard: Tenable.io API status: Connected (verified with users.list).")
+                print("[DEBUG] AdminDashboard: Tenable.io API status: Connected (verified with users.list).")
+            except Exception as e:  # Catch APIError or other exceptions from the test call
+                tenable_api_status = "Connection Error"
+                logger.error(
+                    f"AdminDashboard: Tenable.io API client obtained, but test call (users.list) failed: {e}")
+                print(
+                    f"[ERROR] AdminDashboard: Tenable.io API client obtained, but test call (users.list) failed: {e}")
+        else:
+            tenable_api_status = "Connection Error"  # get_tenable_io_client failed
+            logger.warning(
+                "AdminDashboard: Tenable.io API settings present, but failed to get client (check tenable_client logs). Status: Connection Error.")
+            print(
+                "[WARNING] AdminDashboard: Tenable.io API settings present, but failed to get client. Status: Connection Error.")
+    else:
+        logger.warning(
+            "AdminDashboard: Tenable API settings (Access Key, Secret Key, or URL) are missing. Status: Not Configured.")
+        print(
+            "[WARNING] AdminDashboard: Tenable API settings (Access Key, Secret Key, or URL) are missing. Status: Not Configured.")
+
+    celery_pending_tasks_count = 0
+    celery_failed_tasks_count = 0
+    failed_celery_tasks_details = []  # NEW: To store details of failed tasks
+
+    try:
+        pending_states = [
+            celery_states.PENDING, celery_states.RECEIVED,
+            celery_states.STARTED, celery_states.RETRY
+        ]
+        celery_pending_tasks_count = TaskResult.objects.filter(status__in=pending_states).count()
+
+        failed_tasks_qs = TaskResult.objects.filter(status=celery_states.FAILURE).order_by(
+            '-date_done')  # Get most recent first
+        celery_failed_tasks_count = failed_tasks_qs.count()
+
+        # Fetch details for a limited number of recent failed tasks for the modal
+        # Adjust 'limit' as needed
+        limit_failed_tasks_display = 10
+        for task in failed_tasks_qs[:limit_failed_tasks_display]:
+            task_args_str = ""
+            task_kwargs_str = ""
+            try:
+                # Task args and kwargs can be complex; attempt to pretty print JSON
+                if task.task_args:
+                    task_args_str = json.dumps(json.loads(task.task_args), indent=2)
+                if task.task_kwargs:
+                    task_kwargs_str = json.dumps(json.loads(task.task_kwargs), indent=2)
+            except (json.JSONDecodeError, TypeError):
+                task_args_str = str(task.task_args)  # Fallback to string representation
+                task_kwargs_str = str(task.task_kwargs)
+
+            failed_celery_tasks_details.append({
+                'task_id': task.task_id,
+                'task_name': task.task_name,
+                'date_done': task.date_done,
+                'traceback': task.traceback,
+                'args': task_args_str,
+                'kwargs': task_kwargs_str,
+            })
+
+        logger.info(
+            f"AdminDashboard: Celery tasks - Pending: {celery_pending_tasks_count}, Failed: {celery_failed_tasks_count}")
+        print(
+            f"[DEBUG] AdminDashboard: Celery tasks - Pending: {celery_pending_tasks_count}, Failed: {celery_failed_tasks_count}")
+        if failed_celery_tasks_details:
+            print(f"[DEBUG] AdminDashboard: Fetched details for {len(failed_celery_tasks_details)} failed tasks.")
+
+    except Exception as e:
+        logger.error(f"AdminDashboard: Error fetching Celery task counts or details: {e}")
+        print(f"[ERROR] AdminDashboard: Error fetching Celery task counts or details: {e}")
+
+    latest_critical_error = CriticalErrorLog.objects.filter(is_acknowledged=False).order_by('-timestamp').first()
+    if latest_critical_error and latest_critical_error.timestamp:
+        # Ensure timestamp is UTC for debug printing
+        # The model's default=timezone.now should handle UTC storage if settings.TIME_ZONE is UTC.
+        # For explicit conversion to UTC for printing:
+        error_timestamp_utc = latest_critical_error.timestamp.astimezone(pytz.utc)
+        print(
+            f"[DEBUG] admin_dashboard: Latest critical error timestamp (UTC): {error_timestamp_utc.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    else:
+        print(f"[DEBUG] admin_dashboard: No critical errors found or timestamp missing.")
+
     context = {
-        'user_count': User.objects.count(),
-        'client_count': Client.objects.count(),
-        'assessment_count': Assessment.objects.count(),
-        'assessments_pending_review': Assessment.objects.filter(status='Scoping_Review').count(),
-        'pending_approval_count': pending_approval_count, # <-- Add to context
-    }
+            'user_count': User.objects.count(),
+            'client_count': Client.objects.count(),
+            'assessment_count': Assessment.objects.count(),
+            'assessments_pending_review': Assessment.objects.filter(status='Scoping_Review').count(),
+            'pending_approval_count': pending_approval_count,
+            'unlinked_ce_reports_count': UploadedReport.objects.filter(assessment__isnull=True).count(),
+            'assessments_awaiting_scheduling_count': assessments_awaiting_scheduling_count,
+            'tenable_api_status': tenable_api_status,
+            'celery_pending_tasks_count': celery_pending_tasks_count,
+            'celery_failed_tasks_count': celery_failed_tasks_count,
+            'failed_celery_tasks_details': failed_celery_tasks_details,
+            'latest_critical_error': latest_critical_error,
+        }
     return render(request, 'tracker/admin/admin_dashboard.html', context)
+
+
+@staff_member_required(login_url=reverse_lazy('login'))
+def critical_error_detail_view(request, pk):
+    print(f"--- [DEBUG] critical_error_detail_view entered. Request method: {request.method}, PK: {pk} ---")
+
+    try:
+        # Instead of get_object_or_404, we'll do it manually for more debug output
+        error_log = CriticalErrorLog.objects.get(pk=pk)
+        print(f"--- [DEBUG] Successfully fetched CriticalErrorLog with pk: {pk}. Object: {error_log} ---")
+    except CriticalErrorLog.DoesNotExist:
+        print(f"--- [DEBUG] CriticalErrorLog with pk: {pk} DOES NOT EXIST in the database. Raising Http404. ---")
+        raise Http404(f"CriticalErrorLog matching query does not exist for pk: {pk}")
+    except Exception as e:
+        # Catch any other potential errors during fetch
+        print(f"--- [DEBUG] An unexpected error occurred while fetching CriticalErrorLog with pk: {pk}. Error: {e} ---")
+        raise  # Re-raise the exception to see the full traceback
+
+    if request.method == 'POST':
+        print(f"--- [DEBUG] POST request received for error_log pk: {pk} ---")
+        if 'acknowledge_error' in request.POST and not error_log.is_acknowledged:
+            print(f"--- [DEBUG] 'acknowledge_error' action detected. ---")
+            error_log.is_acknowledged = True
+            error_log.acknowledged_at = timezone.now()
+            error_log.acknowledged_by = request.user
+            error_log.save()
+            messages.success(request, f"Error log (ID: {error_log.pk}) has been acknowledged.")
+            print(f"--- [DEBUG] Error log pk: {pk} acknowledged. Redirecting to 'tracker:admin_dashboard'. ---")
+            return redirect('tracker:admin_dashboard')  # Ensure 'tracker:admin_dashboard' is a valid URL name
+        elif 'unacknowledge_error' in request.POST and error_log.is_acknowledged:
+            print(f"--- [DEBUG] 'unacknowledge_error' action detected. ---")
+            # Optional: Allow unacknowledging if needed
+            error_log.is_acknowledged = False
+            error_log.acknowledged_at = None
+            error_log.acknowledged_by = None
+            error_log.save()
+            messages.info(request, f"Error log (ID: {error_log.pk}) has been marked as unacknowledged.")
+            print(f"--- [DEBUG] Error log pk: {pk} unacknowledged. Redirecting to its detail page. ---")
+            return redirect('tracker:critical_error_detail', pk=error_log.pk)
+        else:
+            print(
+                f"--- [DEBUG] POST request received but no matching action ('acknowledge_error' or 'unacknowledge_error') found or conditions not met. ---")
+            print(f"--- [DEBUG] request.POST content: {request.POST} ---")
+            print(f"--- [DEBUG] error_log.is_acknowledged: {error_log.is_acknowledged} ---")
+
+    # Note: You define 'context' here but don't use it in the render call.
+    # context_data_for_template = {
+    # 'error_log': error_log,
+    # 'active_nav': 'admin_dashboard', # Or a more specific active_nav if you have one
+    # }
+    # For consistency, let's use what you had, but be aware.
+
+    print(f"--- [DEBUG] Rendering template 'tracker/admin/critical_error_detail.html' for error_log pk: {pk} ---")
+    return render(request, 'tracker/admin/critical_error_detail.html', {
+        'error_log': error_log,
+        # If you intend to use 'active_nav', it should be in this dictionary too:
+        # 'active_nav': 'admin_dashboard',
+    })
+
+
+
+
+
+
 
 class UserListView(AdminRequiredMixin, ListView):
     model = User

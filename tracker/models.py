@@ -683,5 +683,39 @@ class AssessorAvailability(models.Model):
 
 
 
+class CriticalErrorLog(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    timestamp = models.DateTimeField(default=timezone.now)
+    level = models.CharField(max_length=50, default='CRITICAL')
+    module = models.CharField(max_length=255, blank=True, null=True)
+    function = models.CharField(max_length=255, blank=True, null=True)
+    line_number = models.PositiveIntegerField(blank=True, null=True)
+    message = models.TextField()
+    traceback = models.TextField(blank=True, null=True)
+
+    # New fields for acknowledgment
+    is_acknowledged = models.BooleanField(default=False, db_index=True)
+    acknowledged_at = models.DateTimeField(blank=True, null=True)
+    acknowledged_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, # Keeps the log if the user is deleted
+        blank=True,
+        null=True,
+        related_name='acknowledged_critical_errors',
+        verbose_name="Acknowledged By"
+    )
+
+    def __str__(self):
+        ack_status = "Acknowledged" if self.is_acknowledged else "Pending"
+        return f"{self.timestamp.strftime('%Y-%m-%d %H:%M')} - {self.message[:70]}... ({ack_status})"
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = "Critical Error Log"
+        verbose_name_plural = "Critical Error Logs"
+
+
+
+
 
 

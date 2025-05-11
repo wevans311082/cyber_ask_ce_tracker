@@ -1,6 +1,7 @@
 # File: tracker/templatetags/tracker_tags.py
 # CHANGES BEGIN - Added JSON filters and ensured imports
 import json
+import os
 from django import template
 from django.db.models import Q, QuerySet
 from django.forms.models import model_to_dict # For jsonify_model
@@ -77,6 +78,18 @@ def get_workflow_steps_for_assessment(context, assessment: Assessment) -> Dict[s
         'current_definition': current_definition,
         'current_assessment_step': current_assessment_step,
     }
+
+@register.filter(name='filename_only')
+def filename_only(value):
+    """
+    Returns the base name of a filepath string.
+    e.g., 'uploads/file.pdf' -> 'file.pdf'
+    """
+    if hasattr(value, 'name'): # Handles Django FileField
+        return os.path.basename(value.name)
+    if isinstance(value, str):
+        return os.path.basename(value)
+    return value
 
 
 @register.filter

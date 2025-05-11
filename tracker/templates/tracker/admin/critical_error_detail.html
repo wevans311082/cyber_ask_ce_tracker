@@ -1,0 +1,102 @@
+{% extends "tracker/base.html" %}
+{% load i18n %}
+{% load tracker_tags %} {# Assuming you might have custom tags, or remove if not needed #}
+
+{% block title %}{% trans "Critical Error Details" %}{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'tracker:admin_dashboard' %}">{% trans "Admin Dashboard" %}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{% trans "Critical Error Details" %}</li>
+        </ol>
+    </nav>
+
+    <h2 class="mb-4">{% trans "Critical Error Log Details" %} - ID: {{ error_log.pk|truncatechars:15 }}...</h2>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-bug me-2"></i>{% trans "Error Information" %}
+        </div>
+        <div class="card-body">
+            <dl class="row">
+                <dt class="col-sm-3">{% trans "Timestamp" %}</dt>
+                <dd class="col-sm-9">{{ error_log.timestamp|date:"Y-m-d H:i:s O" }} ({{ error_log.timestamp|timesince }} {% trans "ago" %})</dd>
+
+                <dt class="col-sm-3">{% trans "Level" %}</dt>
+                <dd class="col-sm-9"><span class="badge bg-danger">{{ error_log.level }}</span></dd>
+
+                <dt class="col-sm-3">{% trans "Module" %}</dt>
+                <dd class="col-sm-9"><code>{{ error_log.module|default:"N/A" }}</code></dd>
+
+                <dt class="col-sm-3">{% trans "Function" %}</dt>
+                <dd class="col-sm-9"><code>{{ error_log.function|default:"N/A" }}</code></dd>
+
+                <dt class="col-sm-3">{% trans "Line No." %}</dt>
+                <dd class="col-sm-9">{{ error_log.line_number|default:"N/A" }}</dd>
+            </dl>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-file-alt me-2"></i>{% trans "Error Message" %}
+        </div>
+        <div class="card-body">
+            <pre class="bg-light p-3 rounded border" style="white-space: pre-wrap; word-wrap: break-word;"><code>{{ error_log.message }}</code></pre>
+        </div>
+    </div>
+
+    {% if error_log.traceback %}
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-stream me-2"></i>{% trans "Traceback" %}
+        </div>
+        <div class="card-body">
+            <pre class="bg-dark text-white p-3 rounded border" style="white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto;"><code>{{ error_log.traceback }}</code></pre>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-user-check me-2"></i>{% trans "Acknowledgment Status" %}
+        </div>
+        <div class="card-body">
+            {% if error_log.is_acknowledged %}
+                <p class="text-success">
+                    <i class="fas fa-check-circle me-1"></i>
+                    {% blocktrans with user=error_log.acknowledged_by.username|default:"Unknown User" time=error_log.acknowledged_at|date:"Y-m-d H:i" %}
+                    Acknowledged by <strong>{{ user }}</strong> on {{ time }}.
+                    {% endblocktrans %}
+                </p>
+                <form method="post" action="{% url 'tracker:critical_error_detail' pk=error_log.pk %}" class="mt-2">
+                    {% csrf_token %}
+                    <button type="submit" name="unacknowledge_error" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-undo me-1"></i> {% trans "Mark as Unacknowledged" %}
+                    </button>
+                </form>
+            {% else %}
+                <p class="text-warning">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    {% trans "This error has not been acknowledged yet." %}
+                </p>
+                <form method="post" action="{% url 'tracker:critical_error_detail' pk=error_log.pk %}" class="mt-2">
+                    {% csrf_token %}
+                    <button type="submit" name="acknowledge_error" class="btn btn-success">
+                        <i class="fas fa-check-circle me-1"></i> {% trans "Acknowledge This Error" %}
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a href="{% url 'tracker:admin_dashboard' %}" class="btn btn-primary">
+            <i class="fas fa-arrow-left me-1"></i> {% trans "Back to Admin Dashboard" %}
+        </a>
+    </div>
+
+</div>
+{% endblock %}

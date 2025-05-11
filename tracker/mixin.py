@@ -75,3 +75,4 @@ class AssessorOrAdminRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
         if is_client(self.request.user):
             return redirect('tracker:client_dashboard')
         return redirect('login')
+

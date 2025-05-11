@@ -4,6 +4,11 @@ from django.contrib import admin
 from django.urls import path, include # Ensure 'include' is imported
 from django.conf import settings
 from django.conf.urls.static import static
+from .views import critical_error_detail_view
+
+
+print("--- [DEBUG] tracker/urls.py is being loaded NOW ---")
+
 
 app_name = 'tracker'
 
@@ -108,6 +113,10 @@ urlpatterns = [
     path('dashboard_redirect/', views.dashboard_redirect_view, name='dashboard_redirect'),
     path('accounts/', include('django.contrib.auth.urls')),
 
+    path('manage/reports/all/', views.UploadedReportListView.as_view(), name='uploaded_report_list'),
+    path('manage/reports/unlinked/', views.UnlinkedReportListView.as_view(), name='unlinked_report_list'),
+    path('manage/assessments/awaiting-scheduling/', views.AssessmentAwaitingSchedulingListView.as_view(), name='assessment_list_awaiting_scheduling'),
 
-
+    path('app/critical_error_reports/<uuid:pk>/', views.critical_error_detail_view, name='critical_error_detail'),
+    path('this-is-a-very-unique-test-url-for-critical-errors/<uuid:pk>/', views.critical_error_detail_view, name='critical_error_detail_debug_test'),
 ]
