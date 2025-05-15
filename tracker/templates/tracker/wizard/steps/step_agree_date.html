@@ -1,0 +1,38 @@
+
+{% load i18n %}
+
+
+{% block wizard_title %}{% translate "Agree Assessment Date" %}{% endblock %}
+
+{% block wizard_content %}
+<h2>{% translate "Step 1: Agree Assessment Date" %}</h2>
+<p>{% blocktranslate %}This step is to agree upon the date for the assessment. Please review the proposed dates or suggest alternatives.{% endblocktranslate %}</p>
+<p><em>{% translate "Template" %}: <code>step_agree_date.html</code></em></p>
+
+<form method="post" hx-post="{{ request.path }}" hx-target="this" hx-swap="outerHTML" class="mt-4">
+    {% csrf_token %}
+    {{ wizard.management_form }}
+
+    {% if form.errors %}
+        <div class="alert alert-danger">
+            {% translate "Please correct the errors below." %}
+            {{ form.non_field_errors }}
+            {% for field in form %}
+                {% if field.errors %}
+                    <div><strong>{{ field.label }}:</strong> {{ field.errors|striptags }}</div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% comment %} Render your form fields here, e.g., {{ form.as_p }} or manually {% endcomment %}
+    {{ form.as_p }}
+
+    <div class="mt-4">
+        {% if wizard.steps.prev %}
+            <button type="submit" name="wizard_goto_step" value="{{ wizard.steps.prev }}" class="btn btn-secondary">{% translate "Previous Step" %}</button>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">{% translate "Save and Continue" %}</button>
+    </div>
+</form>
+{% endblock %}

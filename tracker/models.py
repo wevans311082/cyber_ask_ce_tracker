@@ -87,6 +87,35 @@ class OperatingSystem(models.Model):
         # Optionally add category display here if useful
         # category_str = f" [{self.get_category_display()}]" if self.category else ""
         return f"{self.name}{version_str}{vendor_str}"
+class UserProfile(models.Model):
+    ROLE_CHOICES = (
+        ('Admin', 'Administrator'),
+        ('Assessor', 'Assessor'),
+        ('Client', 'Client'),
+    )
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    client = models.ForeignKey(
+        'Client', # Use string 'Client' if Client model is defined later in the file
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        help_text="Required only if role is 'Client'"
+    )
+    phone_number = models.CharField(
+        _("Phone Number"),
+        max_length=20,
+        blank=True,
+        help_text=_("Optional: Your contact phone number.")
+    )
+    mfa_enabled = models.BooleanField(
+        _("MFA Enabled"),
+        default=False,
+        help_text=_("Enable Multi-Factor Authentication for your account.")
+    )
+
+    def __str__(self):
+        return f"{self.user.username} ({self.get_role_display()})"
 class Client(models.Model):
     name = models.CharField(max_length=200, unique=True)
     address = models.TextField(blank=True)
@@ -126,43 +155,17 @@ class Client(models.Model):
         null=True,
         help_text="The exact name of the Tenable.io Agent Group to use for this client's scans (e.g., 'TEST WE')."
     )
+    user_profile = models.OneToOneField(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='client_profile'
+    )
 
 
 
     def __str__(self): return self.name
-class UserProfile(models.Model):
-    ROLE_CHOICES = (
-        ('Admin', 'Administrator'),
-        ('Assessor', 'Assessor'),
-        ('Client', 'Client'),
-    )
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
-    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
-    client = models.ForeignKey(
-        'Client', # Use string 'Client' if Client model is defined later in the file
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        help_text="Required only if role is 'Client'"
-    )
-    phone_number = models.CharField(
-        _("Phone Number"),
-        max_length=20,
-        blank=True,
-        help_text=_("Optional: Your contact phone number.")
-    )
-    mfa_enabled = models.BooleanField(
-        _("MFA Enabled"),
-        default=False,
-        help_text=_("Enable Multi-Factor Authentication for your account.")
-    )
-
-    def __str__(self):
-        return f"{self.user.username} ({self.get_role_display()})"
-
-
-
-
 class Assessment(models.Model):
     STATUS_CHOICES = (('Draft', 'Draft'),('Scoping_Client', 'Scoping (Client Input)'),('Scoping_Review', 'Scoping (Assessor Review)'),('Testing', 'Testing'),('Remediation', 'Remediation'),('Report_Pending', 'Report Pending'),('Complete_Passed', 'Complete (Passed)'),('Complete_Failed', 'Complete (Failed)'),)
     ASSESSMENT_TYPES = (('CE', 'Cyber Essentials'),('CE+', 'Cyber Essentials Plus'),)
@@ -421,22 +424,44 @@ class AssessmentCloudService(models.Model):
 class WorkflowStepDefinition(models.Model):
     """Defines a standard step in the CE+ assessment workflow."""
     ASSIGNEE_CHOICES = (
-        ('Applicant', 'Applicant'),
-        ('Assessor', 'Assessor'),
-        ('Both', 'Both'), # Or 'System' if automated
+        ('Applicant', 'Applicant (Client)'), # Matched display text to previous usage
+        ('Assessor', 'Assessor (Internal Staff)'), # Matched display text to previous usage
+        ('Both', 'Both (Client and Assessor)'), # Matched display text to previous usage
     )
 
     step_order = models.PositiveIntegerField(unique=True, help_text="Order in which the step appears.")
     name = models.CharField(max_length=100, help_text="Short name/identifier for the step.")
     description = models.TextField(help_text="Full description of the step requirement.")
-    assignee_type = models.CharField(max_length=10, choices=ASSIGNEE_CHOICES, default='Both')
-    is_active = models.BooleanField(default=True, help_text="Is this step currently part of the standard workflow?")
+
+    # Add this field:
+    template_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="e.g., 'step_contact_details.html' or 'info_step.html'"
+    )
+
+    assignee_type = models.CharField(
+        max_length=10,
+        choices=ASSIGNEE_CHOICES,
+        default='Both' # Note: Migration 0007 had 'Applicant' as default, your current model has 'Both'. This is fine, just an observation.
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Is this step currently part of the standard workflow?"
+    )
+
+    # Add this field (from migration 0007):
+    skippable = models.BooleanField(
+        default=False,
+        help_text="Can this step be skipped by the assignee?"
+    )
 
     class Meta:
         ordering = ['step_order']
 
     def __str__(self):
         return f"{self.step_order}. {self.name}"
+
 class AssessmentWorkflowStep(models.Model):
     """Tracks the status of a specific workflow step for an assessment."""
     class Status(models.TextChoices):
@@ -680,9 +705,6 @@ class AssessorAvailability(models.Model):
 
     def __str__(self):
         return f"Assessor {self.assessor.username} unavailable on {self.unavailable_date.strftime('%Y-%m-%d')}"
-
-
-
 class CriticalErrorLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     timestamp = models.DateTimeField(default=timezone.now)

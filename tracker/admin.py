@@ -351,3 +351,6 @@ class AssessorAvailabilityAdmin(admin.ModelAdmin):
     list_filter = ('assessor', ('unavailable_date', admin.DateFieldListFilter))
     search_fields = ('assessor__username', 'reason')
     autocomplete_fields = ['assessor']
+
+
+

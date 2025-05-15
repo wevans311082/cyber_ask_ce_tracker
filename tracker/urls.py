@@ -5,6 +5,7 @@ from django.urls import path, include # Ensure 'include' is imported
 from django.conf import settings
 from django.conf.urls.static import static
 from .views import critical_error_detail_view
+from . import wizard_views
 
 
 print("--- [DEBUG] tracker/urls.py is being loaded NOW ---")
@@ -88,6 +89,20 @@ urlpatterns = [
     path('client/assessments/<int:assessment_pk>/external-ips/add/', views.ExternalIPCreateView.as_view(), name='client_externalip_create'),
     path('client/assessments/<int:assessment_pk>/external-ips/<int:pk>/edit/', views.ExternalIPUpdateView.as_view(), name='client_externalip_update'),
     path('client/assessments/<int:assessment_pk>/external-ips/<int:pk>/delete/', views.ExternalIPDeleteView.as_view(), name='client_externalip_delete'),
+
+    path(
+        "client/assessments/<int:assessment_id>/wizard/",  # CHANGED from uuid to int
+        wizard_views.ClientAssessmentWizardView.as_view(),
+        name="client_assessment_wizard",
+    ),
+
+    path('client/assessments/<int:assessment_id>/wizard/step/<str:step>/', # 'step' is the key used by SessionWizardView
+     wizard_views.ClientAssessmentWizardStepView.as_view(),
+     name='client_assessment_wizard_step_htmx'),
+
+
+
+
 
 
     path('assessments/<int:assessment_pk>/workflow/step/<int:step_pk>/update_status/', views.update_workflow_step_status, name='update_workflow_step_status'),

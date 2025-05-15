@@ -142,19 +142,64 @@ logger = logging.getLogger(__name__)
 @user_passes_test(is_client, login_url=reverse_lazy('login'))
 def client_dashboard(request):
     profile = request.user.userprofile
-    # Redirect if client profile isn't linked (should be handled by mixin/decorator, but belt-and-braces)
     if not profile.client:
         messages.warning(request, "Your client account is not linked to a company.")
-        return redirect('logout') # Or appropriate page
+        return redirect('logout')
 
     client = profile.client
+
+    # --- Fetch main list of assessments for display ---
     client_assessments = Assessment.objects.filter(client=client).select_related('assessor').order_by('-created_at')
 
+    # --- Calculate assessment counts and next deadline ---
+    completed_statuses = ['Complete_Passed', 'Complete_Failed']
+
+    # Assuming the status field in Assessment model is named 'status'
+    completed_assessments_count = Assessment.objects.filter(
+        client=client,
+        status__in=completed_statuses
+    ).count()
+
+    active_assessments_count = Assessment.objects.filter(
+        client=client
+    ).exclude(
+        status__in=completed_statuses
+    ).count()
+
+    next_deadline_assessment = Assessment.objects.filter(
+        client=client,
+        date_target_end__isnull=False,
+        date_target_end__gte=timezone.now().date()
+    ).exclude(
+        status__in=completed_statuses  # Only from active assessments
+    ).order_by('date_target_end').first()
+    next_deadline_val = next_deadline_assessment.date_target_end if next_deadline_assessment else None
+
+    # --- Fetch Nessus Agent URLs ---
+    # Fetches all NessusAgentURL objects where is_valid=True, using model's default ordering
+    nessus_agent_urls_list = NessusAgentURL.objects.filter(is_valid=True)
+
+    # --- Support Email ---
+    support_email_val = "support@cyberask.co.uk"
+
+    # --- Initialize Context ---
     context = {
         'client': client,
-        'assessments': client_assessments,
-        'agent_status_summary': None, # Initialize agent summary
-        'tenable_error': None        # Initialize Tenable error message
+        'assessments': client_assessments,  # Main list for iteration in template
+
+        # Variables based on your specific requirements
+        'active_assessments_count': active_assessments_count,
+        'completed_assessments_count': completed_assessments_count,
+        'next_deadline': next_deadline_val,
+        'nessus_agent_urls': nessus_agent_urls_list,  # QuerySet of NessusAgentURL objects
+        'support_email': support_email_val,
+
+        # Tenable related context variables (initialized)
+        'agent_status_summary': None,
+        'tenable_error': None,
+        'tenable_agents_details': [],
+        'tenable_group_name_searched': None,
+        'tenable_group_id_found': None
     }
 
     # --- START Tenable Agent Status Fetch ---
@@ -163,11 +208,13 @@ def client_dashboard(request):
         context['tenable_error'] = "Could not initialize connection to Tenable.io. Check API configuration."
         logger.warning(f"Tenable connection failed for client dashboard: {client.name}")
     else:
-        agent_group_name = client.name
+        agent_group_name = client.name  # Assuming client.name is the Tenable agent group name
+        context['tenable_group_name_searched'] = agent_group_name
+
         agent_group_id = None
-        agents_in_group = []
-        agent_status_summary = defaultdict(int) # Use defaultdict for easy counting
-        agent_status_summary['total'] = 0 # Initialize total
+        agents_in_group_details = []
+        agent_status_summary_dict = defaultdict(int)
+        agent_status_summary_dict['total'] = 0
 
         try:
             logger.debug(f"[Client Dashboard {client.name}] Searching for Tenable agent group '{agent_group_name}'")
@@ -175,53 +222,72 @@ def client_dashboard(request):
             for group in agent_groups:
                 if group['name'] == agent_group_name:
                     agent_group_id = group.get('id')
+                    context['tenable_group_id_found'] = agent_group_id
                     logger.debug(f"[Client Dashboard {client.name}] Found group ID {agent_group_id}")
                     break
 
             if not agent_group_id:
-                logger.warning(f"[Client Dashboard {client.name}] Agent group '{agent_group_name}' not found in Tenable.io.")
-                # Don't show error to client unless agent display is critical, just log it.
-                # context['tenable_error'] = f"Tenable agent group '{agent_group_name}' not found."
+                logger.warning(
+                    f"[Client Dashboard {client.name}] Agent group '{agent_group_name}' not found in Tenable.io.")
             else:
                 logger.debug(f"[Client Dashboard {client.name}] Listing agents for group ID {agent_group_id}")
                 try:
-                    # Fetch agents iterator
-                    all_agents_iterator = tio.agents.list(limit=1000) # Adjust limit if needed
-
-                    # Filter agents for the group and count statuses
+                    all_agents_iterator = tio.agents.list(limit=1000)
                     for agent_data in all_agents_iterator:
                         agent_groups_list = agent_data.get('groups', [])
-                        if isinstance(agent_groups_list, list) and any(ag.get('id') == agent_group_id for ag in agent_groups_list):
-                            agents_in_group.append(agent_data) # Keep list if needed later, otherwise just count
-                            status = agent_data.get('status', 'unknown').lower() # Get status, default to 'unknown'
-                            agent_status_summary[status] += 1
-                            agent_status_summary['total'] += 1
+                        if isinstance(agent_groups_list, list) and any(
+                                ag.get('id') == agent_group_id for ag in agent_groups_list):
+                            agents_in_group_details.append(agent_data)
+                            status = agent_data.get('status', 'unknown').lower()
+                            agent_status_summary_dict[status] += 1
+                            agent_status_summary_dict['total'] += 1
 
-                    logger.debug(f"[Client Dashboard {client.name}] Found {agent_status_summary['total']} agents. Statuses: {dict(agent_status_summary)}")
-                    context['agent_status_summary'] = dict(agent_status_summary) # Convert defaultdict to dict for template
+                    logger.debug(
+                        f"[Client Dashboard {client.name}] Found {agent_status_summary_dict['total']} agents. Statuses: {dict(agent_status_summary_dict)}")
+                    context['agent_status_summary'] = dict(agent_status_summary_dict)
+                    context['tenable_agents_details'] = agents_in_group_details
 
-                except APIError as e:
+                except APIError as e:  # from tenable.errors import APIError
                     logger.exception(f"[Client Dashboard {client.name}] Tenable API Error listing agents: {e}")
                     context['tenable_error'] = "Error retrieving agent status from Tenable.io."
-                except ForbiddenError:
-                     logger.exception(f"[Client Dashboard {client.name}] Permission denied listing agents in Tenable.")
-                     context['tenable_error'] = "Permission denied retrieving agent status."
+                except ForbiddenError:  # from tenable.errors import ForbiddenError
+                    logger.exception(f"[Client Dashboard {client.name}] Permission denied listing agents in Tenable.")
+                    context['tenable_error'] = "Permission denied retrieving agent status."
                 except Exception as e:
-                    logger.exception(f"[Client Dashboard {client.name}] Unexpected error listing/processing agents: {e}")
+                    logger.exception(
+                        f"[Client Dashboard {client.name}] Unexpected error listing/processing agents: {e}")
                     context['tenable_error'] = "Unexpected error retrieving agent status."
 
         except APIError as e:
             logger.exception(f"[Client Dashboard {client.name}] Tenable API Error finding agent group: {e}")
             context['tenable_error'] = "Error accessing Tenable.io agent groups."
         except ForbiddenError:
-             logger.exception(f"[Client Dashboard {client.name}] Permission denied finding agent group.")
-             context['tenable_error'] = "Permission denied accessing Tenable.io agent groups."
+            logger.exception(f"[Client Dashboard {client.name}] Permission denied finding agent group.")
+            context['tenable_error'] = "Permission denied accessing Tenable.io agent groups."
         except Exception as e:
-             logger.exception(f"[Client Dashboard {client.name}] Unexpected error finding agent group: {e}")
-             context['tenable_error'] = "Unexpected error accessing Tenable.io."
+            logger.exception(f"[Client Dashboard {client.name}] Unexpected error finding agent group: {e}")
+            context['tenable_error'] = "Unexpected error accessing Tenable.io."
     # --- END Tenable Agent Status Fetch ---
 
     return render(request, 'tracker/client/client_dashboard.html', context)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 class ClientListView(AdminRequiredMixin, ListView):
     model = Client
     template_name = 'tracker/admin/client_list.html'

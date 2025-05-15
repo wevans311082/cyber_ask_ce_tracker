@@ -1,0 +1,23 @@
+{% extends "tracker/wizard/wizard_base.html" %}
+{% load i18n %}
+
+{% block wizard_title %}{% translate "Template Loading Error" %}{% endblock %}
+
+{% block wizard_content %}
+<h2>{% translate "Error Rendering Step" %}</h2>
+<p>{% translate "Sorry, there was an error trying to render this wizard step. The specific template for this step, or any fallback templates, could not be found." %}</p>
+
+{% if view.get_current_step_definition %}
+    <p>{% blocktranslate with template_name=view.get_current_step_definition.template_name step_name=view.get_current_step_definition.name %}The system attempted to load the template '<code>{{ template_name }}</code>' for the step '{{ step_name }}'.{% endblocktranslate %}</p>
+{% endif %}
+
+<p>{% blocktranslate with directory="tracker/templates/tracker/wizard/steps/" %}Please ensure the correct template files exist in the <code>{{ directory }}</code> directory or contact support.{% endblocktranslate %}</p>
+
+{% if wizard.steps.prev %}
+<form method="post" class="mt-4">
+    {% csrf_token %}
+    {{ wizard.management_form }}
+    <button type="submit" name="wizard_goto_step" value="{{ wizard.steps.prev }}" class="btn btn-secondary">{% translate "Go to Previous Step" %}</button>
+</form>
+{% endif %}
+{% endblock %}

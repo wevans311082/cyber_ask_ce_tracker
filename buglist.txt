@@ -1,25 +1,6 @@
 MVP Task List
 New Features (Prioritized)
 
-Needed Views in Admin Dashboard
-system_log_viewer
-assessment_list_scan_issues
-assessment_list_recently_completed
-tenable_scanner_list (and tenable_scanner_create, tenable_scanner_update, tenable_scanner_delete)
-tenable_policy_list (and tenable_policy_create, tenable_policy_update, tenable_policy_delete)
-client_list_awaiting_tenable_config
-tenable_agent_group_list
-tenable_agent_mapping_list
-assessor_availability_list_pending
-user_list_incomplete_mfa
-global_settings
-audit_log_viewer
-notification_management
-
-Admin Dashboard Views Done
-uploaded_report_list – [done]
-assessment_list_awaiting_scheduling – [done]
-unlinked_ce_reports_list – [done]
 
 
 New Features (Prioritized)
@@ -129,6 +110,8 @@ Improvement:70 (Medium) Robust Tenable Integration – resolve hostname/scan-lin
 Improvement:71 (Medium) Assessor Capacity Planning View – visualize assessor workload and availability (IMPRV-014).
 Improvement:72 (Medium) Theme Refresh – overhaul UI theme (e.g., Bootstrap 5 or modern alternative) (UI-001).
 Improvement:73 (Medium) Date Picker Consistency – ensure cross-browser/date-library compatibility (BUG-003).
+Improvement:74 (Medium) Client Assessment Details - the CE report should be downloadable
+Improvement:75 (Medium) Assesor and Client should be able to directly modify assessment critical details including POC etc
 
 Low
 Improvement:37 (Low) Redesign/restyle client workflow step buttons for better usability.
@@ -217,3 +200,37 @@ Bug:11 (Medium) Admin dashboard Assessment Awaiting Scheduling –
 • Assigned Assessor isn’t showing
 • Action buttons not working
 • Assessment ID not showing
+
+
+
+
+
+Needed Views in Admin Dashboard
+system_log_viewer
+assessment_list_scan_issues
+assessment_list_recently_completed
+tenable_scanner_list (and tenable_scanner_create, tenable_scanner_update, tenable_scanner_delete)
+tenable_policy_list (and tenable_policy_create, tenable_policy_update, tenable_policy_delete)
+client_list_awaiting_tenable_config
+tenable_agent_group_list
+tenable_agent_mapping_list
+assessor_availability_list_pending
+user_list_incomplete_mfa
+global_settings
+audit_log_viewer
+notification_management
+
+
+Admin Dashboard Views Done
+uploaded_report_list – [done]
+assessment_list_awaiting_scheduling – [done]
+unlinked_ce_reports_list – [done]
+
+
+
+Unfiltered Ideas
+
+Have the client interface have a Wizard Mode
+    Have admins be able to edit and modify the wizzard mode
+
+Allow Administrators to modify and adjust the assessment steps

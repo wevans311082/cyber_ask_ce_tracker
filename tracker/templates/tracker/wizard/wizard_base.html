@@ -1,0 +1,161 @@
+{% extends "tracker/base.html" %}
+{% load static i18n tracker_tags %}
+
+{% block title %}{% block wizard_page_title %}{% translate "Assessment Wizard" %}{% endblock %} - {{ block.super }}{% endblock title %}
+
+{% block extra_head %}
+    {{ block.super }}
+    {# Ensures HTMX POST requests include the CSRF token #}
+    <meta name="htmx-csrftoken" content="{{ csrf_token }}">
+    <style>
+        .wizard-progress-bar {
+            display: flex;
+            flex-wrap: wrap; /* Allow steps to wrap on smaller screens */
+            justify-content: flex-start; /* Align items to the start */
+            margin-bottom: 1.5rem;
+            padding: 0;
+            list-style: none;
+            border-bottom: 1px solid #dee2e6; /* Light line underneath progress bar */
+        }
+        .wizard-progress-step {
+            /* flex: 1 1 auto; */ /* Allow steps to take up space but also shrink/grow */
+            padding: 0.75rem 1rem; /* Adjust padding */
+            text-align: center;
+            border-bottom: 4px solid transparent; /* Transparent bottom border for spacing */
+            color: #6c757d; /* Muted text */
+            font-size: 0.9rem;
+            transition: all 0.3s ease-in-out;
+            cursor: default; /* Default cursor, becomes pointer if clickable */
+            margin-right: 2px; /* Small gap between steps */
+            margin-bottom: -1px; /* Align with the container's bottom border */
+        }
+        .wizard-progress-step.active {
+            border-bottom-color: #0d6efd; /* Bootstrap primary */
+            color: #0d6efd;
+            font-weight: bold;
+        }
+        .wizard-progress-step.completed {
+            /* border-bottom-color: #198754; */ /* Bootstrap success - can be too visually strong */
+            color: #198754;
+        }
+        .wizard-progress-step.completed::before {
+            content: "✔";
+            color: #198754;
+            margin-right: 0.4em;
+            font-weight: bold;
+        }
+        #wizard-content-area {
+            min-height: 350px;
+            position: relative;
+            padding: 1.5rem; /* Add some padding to the content area */
+            border: 1px solid #dee2e6;
+            border-top: none; /* No top border if progress bar is directly above */
+            border-radius: 0 0 0.25rem 0.25rem; /* Rounded bottom corners */
+        }
+        #wizard-content-area .initial-loading-spinner .spinner-border {
+            width: 3rem;
+            height: 3rem;
+        }
+        /* Styling for error messages shown via HTMX OOB */
+        #wizard-messages-oob .alert {
+            margin-top: 1rem;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 wizard-container">
+    <div class="row mb-3">
+        <div class="col-12">
+            <h2>{% block wizard_main_title %}{% translate "Cyber Essentials Plus Assessment Wizard" %}{% endblock %}</h2>
+            {% block wizard_subtitle %}
+            <p class="lead">{% translate "Please follow the steps below to complete your assessment information." %}</p>
+            {% endblock %}
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            {# Wizard Progress Bar - Populated by context from ClientAssessmentWizardView #}
+            <div id="wizard-progress-bar-container">
+                {% block wizard_progress_bar %}
+                    {% if progress_steps %}
+                        <ol class="wizard-progress-bar">
+                            {% for step in progress_steps %}
+                                <li class="wizard-progress-step {% if step.is_current %}active{% endif %} {% if step.is_completed %}completed{% endif %}">
+                                    {{ step.name }}
+                                </li>
+                            {% endfor %}
+                        </ol>
+                    {% else %}
+                        <div class="alert alert-info small">{% translate "Progress indicator will appear here." %}</div>
+                    {% endif %}
+                {% endblock wizard_progress_bar %}
+            </div>
+
+            {# Main content area for wizard steps (fragments) #}
+            <div id="wizard-content-area" class="bg-light shadow-sm"
+                 {% if initial_step_url %}
+                     hx-get="{{ initial_step_url }}"
+                     hx-trigger="load"
+                     hx-swap="innerHTML"
+                 {% else %}
+                     <div class="alert alert-danger p-4">{% translate "Wizard cannot start: Initial step URL not configured." %}</div>
+                 {% endif %}
+                 >
+                {# Loading indicator for the very first load #}
+                <div class="text-center p-5 initial-loading-spinner">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">{% translate "Loading..." %}</span>
+                    </div>
+                    <p class="mt-2">{% translate "Loading initial wizard step..." %}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Hidden div for HTMX Out-of-Band Swaps (e.g., global messages, dynamic progress bar updates if needed) #}
+    <div id="wizard-messages-oob" hx-swap-oob="true"></div>
+    {# If progress bar needs complex OOB updates, target this: #}
+    {# <div id="wizard-progress-bar-oob" hx-swap-oob="true"></div> #}
+</div>
+{% endblock content %}
+
+{% block extra_js %}
+    {{ block.super }}
+    <script src="{% static 'tracker/js/htmx.min.js' %}" defer></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof htmx !== 'undefined') {
+                console.log("Wizard Base: HTMX version", htmx.version, "loaded.");
+
+                document.body.addEventListener('htmx:beforeRequest', function(evt) {
+                    console.debug("HTMX: Before Request - ", evt.detail.requestConfig.verb, evt.detail.requestConfig.path, "Target:", evt.detail.requestConfig.target ? evt.detail.requestConfig.target.id : 'N/A');
+                    // You could add a global busy indicator or disable buttons here
+                });
+
+                document.body.addEventListener('htmx:afterSwap', function(evt) {
+                    console.debug("HTMX: After Swap - Path:", evt.detail.pathInfo.requestPath, "Target:", evt.detail.target.id);
+                    // Re-initialize JS components if necessary for new content
+                });
+
+                document.body.addEventListener('htmx:responseError', function(evt) {
+                    console.error("HTMX: Response Error! Path:", evt.detail.pathInfo.requestPath, "Status:", evt.detail.xhr.status);
+                    console.error("Response:", evt.detail.xhr.responseText);
+
+                    const errorDisplayTarget = document.getElementById('wizard-messages-oob');
+                    if (errorDisplayTarget) {
+                        let friendlyMessage = `{% translate "An error occurred" %} (${evt.detail.xhr.status}). {% translate "Please try again. If the problem persists, contact support." %}`;
+                        // More specific error parsing could go here if your backend sends structured JSON errors
+                        errorDisplayTarget.innerHTML = \`<div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+                                                        \${friendlyMessage}
+                                                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                                                    </div>\`;
+                    }
+                });
+            } else {
+                console.error("Wizard Base: HTMX JavaScript library not found.");
+            }
+        });
+    </script>
+{% endblock %}

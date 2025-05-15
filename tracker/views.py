@@ -3881,6 +3881,8 @@ def dashboard_redirect_view(request: HttpRequest) -> HttpResponse:
         print(f"[DEBUG] Error in dashboard_redirect_view: {e}")
         messages.error(request, ("An error occurred while redirecting you to your dashboard."))
         return redirect(reverse('login')) # Fallback in case of any unexpected error
+
+
 class ClientWorkflowVisualPartialView(ClientRequiredMixin, DetailView):
     """ Renders just the workflow visual partial for AJAX updates. """
     model = Assessment

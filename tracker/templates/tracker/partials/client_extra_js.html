@@ -9,5 +9,10 @@
     window.__WORKFLOW_MAP__     = '{{ workflow_steps_context.steps_map|jsonify_stepsmap|escapejs }}';
     window.__WORKFLOW_CURRENT__ = '{{ workflow_steps_context.current_definition.id|default:"" }}';
   </script>
+
+    <script id="updateWorkflowStepStatusUrl" type="application/json">
+    {% url 'tracker:update_workflow_step_status' assessment_pk=0 step_pk=0 %}
+  </script>
+
   <script src="{% static 'tracker/js/assessment_details.js' %}"></script>
 {% endblock %}

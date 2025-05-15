@@ -1,0 +1,40 @@
+{% extends "tracker/wizard/wizard_base.html" %}
+{% load i18n %}
+
+{% block wizard_title %}{% translate "External Scan" %}{% endblock %}
+
+{% block wizard_content %}
+<h2>{% translate "Step 16: External Scan" %}</h2>
+<p><em>{% translate "Description" %}: Assessor scans external IP addresses/hostnames.</em></p>
+<p><em>{% translate "Template" %}: <code>step_external_scan.html</code></em></p>
+
+<form method="post" hx-post="{{ request.path }}" hx-target="this" hx-swap="outerHTML" class="mt-4">
+    {% csrf_token %}
+    {{ wizard.management_form }}
+
+    {% if form.errors %}
+        <div class="alert alert-danger">
+            {% translate "Please correct the errors below." %}
+            {{ form.non_field_errors }}
+            {% for field in form %}
+                {% if field.errors %}
+                    <div><strong>{{ field.label }}:</strong> {{ field.errors|striptags }}</div>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    {% if form %}
+        {{ form.as_p }}
+    {% else %}
+        <p>{% translate "No specific form fields are defined for this step yet." %}</p>
+    {% endif %}
+
+    <div class="mt-4">
+        {% if wizard.steps.prev %}
+            <button type="submit" name="wizard_goto_step" value="{{ wizard.steps.prev }}" class="btn btn-secondary">{% translate "Previous Step" %}</button>
+        {% endif %}
+        <button type="submit" class="btn btn-primary">{% translate "Save and Continue" %}</button>
+    </div>
+</form>
+{% endblock %}
