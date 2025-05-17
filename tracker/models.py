@@ -1,3 +1,4 @@
+from datetime import timedelta
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -166,36 +167,86 @@ class Client(models.Model):
 
 
     def __str__(self): return self.name
+
+
+
+
+
+
+
+
+
+
+
 class Assessment(models.Model):
-    STATUS_CHOICES = (('Draft', 'Draft'),('Scoping_Client', 'Scoping (Client Input)'),('Scoping_Review', 'Scoping (Assessor Review)'),('Testing', 'Testing'),('Remediation', 'Remediation'),('Report_Pending', 'Report Pending'),('Complete_Passed', 'Complete (Passed)'),('Complete_Failed', 'Complete (Failed)'),)
-    ASSESSMENT_TYPES = (('CE', 'Cyber Essentials'),('CE+', 'Cyber Essentials Plus'),)
-    SCOPE_TYPES = (('Whole_Org', 'Whole Organisation'),('Sub_Set', 'Sub-Set'),)
-    OUTCOME_CHOICES = (('Pass', 'Pass'),('Fail', 'Fail'),)
+    STATUS_CHOICES = (
+        ('Draft', 'Draft'),
+        ('Scoping_Client', 'Scoping (Client Input)'),
+        ('Scoping_Review', 'Scoping (Assessor Review)'),
+        ('Testing', 'Testing'),
+        ('Remediation', 'Remediation'),
+        ('Report_Pending', 'Report Pending'),
+        ('Complete_Passed', 'Complete (Passed)'),
+        ('Complete_Failed', 'Complete (Failed)'),
+    )
+    ASSESSMENT_TYPES = (
+        ('CE', 'Cyber Essentials'),
+        ('CE+', 'Cyber Essentials Plus'),
+    )
+    SCOPE_TYPES = (
+        ('Whole_Org', 'Whole Organisation'),
+        ('Sub_Set', 'Sub-Set'),
+    )
+    OUTCOME_CHOICES = (
+        ('Pass', 'Pass'),
+        ('Fail', 'Fail'),
+    )
+
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name='assessments')
-    assessor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_assessments', limit_choices_to={'userprofile__role': 'Assessor'})
+    assessor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='assigned_assessments',
+        limit_choices_to={'userprofile__role': 'Assessor'}  # Ensure UserProfile model and role field exist
+    )
     assessment_type = models.CharField(max_length=3, choices=ASSESSMENT_TYPES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Draft')
     scope_description = models.TextField(blank=True, help_text="Brief description of the scope boundary.")
     scope_type = models.CharField(max_length=10, choices=SCOPE_TYPES, default='Whole_Org')
+
     date_start = models.DateField(null=True, blank=True)
     date_target_end = models.DateField(null=True, blank=True, verbose_name="Target End Date")
     date_actual_end = models.DateField(null=True, blank=True, verbose_name="Actual End Date")
     date_cert_issued = models.DateField(null=True, blank=True, verbose_name="Certificate Issued Date")
     date_cert_expiry = models.DateField(null=True, blank=True, verbose_name="Certificate Expiry Date")
-    date_ce_passed = models.DateField(null=True, blank=True, verbose_name="CE Self-Assessment Pass Date", help_text="Date the basic Cyber Essentials self-assessment was passed (for CE+ window).")
-    ce_self_assessment_ref = models.CharField(max_length=100, blank=True, verbose_name="CE Self-Assessment Ref")
-    final_outcome = models.CharField(max_length=4, choices=OUTCOME_CHOICES, null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    tenable_scan_uuid = models.UUIDField(
+
+    date_ce_passed = models.DateField(
         null=True,
         blank=True,
-        unique=False,  # Can re-launch / create new scans for same assessment
-        verbose_name="Tenable Scan UUID",
-        help_text="UUID of the last launched Tenable scan for this assessment"
+        verbose_name="CE Self-Assessment Pass Date",
+        help_text="Date the basic Cyber Essentials self-assessment was passed (for CE+ window)."
     )
+    ce_self_assessment_ref = models.CharField(max_length=100, blank=True, verbose_name="CE Self-Assessment Ref")
+    final_outcome = models.CharField(max_length=4, choices=OUTCOME_CHOICES, null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Kept as CharField to accommodate Tenable's prefixed template UUIDs
+    tenable_scan_uuid = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True,
+        unique=False,
+        verbose_name="Tenable Scan Definition UUID/Identifier",
+        help_text="Identifier of the Tenable scan definition (can be prefixed like 'template-...')"
+    )
+
+    # Scan status constants
     SCAN_NONE = 'none'
-    SCAN_PENDING = 'pending_launch'  # <<< THIS IS LIKELY MISSING OR COMMENTED OUT
+    SCAN_PENDING = 'pending_launch'
     SCAN_LAUNCHED = 'launched'
     SCAN_COMPLETED = 'completed'
     SCAN_PROCESSING = 'processing'
@@ -205,7 +256,7 @@ class Assessment(models.Model):
 
     SCAN_STATUS_CHOICES = [
         (SCAN_NONE, 'Not Scanned'),
-        (SCAN_PENDING, 'Scan Pending Launch'), # <<< AND MISSING HERE
+        (SCAN_PENDING, 'Scan Pending Launch'),  # Ensured this is present
         (SCAN_LAUNCHED, 'Scan Launched'),
         (SCAN_COMPLETED, 'Scan Completed by Tenable'),
         (SCAN_PROCESSING, 'Processing Results'),
@@ -221,69 +272,231 @@ class Assessment(models.Model):
         verbose_name="Tenable Scan Status"
     )
     scan_status_message = models.TextField(blank=True, null=True, verbose_name="Scan Status Message")
-    tenable_scan_id = models.IntegerField(null=True, blank=True, verbose_name="Tenable Scan Integer ID")
-    def get_scan_status_display(self):  # Ensure this method exists if used in logs/templates
+    # Kept as IntegerField as per your old model for Tenable's numeric scan ID
+    tenable_scan_id = models.IntegerField(null=True, blank=True, verbose_name="Tenable Scan Definition Numeric ID")
+
+    # Field added in previous steps, kept for Celery task functionality
+    last_tenable_scan_launch_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="Last Tenable Scan Launch Time"
+    )
+
+    def get_scan_status_display(self):
         return dict(self.SCAN_STATUS_CHOICES).get(self.scan_status, self.scan_status)
 
-    def __str__(self): return f"{self.client.name} - {self.get_assessment_type_display()} ({self.id})"
+    # Using the __str__ method from your old working model
+    def __str__(self):
+        # Ensure get_assessment_type_display() is available or use self.assessment_type
+        # get_assessment_type_display is automatically provided by Django for fields with choices
+        return f"{self.client.name} - {self.get_assessment_type_display()} ({self.id})"
 
     @property
     def ce_plus_window_end_date(self):
+        """
+        Calculates the end date of the CE+ 3-month window.
+        The window is 3 months from the date_ce_passed.
+        NCSC guidance often refers to 3 months or 90 days.
+        Using 90 days for a fixed duration.
+        """
         if self.assessment_type == 'CE+' and self.date_ce_passed:
             try:
-                # Calculate 90 days from the CE pass date
-                return self.date_ce_passed + timezone.timedelta(days=90)
-            except TypeError:  # Handle potential None or invalid date
+                # Adding 90 days to the date_ce_passed
+                return self.date_ce_passed + timedelta(days=90)
+            except TypeError:  # Handle case where date_ce_passed might be None despite check (though unlikely)
                 return None
         return None
 
+    # Added can_launch_ce_plus_scan method from your old working model
     def can_launch_ce_plus_scan(self) -> dict:
         """
         Checks if conditions are met to enable the 'Launch Scan' button for CE+.
         Returns a dictionary: {'can_launch': bool, 'reason': str}
         """
-        print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Checking for Assessment {self.id}")  # DEBUG
+        # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Checking for Assessment {self.id}")
 
         if self.assessment_type != 'CE+':
-            print("[DEBUG Assessment.can_launch_ce_plus_scan] Result: False (Not CE+)")  # DEBUG
             return {'can_launch': False, 'reason': _("Scan launch is only applicable for CE+ assessments.")}
 
-        # Get relevant sampled items (prefetching might optimize this if called often)
-        # Using related name 'scoped_items' from ScopedItem model
-        sampled_items = self.scoped_items.filter(is_in_ce_plus_sample=True)
+        try:
+            # Ensure 'scoped_items' is the correct related_name from ScopedItem to Assessment.
+            # If not, change to e.g., self.scopeditem_set
+            all_sampled_items = list(self.scoped_items.filter(is_in_ce_plus_sample=True))
+        except AttributeError:
+            return {'can_launch': False,
+                    'reason': _("Internal configuration error: Cannot access scoped items (check related_name).")}
+        except Exception as e:
+            # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Error accessing scoped_items: {e}")
+            return {'can_launch': False, 'reason': _(f"Error accessing scoped item data: {e}")}
 
-        if not sampled_items.exists():
-            print("[DEBUG Assessment.can_launch_ce_plus_scan] Result: False (No sample items)")  # DEBUG
+        if not all_sampled_items:
             return {'can_launch': False, 'reason': _("No items found in the CE+ sample.")}
 
-        # Identify item types that require agent linking for scanning
         item_types_requiring_link = ['Laptop', 'Desktop', 'Server']
-        items_requiring_link = sampled_items.filter(item_type__in=item_types_requiring_link)
+        unlinked_items_count = 0
 
-        if not items_requiring_link.exists():
-            # If no laptops/desktops/servers are in the sample, scan can technically proceed
-            # (e.g., sample only contains mobile devices or network devices)
-            print(
-                "[DEBUG Assessment.can_launch_ce_plus_scan] Result: True (No sample items require agent linking)")  # DEBUG
+        items_requiring_link_exist = False  # Flag to check if any items even need linking
+
+        for item in all_sampled_items:
+            if item.item_type in item_types_requiring_link:
+                items_requiring_link_exist = True
+                is_linked = False
+                try:
+                    # Accessing linked_tenable_agent_uuid.
+                    # If ScopedItem.linked_tenable_agent_uuid is a UUIDField, Django will try to
+                    # convert the DB value to a uuid.UUID object here.
+                    # If the DB value is "" or "“”", this access will raise a ValidationError.
+                    agent_uuid = item.linked_tenable_agent_uuid
+                    if agent_uuid is not None and isinstance(agent_uuid, uuid.UUID):
+                        is_linked = True
+                    # Handle cases where it might be a string that needs validation,
+                    # though for a UUIDField, it should be None or a UUID object after loading.
+                    elif isinstance(agent_uuid, str) and agent_uuid.strip() != '':
+                        try:
+                            uuid.UUID(agent_uuid)  # Check if string is valid UUID format
+                            is_linked = True
+                        except ValueError:
+                            is_linked = False  # String is not a valid UUID
+                    # else, it's None, an empty string, or some other type not considered linked.
+
+                except ValidationError:
+                    # If accessing item.linked_tenable_agent_uuid causes a ValidationError
+                    # (e.g., because DB has "" in a UUIDField), treat as unlinked.
+                    # This is a defensive catch. The root cause (bad data) should still be fixed.
+                    # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] ValidationError for ScopedItem {item.id} accessing linked_tenable_agent_uuid. Treating as unlinked.")
+                    is_linked = False
+                except Exception as e_access:
+                    # Catch any other unexpected error during access
+                    # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Error accessing linked_tenable_agent_uuid for ScopedItem {item.id}: {e_access}. Treating as unlinked.")
+                    is_linked = False  # Treat as unlinked on error
+
+                if not is_linked:
+                    unlinked_items_count += 1
+
+        if not items_requiring_link_exist:
+            # No items of type Laptop, Desktop, Server in the sample.
             return {'can_launch': True, 'reason': _("Scan can be launched (no sampled items require agent linking).")}
 
-        # Check if ALL items requiring a link actually have one
-        all_items_linked = items_requiring_link.filter(
-            linked_tenable_agent_uuid__isnull=False).count() == items_requiring_link.count()
-
-        if not all_items_linked:
-            unlinked_count = items_requiring_link.filter(linked_tenable_agent_uuid__isnull=True).count()
+        if unlinked_items_count > 0:
             reason = _(
-                "Cannot launch scan: {count} sampled device(s) (Laptop/Desktop/Server) still need a Tenable Agent linked.").format(
-                count=unlinked_count)
-            print(
-                f"[DEBUG Assessment.can_launch_ce_plus_scan] Result: False ({unlinked_count} items not linked)")  # DEBUG
+                "Cannot launch scan: {count} sampled device(s) (Laptop/Desktop/Server) still need a Tenable Agent linked or have invalid agent UUID data."
+            ).format(count=unlinked_items_count)
             return {'can_launch': False, 'reason': reason}
 
-        # All checks passed
-        print("[DEBUG Assessment.can_launch_ce_plus_scan] Result: True (All checks passed)")  # DEBUG
         return {'can_launch': True, 'reason': _("Ready to launch scan.")}
-    # CHANGES END
+
+
+
+
+
+
+
+
+
+
+
+
+class TenableScanLog(models.Model):
+    # Your existing primary key
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    assessment = models.ForeignKey('Assessment', on_delete=models.CASCADE, related_name='tenable_scan_logs') # Assuming 'Assessment' is in the same app or properly imported
+
+    # ID of the scan definition/configuration in Tenable
+    tenable_scan_definition_id = models.IntegerField(
+        null=True, blank=True,
+        help_text="Numeric ID of the scan definition in Tenable (the 'id' field from scan creation)."
+    )
+
+    # UUID of the launched scan instance/run
+    # This is the pure UUID you get from a launch response.
+    tenable_scan_run_uuid = models.UUIDField(
+        null=True, blank=True,
+        help_text="UUID of the launched scan instance/history in Tenable (the 'scan_uuid' or 'history_uuid' from launch)."
+    ) # This was likely your old 'scan_uuid' field.
+
+    # Identifier of the policy/template used (e.g., "template-xxxx...")
+    # This needs to be a CharField because "template-..." is not a valid UUID for a UUIDField.
+    tenable_policy_identifier = models.CharField(
+        max_length=255, null=True, blank=True,
+        help_text="Identifier of the policy/template used (e.g., 'template-uuid' from scan creation 'uuid' field)."
+    ) # This was likely your old 'policy_uuid' field causing the error.
+
+    scan_name = models.CharField(max_length=255, null=True, blank=True, help_text="Name of the scan in Tenable.")
+    status = models.CharField(max_length=100, null=True, blank=True, help_text="Status of the scan.")
+    # Add other fields like error messages, timestamps for creation, start, end, etc.
+    log_message = models.TextField(null=True, blank=True)
+   # created_at = models.DateTimeField(auto_now_add=True)
+  #  updated_at = models.DateTimeField(auto_now=True)
+
+    created_at = models.DateTimeField(default=timezone.now)  # Changed from auto_now_add=True
+    # And ensure updated_at also has a suitable default if it's new and non-nullable
+    updated_at = models.DateTimeField(default=timezone.now)  # Or auto_now=True is usually fine for this
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Tenable Scan Log"
+        verbose_name_plural = "Tenable Scan Logs"
+
+    def __str__(self):
+        return f"Scan Log for Assessment {self.assessment_id} - Scan Name: {self.scan_name or self.tenable_scan_definition_id}"
+
+
+
+
+
+
+
+class TenableScanResultSummary(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scan_log = models.OneToOneField(
+        'TenableScanLog',
+        on_delete=models.CASCADE,
+        related_name='result_summary',
+        help_text="The scan log entry this summary pertains to."
+    )
+    assets_scanned = models.IntegerField(null=True, blank=True, help_text="Number of assets scanned.")
+    scan_completed_at = models.DateTimeField(null=True, blank=True, help_text="Timestamp when the scan completed in Tenable.") # Renamed to avoid clash if you had 'completed_at' elsewhere
+
+    # Vulnerability Counts
+    critical_vulnerabilities = models.IntegerField(default=0, help_text="Count of critical vulnerabilities found.")
+    high_vulnerabilities = models.IntegerField(default=0, help_text="Count of high vulnerabilities found.")
+    medium_vulnerabilities = models.IntegerField(default=0, help_text="Count of medium vulnerabilities found.")
+    low_vulnerabilities = models.IntegerField(default=0, help_text="Count of low vulnerabilities found.")
+    info_findings = models.IntegerField(default=0, help_text="Count of informational findings.") # Often Tenable provides this too
+
+    # Raw data (optional, but can be useful)
+    raw_summary_data_json = models.JSONField(null=True, blank=True, help_text="Raw summary data from Tenable API as JSON.")
+
+    # Timestamps for this record
+    fetched_at = models.DateTimeField(auto_now_add=True, help_text="When this summary was fetched and recorded in our system.")
+    last_updated_from_tenable = models.DateTimeField(null=True, blank=True, help_text="When this summary was last updated based on Tenable data.")
+
+
+    class Meta:
+        ordering = ['-fetched_at']
+        verbose_name = "Tenable Scan Result Summary"
+        verbose_name_plural = "Tenable Scan Result Summaries"
+
+    def __str__(self):
+        return f"Summary for Scan Log {self.scan_log_id} (Fetched: {self.fetched_at})"
+
+    @property
+    def total_vulnerabilities(self):
+        return (self.critical_vulnerabilities or 0) + \
+               (self.high_vulnerabilities or 0) + \
+               (self.medium_vulnerabilities or 0) + \
+               (self.low_vulnerabilities or 0)
+
+
+
+
+
+
+
+
+
+
+
 class Evidence(models.Model):
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='evidence_files')
     file = models.FileField(upload_to='evidence/%Y/%m/%d/')
@@ -461,7 +674,6 @@ class WorkflowStepDefinition(models.Model):
 
     def __str__(self):
         return f"{self.step_order}. {self.name}"
-
 class AssessmentWorkflowStep(models.Model):
     """Tracks the status of a specific workflow step for an assessment."""
     class Status(models.TextChoices):
@@ -735,6 +947,276 @@ class CriticalErrorLog(models.Model):
         ordering = ['-timestamp']
         verbose_name = "Critical Error Log"
         verbose_name_plural = "Critical Error Logs"
+
+
+class TenableVulnerabilityFinding(models.Model):
+    class SeverityChoices(models.IntegerChoices):
+        INFO = 0, 'Informational'
+        LOW = 1, 'Low'
+        MEDIUM = 2, 'Medium'
+        HIGH = 3, 'High'
+        CRITICAL = 4, 'Critical'
+
+    class FindingStatusChoices(models.TextChoices): # Using TextChoices for more flexibility if needed
+        OPEN = 'OPEN', 'Open'
+        FIXED = 'FIXED', 'Fixed'
+        REOPENED = 'REOPENED', 'Reopened'
+        RISK_ACCEPTED = 'RISK_ACCEPTED', 'Risk Accepted'
+        # You might also have 'NEW' if you distinguish between first seen and subsequent 'OPEN'
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    # Link to the scan run that found this
+    scan_log = models.ForeignKey(
+        'TenableScanLog',
+        on_delete=models.CASCADE,
+        related_name='findings',
+        help_text="The scan log entry that reported this finding."
+    )
+    # Link to the specific asset in scope, if identifiable
+    scoped_item = models.ForeignKey(
+        'ScopedItem',
+        on_delete=models.SET_NULL, # Or CASCADE, depending on data retention needs
+        null=True, blank=True,
+        related_name='tenable_findings',
+        help_text="The scoped asset this finding pertains to, if matched."
+    )
+
+    # Tenable specific identifiers that can help in uniquely identifying a finding instance
+    # These are highly recommended if your Tenable export provides them consistently
+    tenable_asset_uuid = models.UUIDField(null=True, blank=True, db_index=True, help_text="Tenable's UUID for the asset associated with this finding.")
+    tenable_plugin_output_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True, help_text="A hash of key plugin output details to help identify unique instances if a specific finding UUID isn't available.") # E.g., hash(plugin_id, port, protocol, specific detail from output)
+
+    # Vulnerability Definition Details
+    plugin_id = models.IntegerField(db_index=True, help_text="Tenable Plugin ID for the vulnerability.")
+    plugin_name = models.CharField(max_length=512, help_text="Name of the vulnerability plugin.")
+    plugin_family = models.CharField(max_length=255, null=True, blank=True, help_text="Family or category of the plugin.")
+    severity = models.IntegerField(choices=SeverityChoices.choices, default=SeverityChoices.INFO, db_index=True, help_text="Severity of the vulnerability.")
+
+    # Asset Context for the Finding (snapshot at time of finding)
+    ip_address = models.GenericIPAddressField(null=True, blank=True, db_index=True, help_text="IP address where the vulnerability was found.")
+    fqdn = models.CharField(max_length=255, null=True, blank=True, help_text="FQDN of the asset, if available.")
+    netbios_name = models.CharField(max_length=255, null=True, blank=True, help_text="NetBIOS name of the asset, if available.")
+    mac_address = models.CharField(max_length=17, null=True, blank=True, help_text="MAC address of the asset, if available.") # Store as EUI-48 string
+
+    port = models.IntegerField(null=True, blank=True, help_text="Port number the vulnerability was found on.")
+    protocol = models.CharField(max_length=10, null=True, blank=True, help_text="Protocol (e.g., TCP, UDP).")
+    service_name = models.CharField(max_length=255, null=True, blank=True, help_text="Service name running on the port.")
+
+    # Descriptive Fields from Plugin/Scan
+    description = models.TextField(null=True, blank=True, help_text="Detailed description of the vulnerability.")
+    solution = models.TextField(null=True, blank=True, help_text="Recommended solution or remediation steps.")
+    see_also = models.TextField(null=True, blank=True, help_text="URLs or references for more information (can be newline separated).")
+    plugin_output = models.TextField(null=True, blank=True, help_text="Specific output from the plugin for this finding instance, can be extensive.")
+
+    # CVSS Information (Tenable usually provides CVSSv3)
+    cvss3_base_score = models.FloatField(null=True, blank=True, help_text="CVSSv3 base score.")
+    cvss3_vector = models.CharField(max_length=100, null=True, blank=True, help_text="CVSSv3 vector string.")
+    # You can add fields for cvss_temporal_score, cvss_environmental_score if needed
+    # And similarly for CVSSv2 if you need to store that as well: cvss2_base_score, cvss2_vector
+
+    # Exploit and Threat Information
+    cve_ids = models.JSONField(default=list, null=True, blank=True, help_text="List of CVE IDs associated with this vulnerability.") # Storing as JSON list
+    exploit_available = models.BooleanField(default=False, help_text="Is an exploit publicly available for this vulnerability?")
+    exploitability_ease = models.CharField(max_length=255, null=True, blank=True, help_text="Information about ease of exploit (e.g., 'High', 'Functional').")
+    exploited_by_malware = models.BooleanField(default=False, help_text="Is this vulnerability known to be exploited by malware?")
+    # Other threat intel fields like 'in_the_news' can be added if provided by Tenable
+
+    # Dates
+    vulnerability_publication_date = models.DateField(null=True, blank=True, help_text="Date the vulnerability was publicly disclosed.")
+    patch_publication_date = models.DateField(null=True, blank=True, help_text="Date a patch was made available by the vendor.")
+    first_observed_by_scan = models.DateTimeField(null=True, blank=True, help_text="When this finding was first observed by a scan on this asset by our system.")
+    last_observed_by_scan = models.DateTimeField(null=True, blank=True, db_index=True, help_text="When this finding was last observed by a scan on this asset by our system.")
+
+    # Status and Remediation Tracking within your system
+    status = models.CharField(
+        max_length=20,
+        choices=FindingStatusChoices.choices,
+        default=FindingStatusChoices.OPEN,
+        db_index=True,
+        help_text="Current status of this vulnerability finding in the tracker."
+    )
+    # Optional fields for more detailed tracking:
+    # remediation_notes = models.TextField(null=True, blank=True)
+    # assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='assigned_vulnerabilities', null=True, blank=True)
+    # due_date = models.DateField(null=True, blank=True)
+    # risk_acceptance_notes = models.TextField(null=True, blank=True)
+    # risk_accepted_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name='accepted_vulnerability_risks', null=True, blank=True)
+    # risk_acceptance_expiry_date = models.DateField(null=True, blank=True)
+
+    # Timestamps for this record in our system
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-severity', '-last_observed_by_scan', 'plugin_name']
+        verbose_name = "Tenable Vulnerability Finding"
+        verbose_name_plural = "Tenable Vulnerability Findings"
+        # This constraint helps ensure that for a given asset (identified by IP) and a specific vulnerability (plugin_id)
+        # on a specific port/protocol, you don't have duplicate 'OPEN' entries from different scans over time.
+        # You'll need a robust way to identify a truly unique finding instance across scans.
+        # The 'tenable_plugin_output_hash' or a dedicated UUID from Tenable for the finding instance is better.
+        # For now, this is a basic constraint:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['scoped_item', 'plugin_id', 'port', 'protocol', 'ip_address'], # Added ip_address
+                name='unique_finding_on_asset_port_proto',
+                condition=models.Q(status='OPEN') # Only enforce for open vulnerabilities to allow historical record of fixed ones
+            )
+        ]
+        indexes = [
+            models.Index(fields=['status', 'severity', 'scoped_item']),
+            models.Index(fields=['plugin_id', 'status']),
+        ]
+
+
+    def __str__(self):
+        asset_info = self.ip_address
+        if not asset_info and self.scoped_item:
+            asset_info = self.scoped_item.identifier
+        elif not asset_info:
+            asset_info = "Unknown Asset"
+        return f"{self.plugin_name} (Severity: {self.get_severity_display()}) on {asset_info}"
+
+
+
+
+
+class AssetScanDataSnapshot(models.Model):
+    """
+    Stores the consolidated parsed data for a single asset from a single Tenable scan.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    scoped_item = models.ForeignKey(
+        'ScopedItem',
+        on_delete=models.CASCADE,
+        related_name='scan_snapshots',
+        help_text="The scoped asset this snapshot pertains to."
+    )
+    scan_log = models.ForeignKey(
+        'TenableScanLog',
+        on_delete=models.CASCADE,
+        related_name='asset_snapshots',
+        help_text="The Tenable scan log this snapshot is derived from."
+    )
+
+    # Direct fields from parser output
+    parsed_operating_system = models.CharField(max_length=255, blank=True, null=True,
+                                               help_text="OS string as parsed from the scan.")
+    last_reboot_time = models.DateTimeField(null=True, blank=True, help_text="Last reboot time of the asset, if found.")
+
+    # JSONFields for collections of diverse or less-queried structured data
+    hardware_info_json = models.JSONField(null=True, blank=True,
+                                          help_text="Parsed hardware details (manufacturer, model, BIOS, TPM).")
+    network_config_json = models.JSONField(null=True, blank=True,
+                                           help_text="Parsed network configuration (MACs, DNS, Gateways - PII sensitive for IPs).")
+    user_accounts_summary_json = models.JSONField(null=True, blank=True,
+                                                  help_text="Password policy, admin group members.")
+    system_hardening_json = models.JSONField(null=True, blank=True,
+                                             help_text="List of system hardening checks and their statuses.")
+    smb_shares_json = models.JSONField(null=True, blank=True, help_text="List of enumerated SMB shares.")
+
+    # CE+ Specifics
+    ce_plus_assessment_failures_json = models.JSONField(default=list, blank=True,
+                                                        help_text="List of automated CE+ check failure reasons.")
+
+    # Raw plugin outputs for this asset (consider size implications)
+    # raw_plugin_outputs_json = models.JSONField(null=True, blank=True, help_text="Collection of raw plugin outputs for this asset from the scan.")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['scoped_item', '-scan_log__created_at']  # Show latest scan snapshot first for an item
+        unique_together = ('scoped_item', 'scan_log')  # One snapshot per asset per scan
+        verbose_name = "Asset Scan Data Snapshot"
+        verbose_name_plural = "Asset Scan Data Snapshots"
+
+    def __str__(self):
+        return f"Snapshot for {self.scoped_item} from Scan {self.scan_log_id}"
+
+
+class AssetInstalledSoftware(models.Model):
+    """
+    Represents a piece of software installed on an asset, found during a scan.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    asset_scan_snapshot = models.ForeignKey(AssetScanDataSnapshot, on_delete=models.CASCADE,
+                                            related_name='installed_software')
+
+    name = models.CharField(max_length=512)
+    version = models.CharField(max_length=100, blank=True, null=True)
+    publisher = models.CharField(max_length=255, blank=True, null=True)
+    install_path = models.CharField(max_length=1024, blank=True, null=True)  # From some plugins
+    plugin_id_source = models.IntegerField(null=True, blank=True,
+                                           help_text="Nessus Plugin ID that reported this software.")
+
+    class Meta:
+        ordering = ['asset_scan_snapshot', 'name', 'version']
+        # Consider if unique_together on (asset_scan_snapshot, name, version) is needed
+        # If multiple plugins report the same software, add_if_not_present in parser helps.
+        verbose_name = "Asset Installed Software"
+        verbose_name_plural = "Asset Installed Software"
+
+    def __str__(self):
+        return f"{self.name} {self.version or ''}"
+
+
+class AssetAntivirusDetail(models.Model):
+    """
+    Represents an antivirus product detected on an asset during a scan.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    asset_scan_snapshot = models.ForeignKey(AssetScanDataSnapshot, on_delete=models.CASCADE,
+                                            related_name='antivirus_products')
+
+    product_name = models.CharField(max_length=255)
+    product_version = models.CharField(max_length=100, blank=True, null=True)
+    engine_version = models.CharField(max_length=100, blank=True, null=True)
+    signature_version = models.CharField(max_length=100, blank=True, null=True)
+    antispyware_signature_version = models.CharField(max_length=100, blank=True, null=True)
+    signatures_last_updated_text = models.CharField(max_length=100, blank=True, null=True,
+                                                    help_text="Raw text of when signatures were last updated.")
+    signatures_last_updated_dt = models.DateTimeField(null=True, blank=True,
+                                                      help_text="Parsed datetime of when signatures were last updated.")
+    install_path = models.CharField(max_length=1024, blank=True, null=True)
+    plugin_source_id = models.IntegerField(null=True, blank=True)
+    plugin_source_name = models.CharField(max_length=255, blank=True, null=True)
+
+    # You can add more specific fields if the parser extracts them consistently
+
+    class Meta:
+        ordering = ['asset_scan_snapshot', 'product_name']
+        # unique_together = ('asset_scan_snapshot', 'product_name', 'product_version') # If needed
+        verbose_name = "Asset Antivirus Detail"
+        verbose_name_plural = "Asset Antivirus Details"
+
+    def __str__(self):
+        return f"{self.product_name} (v{self.product_version or 'N/A'})"
+
+
+class AssetListeningService(models.Model):
+    """
+    Represents a listening service/port on an asset found during a scan.
+    """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    asset_scan_snapshot = models.ForeignKey(AssetScanDataSnapshot, on_delete=models.CASCADE,
+                                            related_name='listening_services')
+
+    port = models.IntegerField()
+    protocol = models.CharField(max_length=10)  # TCP, UDP
+    process_name = models.CharField(max_length=255, blank=True, null=True)
+    pid = models.CharField(max_length=20, blank=True, null=True)  # PID can sometimes be non-integer if 'N/A'
+    service_display_name = models.CharField(max_length=512, blank=True, null=True)
+    plugin_id_source = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['asset_scan_snapshot', 'protocol', 'port']
+        unique_together = ('asset_scan_snapshot', 'port', 'protocol')  # Usually unique
+        verbose_name = "Asset Listening Service"
+        verbose_name_plural = "Asset Listening Services"
+
+    def __str__(self):
+        return f"{self.protocol}/{self.port} ({self.process_name or self.service_display_name or 'Unknown'})"
 
 
 

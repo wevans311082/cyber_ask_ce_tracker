@@ -1,6 +1,7 @@
 # Standard library
 import json
 import os
+import pprint
 import random
 import logging
 from collections import defaultdict
@@ -13,6 +14,8 @@ import pytz
 from requests.auth import HTTPBasicAuth
 from tenable.errors import APIError, NotFoundError, ForbiddenError
 from .tenable_client import get_tenable_io_client
+from .tenable_client import get_tenable_io_client # Your TenableClient
+
 from constance import config
 from .pdf_extractor import extract_ce_data_from_pdf
 from django_celery_results.models import TaskResult # UNCOMMENTED
@@ -38,7 +41,7 @@ from django.db.models import Exists, OuterRef, Q
 from django.db.models.functions import Coalesce, Concat
 from django.forms import modelformset_factory
 from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseRedirect, JsonResponse, HttpRequest, \
-    HttpResponse
+    HttpResponse, HttpResponseBadRequest
 
 from django.utils.translation import gettext_lazy as _
 from django.utils import timezone as django_timezone
@@ -58,8 +61,7 @@ from django.utils import timezone
 from django.contrib import messages
 from django.http import Http404 # Make sure this is imported
 
-from .models import CriticalErrorLog
-
+from .models import CriticalErrorLog, TenableScanLog
 
 # Local app imports
 from .forms import (
@@ -3932,3 +3934,425 @@ class ClientWorkflowVisualPartialView(ClientRequiredMixin, DetailView):
             logger.error(f"Error rendering workflow visual for assessment PK {kwargs.get('pk')}: {e}", exc_info=True)
             # Return an empty response or simple error message suitable for AJAX replacement
             return HttpResponse("", status=500)
+
+
+@login_required
+def get_scan_log_summary_htmx(request, log_id):
+    # [DEBUG] get_scan_log_summary_htmx called for log_id: {{ log_id }} at {{ timezone.now() }}
+    try:
+        scan_log = get_object_or_404(
+            TenableScanLog.objects.select_related('assessment__client'),
+            id=log_id
+        )
+        if not request.user.is_staff:
+            if not (hasattr(scan_log.assessment, 'client') and hasattr(scan_log.assessment.client,
+                                                                       'user_profile') and scan_log.assessment.client.user_profile.user == request.user):
+                logger.warning(f"User {request.user.username} permission denied for scan_log {log_id}.")
+                raise Http404("Permission denied.")
+
+    except (TenableScanLog.DoesNotExist, ValueError, Http404):
+        logger.warning(f"Scan log {log_id} not found or access denied for user {request.user.username}.")
+        return HttpResponse("Scan log not found or access denied.", status=404)
+
+    scan_deleted_in_tenable = False
+    tenable_api_error_message = None
+    updated_fields = []
+    tio = None
+
+    try:
+        tio = get_tenable_io_client()
+        if not tio:
+            raise ValueError("Tenable API client could not be initialized. Check configuration.")
+
+        tenable_status_from_api = None
+        history_item_details_dict = None  # This will store the specific history entry if found
+
+        # Priority 1: Check specific scan run (history) if UUIDs are available
+        if scan_log.tenable_scan_run_uuid and scan_log.tenable_scan_definition_id:
+            logger.info(
+                f"Attempting to find specific scan run UUID: {scan_log.tenable_scan_run_uuid} within history of Def ID: {scan_log.tenable_scan_definition_id}")
+            try:
+                # CHANGES BEGIN — GEMINI-2025-05-17 12:30:00
+                # Iterate through history as per user's documentation check for their pytenable version
+                # tio.scans.history(scan_id) returns an iterator
+                found_specific_run = False
+                history_iterator = tio.scans.history(scan_id=scan_log.tenable_scan_definition_id)
+
+                for history_entry in history_iterator:
+
+                    logger.info( f"[DEBUG] {history_entry}")
+
+                    # Each 'history_entry' is a dict. We need to find the one matching our run_uuid.
+                    # The field containing the run's unique UUID in the history entry is typically 'history_uuid' or 'uuid'.
+                    # Let's check for 'uuid' first as it's common, then 'history_uuid'.
+                    # The value from Tenable needs to be compared with str(scan_log.tenable_scan_run_uuid)
+
+                    entry_run_uuid = history_entry.get('scan_uuid')  # Common key for the run's own UUID
+                    if not entry_run_uuid:  # Fallback if 'uuid' is not the key
+                        entry_run_uuid = history_entry.get('history_uuid')
+
+                    if entry_run_uuid and entry_run_uuid == str(scan_log.tenable_scan_run_uuid):
+                        history_item_details_dict = history_entry  # Found the specific run
+                        tenable_status_from_api = history_item_details_dict.get('status')
+                        logger.info(
+                            f"Found matching Tenable history entry for run {scan_log.tenable_scan_run_uuid}. Status: {tenable_status_from_api}")
+                        found_specific_run = True
+                        break  # Exit loop once found
+
+                if not found_specific_run:
+                    logger.warning(
+                        f"Scan run UUID {scan_log.tenable_scan_run_uuid} not found within the history of definition ID {scan_log.tenable_scan_definition_id}.")
+                    tenable_status_from_api = "RUN_NOT_FOUND_IN_HISTORY"
+                # CHANGES END — GEMINI-2025-05-17 12:30:00
+
+            except APIError as e:
+                if e.code == 404:  # 404 on the scan_definition_id itself when trying to get history
+                    logger.warning(
+                        f"Scan definition ID {scan_log.tenable_scan_definition_id} not found in Tenable (404) when trying to fetch history for run {scan_log.tenable_scan_run_uuid}.")
+                    scan_deleted_in_tenable = True  # If definition is gone, run is effectively gone too.
+                    tenable_status_from_api = "DELETED_IN_TENABLE"
+                else:
+                    logger.error(
+                        f"Tenable API error fetching history for def ID {scan_log.tenable_scan_definition_id} (run {scan_log.tenable_scan_run_uuid}): {e}",
+                        exc_info=True)
+                    tenable_api_error_message = f"API Error (History Fetch): {e.code} - {e.msg if hasattr(e, 'msg') else str(e)}"
+            except Exception as e_hist:  # Catch other errors during history iteration
+                logger.error(
+                    f"Error processing history for def ID {scan_log.tenable_scan_definition_id} (run {scan_log.tenable_scan_run_uuid}): {e_hist}",
+                    exc_info=True)
+                tenable_api_error_message = f"Error processing scan history: {str(e_hist)}"
+
+        # Priority 2: If no specific run status found (or no run_uuid), check the scan definition's general status
+        if not tenable_status_from_api or tenable_status_from_api in ["RUN_NOT_FOUND_IN_HISTORY"]:
+            if scan_log.tenable_scan_definition_id:
+                logger.info(
+                    f"Attempting to fetch Tenable details for scan definition ID: {scan_log.tenable_scan_definition_id} (as run info was inconclusive or not applicable).")
+                try:
+                    scan_def_details = tio.scans.details(scan_id=scan_log.tenable_scan_definition_id)
+                    if scan_def_details:
+                        current_def_status = scan_def_details.get('status')
+                        logger.info(
+                            f"Tenable status for definition {scan_log.tenable_scan_definition_id}: {current_def_status}")
+                        # Only overwrite if we didn't get a more specific status like "RUN_NOT_FOUND_IN_HISTORY"
+                        # or if tenable_status_from_api is still None
+                        if not tenable_status_from_api or tenable_status_from_api == "RUN_NOT_FOUND_IN_HISTORY":
+                            tenable_status_from_api = current_def_status
+
+                        if scan_log.scan_name != scan_def_details.get('name'):
+                            scan_log.scan_name = scan_def_details.get('name')
+                            updated_fields.append('scan_name')
+                except APIError as e:
+                    if e.code == 404:
+                        logger.warning(
+                            f"Scan definition ID {scan_log.tenable_scan_definition_id} also not found in Tenable (404). Scan is likely deleted.")
+                        scan_deleted_in_tenable = True
+                        tenable_status_from_api = "DELETED_IN_TENABLE"
+                    else:
+                        logger.error(
+                            f"Tenable API error fetching scan definition details for {scan_log.tenable_scan_definition_id}: {e}",
+                            exc_info=True)
+                        if not tenable_api_error_message:
+                            tenable_api_error_message = f"API Error (Definition Details): {e.code} - {e.msg if hasattr(e, 'msg') else str(e)}"
+            elif scan_log.tenable_scan_run_uuid and not scan_log.tenable_scan_definition_id:  # Should be rare
+                logger.warning(
+                    f"Scan log {log_id} has a run UUID but no definition ID. Cannot fetch definition status.")
+                if tenable_status_from_api in ["RUN_NOT_FOUND_IN_HISTORY"]:
+                    scan_deleted_in_tenable = True
+                    tenable_status_from_api = "DELETED_IN_TENABLE"
+
+        # Update local scan_log status based on what was fetched
+        if tenable_status_from_api:
+            new_status_candidate = tenable_status_from_api.upper().replace(" ", "_")
+
+            if scan_log.status != new_status_candidate:
+                scan_log.status = new_status_candidate
+                updated_fields.append('status')
+
+            current_log_message = scan_log.log_message or ""
+            refresh_message = f"Status refreshed from Tenable at {timezone.now().strftime('%Y-%m-%d %H:%M')}: API reported '{tenable_status_from_api}'."
+
+            if not current_log_message.endswith(f"API reported '{tenable_status_from_api}'."):
+                scan_log.log_message = f"{current_log_message}\n{refresh_message}".strip()
+                updated_fields.append('log_message')
+
+        if scan_deleted_in_tenable and scan_log.status != "DELETED_IN_TENABLE":
+            scan_log.status = "DELETED_IN_TENABLE"
+            updated_fields.append('status')
+            if not (scan_log.log_message and "confirmed deleted in Tenable" in scan_log.log_message):
+                scan_log.log_message = f"{scan_log.log_message or ''}\nScan (run/definition) confirmed deleted in Tenable at {timezone.now().strftime('%Y-%m-%d %H:%M:%S %Z')}.".strip()
+                updated_fields.append('log_message')
+
+        if updated_fields:
+            scan_log.save(update_fields=list(set(updated_fields)))
+            logger.info(f"Updated TenableScanLog {scan_log.id} with fields: {updated_fields}")
+
+    except ValueError as ve:
+        logger.error(f"Configuration or Value error for scan log {log_id}: {ve}", exc_info=True)
+        tenable_api_error_message = str(ve)
+    except APIError as e:
+        logger.error(f"General Tenable API error for scan log {log_id}: {e}", exc_info=True)
+        tenable_api_error_message = f"Tenable API Error: {e.code} - {e.msg if hasattr(e, 'msg') else str(e)}"
+        if scan_log and scan_log.status != "API_ERROR":
+            scan_log.status = "API_ERROR"
+            scan_log.save(update_fields=['status'])
+    except Exception as e:
+        logger.error(f"Unexpected error processing scan log {log_id} summary: {e}", exc_info=True)
+        tenable_api_error_message = f"An unexpected error occurred: {str(e)}"
+        if scan_log and scan_log.status != "SYSTEM_ERROR":
+            scan_log.status = "SYSTEM_ERROR"
+            scan_log.save(update_fields=['status'])
+
+    context = {
+        'scan_log': scan_log,
+        'scan_deleted_in_tenable': scan_deleted_in_tenable,
+        'tenable_api_error_message': tenable_api_error_message,
+        'assessment_id': scan_log.assessment.id
+    }
+    return render(request, 'tracker/partials/client_scan_log_summary_content.html', context)
+
+
+@login_required
+# @require_POST # Or @require_DELETE if you use hx-delete and appropriate CSRF handling
+def delete_scan_log_htmx(request, log_id):
+    # [DEBUG] delete_scan_log_htmx called for log_id: {{ log_id }} at {{ timezone.now() }}
+    if request.method == 'POST':  # Using POST for simplicity with hx-post
+        try:
+            # Add permission check: ensure user can delete this log
+            # Example, adjust to your permission model:
+            scan_log = get_object_or_404(
+                TenableScanLog,
+                id=log_id
+                # assessment__client__user_profile__user=request.user # Example permission
+            )
+            # Add a more robust permission check here based on your application's roles
+         #   if not request.user.is_staff:  # Example: only staff can delete
+         #       if not (hasattr(scan_log.assessment, 'client') and hasattr(scan_log.assessment.client,
+         #                                                                  'user_profile') and scan_log.assessment.client.user_profile.user == request.user):
+         #           logger.warning(f"User {request.user.username} permission denied for deleting scan_log {log_id}.")
+         #           return HttpResponse("Permission denied.", status=403)
+
+            log_name_for_audit = scan_log.scan_name or str(scan_log.id)
+            scan_log.delete()
+            logger.info(f"User {request.user.username} deleted TenableScanLog ID {log_id} ('{log_name_for_audit}').")
+            # For HTMX, returning an empty 200 response is often enough if hx-swap="outerHTML" is used on the target.
+            # The target element (the accordion item) will be removed.
+            return HttpResponse(status=200)
+        except TenableScanLog.DoesNotExist:
+            return HttpResponse("Scan log not found or access denied.", status=404)
+        except Exception as e:
+            logger.error(f"Error deleting scan_log ID {log_id} by user {request.user.username}: {e}", exc_info=True)
+            # You might want to return a specific error message to HTMX if needed
+            return HttpResponse(f"Error deleting log: {str(e)}", status=500)
+    return HttpResponseBadRequest("Invalid request method.")
+
+
+@login_required
+def view_scan_results_raw_old(request, assessment_pk, log_id):
+    print(
+        f"--- [RAW RESULTS VIEW DEBUG] --- Request for log_id: {log_id}, assessment_pk: {assessment_pk} by user: {request.user.username}")
+    try:
+        scan_log = get_object_or_404(
+            TenableScanLog.objects.select_related('assessment__client'),
+            id=log_id,
+            assessment_id=assessment_pk
+        )
+        print(
+            f"[RAW RESULTS VIEW DEBUG] Fetched scan_log: ID={scan_log.id}, DefID={scan_log.tenable_scan_definition_id}, RunUUID={scan_log.tenable_scan_run_uuid}")
+
+        if not request.user.is_staff:
+            if not (hasattr(scan_log.assessment, 'client') and hasattr(scan_log.assessment.client,
+                                                                       'user_profile') and scan_log.assessment.client.user_profile.user == request.user):
+                logger.warning(
+                    f"User {request.user.username} permission denied for viewing raw results of scan_log {log_id} for assessment {assessment_pk}.")
+                raise Http404("Permission denied or scan log not found.")
+
+    except (TenableScanLog.DoesNotExist, ValueError, Http404) as e:
+        print(
+            f"[RAW RESULTS VIEW DEBUG] Scan log {log_id} (for assessment {assessment_pk}) not found or access denied. Error: {e}")
+        logger.warning(
+            f"Raw scan results: Scan log {log_id} (for assessment {assessment_pk}) not found or access denied for user {request.user.username}. Error: {e}")
+        return HttpResponse("Scan log not found or access denied.", status=404)
+
+    raw_vulnerabilities = []
+    api_error_message = None
+    scan_status_from_tenable_api = None
+    tio = None
+
+    if not scan_log.tenable_scan_definition_id or not scan_log.tenable_scan_run_uuid:
+        api_error_message = "Scan log is missing necessary Tenable identifiers (Definition ID or Run UUID) to fetch results."
+        print(f"[RAW RESULTS VIEW DEBUG] For log {scan_log.id}: {api_error_message}")
+    else:
+        print(
+            f"[RAW RESULTS VIEW DEBUG] Has DefID and RunUUID. DefID: {scan_log.tenable_scan_definition_id}, RunUUID: {scan_log.tenable_scan_run_uuid}")
+        try:
+            print("[RAW RESULTS VIEW DEBUG] Attempting to initialize TenableIO client...")
+            tio = get_tenable_io_client()
+            if not tio:
+                print(
+                    "[RAW RESULTS VIEW DEBUG] TenableIO client initialization failed (get_tenable_io_client returned None).")
+                raise ValueError("Tenable API client could not be initialized. Check configuration.")
+            print("[RAW RESULTS VIEW DEBUG] TenableIO client initialized successfully.")
+
+            try:
+                print(
+                    f"[RAW RESULTS VIEW DEBUG] Fetching history for DefID {scan_log.tenable_scan_definition_id}, to find RunUUID {scan_log.tenable_scan_run_uuid}")
+                history_iterator = tio.scans.history(scan_id=scan_log.tenable_scan_definition_id)
+                found_run_in_history = False
+
+                for i, history_entry in enumerate(history_iterator):
+                    print(
+                        f"[RAW RESULTS VIEW DEBUG] Iterating history entry {i}: {json.dumps(history_entry, indent=2)}")
+
+                    # CORRECTED KEY: Use 'scan_uuid' from the history_entry as per user's previous log output
+                    entry_run_uuid = history_entry.get('scan_uuid')
+                    if not entry_run_uuid:  # Fallback if 'scan_uuid' is not the key in some entries
+                        entry_run_uuid = history_entry.get('uuid') or history_entry.get('history_uuid')
+
+                    print(
+                        f"[RAW RESULTS VIEW DEBUG] Comparing DB run UUID: '{str(scan_log.tenable_scan_run_uuid)}' with History Entry UUID: '{entry_run_uuid}' (Key used: 'scan_uuid' primarily)")
+
+                    if entry_run_uuid and entry_run_uuid == str(scan_log.tenable_scan_run_uuid):
+                        scan_status_from_tenable_api = history_entry.get('status')
+                        print(
+                            f"[RAW RESULTS VIEW DEBUG] Found matching scan run in history. Status: '{scan_status_from_tenable_api}'.")
+                        found_run_in_history = True
+                        break
+
+                if not found_run_in_history:
+                    print(
+                        f"[RAW RESULTS VIEW DEBUG] Specific scan run {scan_log.tenable_scan_run_uuid} not found in history of def {scan_log.tenable_scan_definition_id}.")
+                    scan_status_from_tenable_api = "RUN_NOT_FOUND_IN_HISTORY"
+
+                if scan_status_from_tenable_api and scan_status_from_tenable_api.lower() == 'completed':
+                    print(
+                        f"[RAW RESULTS VIEW DEBUG] Scan run {scan_log.tenable_scan_run_uuid} is 'completed'. Fetching vulnerability details...")
+
+                    # Use tio.scans.details() to get vulnerability information for a specific history_id
+                    scan_run_details = tio.scans.details(
+                        scan_id=scan_log.tenable_scan_definition_id,
+                      #  history_id=str(scan_log.tenable_scan_run_uuid)  # history_id is the run UUID
+                    )
+                    print(
+                        f"[RAW RESULTS VIEW DEBUG] Full scan_run_details response: {json.dumps(scan_run_details, indent=2)}")
+
+                    # Vulnerabilities are often in a 'vulnerabilities' list or nested under 'hosts'
+                    # The exact structure depends on the Tenable.io API response for scan details.
+                    if 'vulnerabilities' in scan_run_details:
+                        raw_vulnerabilities = scan_run_details['vulnerabilities']
+                    elif 'hosts' in scan_run_details:
+                        for host in scan_run_details.get('hosts', []):
+                            raw_vulnerabilities.extend(host.get('vulnerabilities', []))
+                    else:
+                        print(
+                            "[RAW RESULTS VIEW DEBUG] 'vulnerabilities' or 'hosts' key not found in scan_run_details response. Vulnerability data might be elsewhere or not present for this scan type/status.")
+                        raw_vulnerabilities = []  # Ensure it's a list
+
+                    print(
+                        f"[RAW RESULTS VIEW DEBUG] Extracted {len(raw_vulnerabilities)} vulnerabilities for scan run {scan_log.tenable_scan_run_uuid}.")
+                    if raw_vulnerabilities:
+                        sample_size = min(3, len(raw_vulnerabilities))
+                        print(f"[RAW RESULTS VIEW DEBUG] First {sample_size} vulnerability entries (sample):")
+                        for i in range(sample_size):
+                            print(f"--- Vuln {i + 1} ---")
+                            print(json.dumps(raw_vulnerabilities[i], indent=2))
+
+                elif scan_status_from_tenable_api and scan_status_from_tenable_api != "RUN_NOT_FOUND_IN_HISTORY":
+                    api_error_message = f"Scan is not yet completed. Current Tenable status: '{scan_status_from_tenable_api}'. Raw vulnerability data can typically only be fetched for completed scans."
+                    print(f"[RAW RESULTS VIEW DEBUG] {api_error_message}")
+                elif scan_status_from_tenable_api == "RUN_NOT_FOUND_IN_HISTORY":
+                    api_error_message = f"The specific scan run (UUID: {scan_log.tenable_scan_run_uuid}) was not found in the history of definition ID {scan_log.tenable_scan_definition_id}. It might be very old, purged, or the IDs are mismatched."
+                    print(f"[RAW RESULTS VIEW DEBUG] {api_error_message}")
+                else:
+                    api_error_message = "Could not determine the status of the scan run from Tenable history. Unable to fetch vulnerabilities."
+                    print(f"[RAW RESULTS VIEW DEBUG] {api_error_message}")
+
+            except APIError as e:
+                if e.code == 404:
+                    api_error_message = f"Scan definition (ID: {scan_log.tenable_scan_definition_id}) or specific run (UUID: {scan_log.tenable_scan_run_uuid}) not found in Tenable. It may have been deleted."
+                    print(f"[RAW RESULTS VIEW DEBUG] {api_error_message} - Tenable API Error: {e}")
+                else:
+                    api_error_message = f"Tenable API error while fetching scan status or vulnerabilities: {e.code} - {e.msg if hasattr(e, 'msg') else str(e)}"
+                    logger.error(f"Raw results: {api_error_message}", exc_info=True)
+            except Exception as e_fetch:
+                api_error_message = f"An unexpected error occurred while fetching scan vulnerabilities: {str(e_fetch)}"
+                logger.error(f"Raw results: {api_error_message}", exc_info=True)
+
+        except ValueError as ve:
+            api_error_message = str(ve)
+            print(f"[RAW RESULTS VIEW DEBUG] Configuration or Value error for scan log {log_id}: {ve}")
+            logger.error(f"Raw results: Configuration or Value error for scan log {log_id}: {ve}", exc_info=True)
+        except Exception as e_client:
+            api_error_message = f"An unexpected error occurred with the Tenable client: {str(e_client)}"
+            print(f"[RAW RESULTS VIEW DEBUG] {api_error_message}")
+            logger.error(f"Raw results: {api_error_message}", exc_info=True)
+
+    print(
+        f"[RAW RESULTS VIEW DEBUG] Final context: scan_log_id={scan_log.id}, vuln_count={len(raw_vulnerabilities)}, api_error='{api_error_message}', tenable_status='{scan_status_from_tenable_api}'")
+    context = {
+        'scan_log': scan_log,
+        'raw_vulnerabilities_json': json.dumps(raw_vulnerabilities, indent=2) if raw_vulnerabilities else "[]",
+        'vulnerability_count': len(raw_vulnerabilities),
+        'api_error_message': api_error_message,
+        'scan_status_from_tenable': scan_status_from_tenable_api,
+        'assessment': scan_log.assessment
+    }
+    return render(request, 'tracker/client/client_scan_results_raw.html', context)
+
+
+# CHANGES BEGIN - GEMINI-2025-05-17 - Simplified select_related in view_scan_results_raw
+@login_required
+def view_scan_results_raw(request, assessment_pk, log_id):
+    """
+    Proof-of-concept: pull raw vulnerabilities from TenableIO and print to console.
+    """
+    # 1. Init client
+    tio = get_tenable_io_client()
+    if not tio:
+        print("ERROR: Could not initialize TenableIO client")
+        return HttpResponse("Client init failed", status=500)
+
+    try:
+        # —— Option A: only vulns on assets tagged "TEST WE"
+        tag_iterator = tio.exports.vulns(
+            tags=[('Asset Group', 'TEST WE')]
+        )
+        print("[POC] Vulns for tag Asset Group=TEST WE:")
+        for v in tag_iterator:
+            print(json.dumps(v, indent=2))
+
+        # —— Option B: only vulns from a single scan UUID (hardcoded for testing)
+        scan_uuid = '0ebbdbe2-a728-48db-9923-aad399c84585'
+        scan_iterator = tio.exports.vulns(scan_uuid=scan_uuid)
+        all_scan_vulns = []
+        print(f"[POC] Vulns from scan {scan_uuid}:")
+        for v in scan_iterator:
+            print(json.dumps(v, indent=2))
+            all_scan_vulns.append(v)
+
+        # ——— Save to MEDIA_ROOT/scan_reports/… ———
+        reports_dir = os.path.join(settings.MEDIA_ROOT, 'scan_reports')
+        os.makedirs(reports_dir, exist_ok=True)
+
+        timestamp = timezone.now().strftime("%Y%m%d%H%M")
+        filename = f"{timestamp}_{scan_uuid}.json"
+        filepath = os.path.join(reports_dir, filename)
+
+        with open(filepath, 'w') as fp:
+            json.dump(all_scan_vulns, fp, indent=2)
+
+        print(f"[POC] Saved {len(all_scan_vulns)} records to {filepath}")
+
+        # Public URL (assuming MEDIA_URL is correctly served)
+        file_url = f"{settings.MEDIA_URL}scan_reports/{filename}"
+
+        return HttpResponse(
+            f"Exported {len(all_scan_vulns)} vulnerabilities to:\n{filepath}\n\n"
+            f"Accessible at: {file_url}",
+            content_type="text/plain"
+        )
+
+    except Exception as e:
+        print(f"ERROR fetching from TenableIO: {e}")
+        return HttpResponse(f"Error: {e}", status=500)
+
+

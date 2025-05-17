@@ -1,27 +1,44 @@
-# tracker/tasks.py (Corrected create_or_update_tenable_client_tag function - Second Fix)
-
-# --- Keep your existing imports ---
+# Standard library
 import logging
-from celery import shared_task
-from django.core.exceptions import ObjectDoesNotExist
-from tenable.errors import APIError, NotFoundError, ForbiddenError
-from .models import Client, Assessment, ScopedItem, ExternalIP
-from .tenable_client import get_tenable_io_client, get_scan_details, find_scan_by_name, create_agent_scan, launch_scan, get_tenable_io_client, find_scan_by_name, create_agent_scan, launch_scan_on_tenable, get_agent_group_details_by_name
-from .tenable_client import create_agent_scan, find_scan_by_name
+import os
+import re
+import time
+import uuid
+from urllib.parse import urljoin, urlparse
+
+# Third-party
 import requests
 from bs4 import BeautifulSoup
 from celery import shared_task
-from constance import config
+from constance import config, settings
+from django.db import transaction
+from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
-from cyber_ask_assessment_tracker.celery import app
-from urllib.parse import urljoin
-import re
-import logging
-import os
-from .models import NessusAgentURL
 from requests.exceptions import RequestException
-from urllib.parse import urljoin, urlparse
-import time
+from tenable.errors import APIError, ForbiddenError, NotFoundError
+from restfly.errors import RequestConflictError
+
+# Local apps
+from cyber_ask_assessment_tracker.celery import app
+
+from .models import (
+    Assessment,
+    Client,
+    ExternalIP,
+    NessusAgentURL,
+    ScopedItem,
+    TenableScanLog,
+)
+
+from .tenable_client import (
+    create_agent_scan,
+    find_scan_by_name,
+    get_agent_group_details_by_name,
+    get_scan_details,
+    get_tenable_io_client,
+    launch_scan,
+    launch_scan_on_tenable,
+)
 
 from .utils import log_assessment_event
 
@@ -1152,162 +1169,215 @@ def task_launch_tenable_scan(self, assessment_id):
         return f"Error: Unexpected error launching scan for Assessment {assessment_id}. Retrying."
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=60)  # Added bind=True
+# CHANGES BEGIN — GEMINI-2025-05-17 10:39:00
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def launch_tenable_scan_task(self, assessment_id: int):
-    task_id = self.request.id
+    task_id = getattr(self.request, 'id', f"adhoc-{uuid.uuid4().hex[:8]}")
     logger.info(f"[Task:{task_id}] Starting Tenable scan launch for Assessment ID: {assessment_id}")
+
+    _expected_scan_name_for_error_handling = f"CE+ Scan - Assessment {assessment_id} - ClientNameUnknown"
+    tenable_log_record = None  # Initialize
+
+    # It's better to define assessment once if possible, and pass it to _handle_error
+    # or make _handle_error more robust if assessment might not be defined yet.
+    # For now, we'll assume assessment is defined before _handle_error is primarily used.
 
     try:
         assessment = Assessment.objects.select_related('client').get(pk=assessment_id)
-        client = assessment.client
     except Assessment.DoesNotExist:
-        logger.error(f"[Task:{task_id}] Assessment ID {assessment_id} not found.")
+        logger.error(f"[Task:{task_id}] Assessment {assessment_id} not found.")
+        # Cannot call _handle_error here as assessment is not defined
+        TenableScanLog.objects.create(  # Create a minimal log
+            assessment_id=assessment_id,  # If assessment_id is an integer PK
+            status="CONFIG_ERROR",
+            log_message=f"Assessment {assessment_id} not found.",
+            scan_name=_expected_scan_name_for_error_handling  # Use placeholder
+        )
         return f"Error: Assessment {assessment_id} not found."
-    except Client.DoesNotExist:  # Should be caught by select_related if client is null and accessed
-        logger.error(f"[Task:{task_id}] Client for Assessment ID {assessment_id} not found.")
-        assessment.scan_status = Assessment.SCAN_ERROR
-        assessment.scan_status_message = "Client record not found."
-        assessment.save()
-        return f"Error: Client for Assessment {assessment_id} not found."
 
-    assessment.scan_status = Assessment.SCAN_PENDING  # Mark as pending while we work
+    client = assessment.client
+    expected_scan_name = f"CE+ Scan - Assessment {assessment.id} - {client.name}"  # Define after client is fetched
+
+    # Helper to update assessment and log errors
+    # Now that assessment and expected_scan_name are defined in the outer scope,
+    # _handle_error can access them.
+    def _handle_error(status_choice, status_message, log_status="CONFIG_ERROR", log_msg=None):
+        nonlocal assessment  # To modify the assessment object from the outer scope
+        assessment.scan_status = status_choice
+        assessment.scan_status_message = status_message
+        assessment.save(update_fields=["scan_status", "scan_status_message"])
+        TenableScanLog.objects.create(
+            assessment=assessment,
+            status=log_status,
+            log_message=log_msg or status_message,
+            scan_name=expected_scan_name  # expected_scan_name is now defined
+        )
+        return f"Error: {status_message}"
+
+    assessment.scan_status = Assessment.SCAN_PENDING
     assessment.scan_status_message = "Preparing to launch scan..."
-    assessment.save()
+    assessment.save(update_fields=["scan_status", "scan_status_message"])
 
-    # --- Get Target Agent Group Name from Client model ---
-    # Assumes you've added 'tenable_agent_group_target_name' to Client model
-    target_agent_group_name = client.tenable_agent_group_target_name
+    target_agent_group_name = client.tenable_agent_group_target_name or client.name
     if not target_agent_group_name:
-        # Fallback to client.name if the specific field is not set
-        logger.warning(
-            f"[Task:{task_id}] 'tenable_agent_group_target_name' not set for Client ID {client.id}. Falling back to client.name ('{client.name}').")
-        target_agent_group_name = client.name  # Or client.company_name, whichever holds "TEST WE"
+        return _handle_error(
+            Assessment.SCAN_ERROR,
+            "Config error: Client has no agent group name.",
+            log_msg=f"Client '{client.id}' for Assessment {assessment.id} has no defined agent group name."
+        )
+    logger.info(f"[Task:{task_id}] Using agent group '{target_agent_group_name}' for Tenable client '{client.name}'")
 
-    if not target_agent_group_name:
-        errmsg = f"Client '{client.id}' for Assessment {assessment_id} has no defined name to search for an agent group."
-        logger.error(f"[Task:{task_id}] {errmsg}")
-        assessment.scan_status = Assessment.SCAN_ERROR
-        assessment.scan_status_message = "Configuration error: Client has no agent group name."
-        assessment.save()
-        return f"Error: {errmsg}"
+    agent_group = get_agent_group_details_by_name(target_agent_group_name)
+    if not agent_group or 'uuid' not in agent_group:
+        return _handle_error(
+            Assessment.SCAN_ERROR,
+            f"Config error: Tenable Agent Group '{target_agent_group_name}' not found.",
+            log_msg=f"Agent group '{target_agent_group_name}' missing or invalid for Assessment {assessment.id}."
+        )
+    group_uuid = agent_group['uuid']
 
-    logger.info(
-        f"[Task:{task_id}] Target Tenable Agent Group Name for Client '{client.name}': '{target_agent_group_name}'")
+    policy_id_from_settings = int(str(TENABLE_POLICY_ID))
+    scanner_uuid_from_settings = str(TENABLE_SCANNER_UUID) if TENABLE_SCANNER_UUID else None
+    if not policy_id_from_settings or not scanner_uuid_from_settings:
+        return _handle_error(
+            Assessment.SCAN_ERROR,
+            "Config error: Missing Tenable Policy ID or Scanner UUID settings.",
+            log_msg="Global TENABLE_POLICY_ID or TENABLE_SCANNER_UUID not configured."
+        )
 
-    # --- Dynamically fetch Agent Group details (ID and UUID) by its Name ---
-    agent_group_details = get_agent_group_details_by_name(target_agent_group_name)
+    # This is the POLICY/TEMPLATE UUID that the scan definition *should* ideally be based on,
+    # or the one from the last known good scan definition for this assessment.
+    current_assessment_policy_template_uuid = assessment.tenable_scan_uuid
+    scan_definition_id_to_launch = None  # Numeric ID
 
-    if not agent_group_details or 'uuid' not in agent_group_details:  # We need the UUID for scan creation
-        errmsg = f"Could not find Tenable Agent Group details (or UUID) for name '{target_agent_group_name}' for Assessment {assessment_id}."
-        logger.error(f"[Task:{task_id}] {errmsg}")
-        assessment.scan_status = Assessment.SCAN_ERROR
-        assessment.scan_status_message = f"Configuration error: Tenable Agent Group '{target_agent_group_name}' not found or API error during lookup."
-        assessment.save()
-        return f"Error: {errmsg}"
+    with transaction.atomic():
+        # Step 1: Try to find an existing scan definition by name
+        found_def_id, found_def_policy_template_uuid = find_scan_by_name(expected_scan_name)
 
-    # Use the Agent Group UUID for creating the scan, as per your standalone script's success
-    agent_group_identifier_for_scan = agent_group_details['uuid']
-    logger.info(
-        f"[Task:{task_id}] Found Agent Group: ID={agent_group_details['id']}, UUID='{agent_group_identifier_for_scan}' for Name='{target_agent_group_name}'")
-
-    # --- Policy and Scanner Configuration ---
-    policy_id_to_use = TENABLE_POLICY_ID
-    scanner_uuid_to_use = TENABLE_SCANNER_UUID
-
-    if not all([policy_id_to_use, scanner_uuid_to_use]):
-        errmsg = "Missing Tenable Policy ID or Scanner UUID in global configuration (Constance)."
-        logger.error(f"[Task:{task_id}] {errmsg}")
-        assessment.scan_status = Assessment.SCAN_ERROR
-        assessment.scan_status_message = "Configuration error: Missing Tenable Policy/Scanner settings."
-        assessment.save()
-        return f"Error: {errmsg}"
-
-    # --- Scan Naming and Uniqueness ---
-    expected_scan_name = f"CE+ Scan - Assessment {assessment.id} - {client.name}"  # Adjust if client.name isn't suitable for scan name part
-
-    # --- Check for Existing Scan or Create New ---
-    scan_to_launch_id = None
-    scan_to_launch_uuid = assessment.tenable_scan_uuid  # Use stored UUID first if available
-
-    if scan_to_launch_uuid:
-        logger.info(f"[Task:{task_id}] Assessment has a stored Tenable Scan UUID: {scan_to_launch_uuid}. Verifying...")
-        # Here you might want to add a check to see if this scan still exists on Tenable
-        # and if its settings (like agent group) match. For now, we'll trust the UUID.
-        # If find_scan_by_name returns ID and UUID, we might need to reconcile.
-        # Let's assume if UUID is present, we try to get its ID for launching.
-        # For simplicity, let's re-fetch by name to ensure consistency for now,
-        # or ensure create_agent_scan and find_scan_by_name both update assessment.tenable_scan_uuid AND assessment.tenable_scan_id (new field)
-
-        # For now, let's prioritize finding by name to ensure we have the latest ID for launching
-        found_id, found_uuid = find_scan_by_name(expected_scan_name)
-        if found_id and found_uuid:
-            logger.info(f"[Task:{task_id}] Found existing scan by name: ID={found_id}, UUID={found_uuid}")
-            scan_to_launch_id = found_id
-            scan_to_launch_uuid = found_uuid  # Update stored UUID if different
-            assessment.tenable_scan_uuid = found_uuid
-            # You might want to add assessment.tenable_scan_id = found_id if you add that field
-        else:
+        if found_def_id:
             logger.info(
-                f"[Task:{task_id}] Stored UUID {scan_to_launch_uuid} not found by current name '{expected_scan_name}'. Will attempt to create a new scan.")
-            scan_to_launch_uuid = None  # Clear it so we create a new one
-            assessment.tenable_scan_uuid = None
+                f"[Task:{task_id}] Found existing scan definition by name: ID={found_def_id}, Its Policy/Template UUID={found_def_policy_template_uuid}")
+            # An existing scan definition with the correct name was found.
+            # Decision: Always reuse it if found by name, and update assessment's stored policy/template UUID to match.
+            scan_definition_id_to_launch = found_def_id
+            if assessment.tenable_scan_uuid != found_def_policy_template_uuid:
+                logger.info(
+                    f"[Task:{task_id}] Updating assessment's stored Policy/Template UUID from '{assessment.tenable_scan_uuid}' to '{found_def_policy_template_uuid}' to match existing scan definition ID {found_def_id}.")
+                assessment.tenable_scan_uuid = found_def_policy_template_uuid
+                # Save is done in the finally block, or if only this changes, save here:
+                # assessment.save(update_fields=['tenable_scan_uuid']) # Covered by finally
+            current_assessment_policy_template_uuid = found_def_policy_template_uuid  # Use this for logging
 
-    if not scan_to_launch_id:  # If not found by name (or initial UUID was invalid)
-        logger.info(
-            f"[Task:{task_id}] No existing scan found or applicable. Attempting to create new scan '{expected_scan_name}' targeting Agent Group UUID: {agent_group_identifier_for_scan}")
-        try:
-            created_id, created_uuid = create_agent_scan(
-                name=expected_scan_name,
-                policy_id_val=policy_id_to_use,
-                scanner_uuid_val=scanner_uuid_to_use,
-                agent_group_identifier=agent_group_identifier_for_scan  # Pass the Agent Group UUID
-            )
+        else:  # No scan definition found by that name, so we must create one.
+            logger.info(f"[Task:{task_id}] No scan definition found by name '{expected_scan_name}'. Creating new.")
+            # We need a base policy/template UUID to create a new scan definition.
+            # This should come from the assessment (desired) or a global default.
+            base_template_for_new_def = current_assessment_policy_template_uuid
+            if not base_template_for_new_def:
+                # Fallback or error if assessment has no policy/template UUID specified for new scans
+                # For this example, let's assume TENABLE_SCAN_POLICY_UUID or similar global default if assessment.tenable_scan_uuid is None
+                # default_base_template = getattr(settings, 'TENABLE_DEFAULT_AGENT_SCAN_TEMPLATE_UUID', None) # Example setting
+                # if not default_base_template:
+                return _handle_error(
+                    Assessment.SCAN_ERROR,
+                    "Config error: No Policy/Template UUID on assessment or global default to create new scan definition.",
+                    log_msg=f"Assessment {assessment.id} has no tenable_scan_uuid and no global default base template for new scan definition."
+                )
+                # base_template_for_new_def = default_base_template
+                # logger.info(f"[Task:{task_id}] Using global default base template UUID '{base_template_for_new_def}' for new scan definition.")
 
-            if created_id and created_uuid:
-                scan_to_launch_id = created_id
-                scan_to_launch_uuid = created_uuid
-                assessment.tenable_scan_uuid = created_uuid  # Store the UUID of the newly created scan
-                logger.info(f"[Task:{task_id}] Successfully created scan: ID={created_id}, UUID={created_uuid}")
-            else:
-                errmsg = f"Failed to create Tenable scan '{expected_scan_name}' targeting Agent Group '{target_agent_group_name}' (UUID: {agent_group_identifier_for_scan})."
-                logger.error(f"[Task:{task_id}] {errmsg}")
-                assessment.scan_status = Assessment.SCAN_ERROR
-                assessment.scan_status_message = "Error: Failed to create Tenable scan."
-                assessment.save()
-                # Log placeholder for actual assessment log
-                # AssessmentLog.objects.create(assessment=assessment, message=errmsg, log_type=AssessmentLog.ERROR)
-                return f"Error: {errmsg} (Assessment {assessment_id})"
-        except Exception as e:  # Catch any other unexpected error during creation
-            errmsg = f"Unexpected error during scan creation for Assessment {assessment_id}: {e}"
-            logger.error(f"[Task:{task_id}] {errmsg}", exc_info=True)
-            assessment.scan_status = Assessment.SCAN_ERROR
-            assessment.scan_status_message = "Error: Unexpected error creating Tenable scan."
-            assessment.save()
-            return f"Error: {errmsg}"
+            logger.info(
+                f"[Task:{task_id}] Creating new scan definition: '{expected_scan_name}' based on Policy/Template UUID: {base_template_for_new_def}")
+            try:
+                new_def_id, new_def_actual_policy_template_uuid = create_agent_scan(
+                    name=expected_scan_name,
+                    policy_id_val=policy_id_from_settings,  # Numeric policy ID for settings within the scan def
+                    scanner_uuid_val=scanner_uuid_from_settings,
+                    agent_group_identifier=group_uuid
+                )
+                if not new_def_id:
+                    return _handle_error(
+                        Assessment.SCAN_ERROR,
+                        "Error: Failed to create Tenable scan definition (no ID returned).",
+                        log_msg=f"create_agent_scan for '{expected_scan_name}' returned no ID."
+                    )
+                scan_definition_id_to_launch = new_def_id
+                current_assessment_policy_template_uuid = new_def_actual_policy_template_uuid
+                assessment.tenable_scan_uuid = new_def_actual_policy_template_uuid  # Store the policy/template UUID of the new definition
+                # assessment.save(update_fields=['tenable_scan_uuid']) # Covered by finally
+                logger.info(
+                    f"[Task:{task_id}] Created new scan definition ID: {scan_definition_id_to_launch} (Based on Policy/Template UUID: {assessment.tenable_scan_uuid})")
+            except Exception as exc:
+                logger.error(f"[Task:{task_id}] Exception creating scan definition: {exc}", exc_info=True)
+                return _handle_error(
+                    Assessment.SCAN_ERROR,
+                    "Error: Unexpected error creating scan definition.",
+                    log_msg=str(exc)
+                )
+        # End of transaction. scan_definition_id_to_launch should be set.
+        # assessment.tenable_scan_uuid is also updated if a new scan was created or if an existing one had a different policy_uuid.
 
-    # --- Launch the Scan ---
-    if scan_to_launch_id:
-        logger.info(
-            f"[Task:{task_id}] Attempting to launch Tenable scan ID: {scan_to_launch_id} (UUID: {scan_to_launch_uuid})")
-        # Pass the INTEGER ID to launch_scan_on_tenable
-        if launch_scan_on_tenable(str(scan_to_launch_id)):  # launch_scan_on_tenable expects string for now
-            logger.info(f"[Task:{task_id}] Successfully initiated launch for Tenable scan ID: {scan_to_launch_id}.")
-            assessment.scan_status = Assessment.SCAN_LAUNCHED
-            assessment.scan_status_message = f"Scan launched on Tenable (Scan ID: {scan_to_launch_id}, UUID: {scan_to_launch_uuid}). Awaiting results."
-            assessment.last_tenable_scan_launch_time = timezone.now()
-        else:
-            errmsg = f"Failed to launch Tenable scan ID: {scan_to_launch_id} for Assessment {assessment_id}."
-            logger.error(f"[Task:{task_id}] {errmsg}")
-            assessment.scan_status = Assessment.SCAN_ERROR
-            assessment.scan_status_message = "Error: Failed to launch Tenable scan after creation/verification."
-    else:
-        # This case should ideally not be reached if creation was successful
-        errmsg = f"No Tenable scan ID available to launch for Assessment {assessment_id}."
-        logger.error(f"[Task:{task_id}] {errmsg}")
-        assessment.scan_status = Assessment.SCAN_ERROR
-        assessment.scan_status_message = "Error: No scan available to launch."
+    if not scan_definition_id_to_launch:
+        return _handle_error(  # This path should ideally not be reached if logic above is complete
+            Assessment.SCAN_ERROR,
+            "Internal Error: Scan definition ID could not be determined.",
+            log_msg=f"Failed to find or create scan definition ID for Assessment {assessment.id}."
+        )
 
-    assessment.save()
+    # Initialize scan log before launch attempt
+    tenable_log_record = TenableScanLog.objects.create(
+        assessment=assessment,
+        scan_name=expected_scan_name,
+        tenable_policy_identifier=assessment.tenable_scan_uuid,  # Policy/Template UUID of the definition being used
+        tenable_scan_definition_id=scan_definition_id_to_launch,
+        status="PENDING_LAUNCH",
+        log_message=f"Attempting to launch scan definition ID {scan_definition_id_to_launch}."
+    )
     logger.info(
-        f"[Task:{task_id}] Completed Tenable scan launch process for Assessment ID: {assessment_id}. Status: {assessment.get_scan_status_display()}")
-    return f"Tenable scan launch process for Assessment {assessment_id} finished with status: {assessment.scan_status_message}"
+        f"[Task:{task_id}] TenableScanLog #{tenable_log_record.id} (PK) created for DefID {scan_definition_id_to_launch}, Policy/TemplateID {assessment.tenable_scan_uuid}")
+
+    launch_time = timezone.now()
+    actual_run_uuid = None
+    try:
+        actual_run_uuid = launch_scan_on_tenable(str(scan_definition_id_to_launch))
+        if not actual_run_uuid:  # launch_scan_on_tenable should raise error or return valid UUID
+            raise ValueError("launch_scan_on_tenable returned no run UUID without raising an exception.")
+
+        tenable_log_record.tenable_scan_run_uuid = actual_run_uuid
+        tenable_log_record.status = "LAUNCHED"
+        tenable_log_record.log_message = f"Scan launched successfully. Definition ID: {scan_definition_id_to_launch}, Run UUID: {actual_run_uuid}."
+        assessment.scan_status = Assessment.SCAN_LAUNCHED
+        assessment.scan_status_message = f"Scan '{expected_scan_name}' launched (Run UUID: {actual_run_uuid})"
+        assessment.last_tenable_scan_launch_time = launch_time
+
+    except RequestConflictError as conflict:
+        logger.warning(
+            f"[Task:{task_id}] Launch conflict for scan definition ID {scan_definition_id_to_launch}: {conflict}")
+        tenable_log_record.status = "ALREADY_RUNNING"  # Ensure this is a valid choice in your model
+        tenable_log_record.log_message = f"Launch conflicted: Scan definition likely has an active scan. Detail: {str(conflict.body if hasattr(conflict, 'body') else conflict)[:500]}"
+        assessment.scan_status = Assessment.SCAN_IN_PROGRESS  # Ensure this is a valid choice
+        assessment.scan_status_message = f"Scan for definition ID {scan_definition_id_to_launch} already active or launch conflicted."
+
+    except Exception as exc:
+        logger.error(f"[Task:{task_id}] Launch failed for scan definition ID {scan_definition_id_to_launch}: {exc}",
+                     exc_info=True)
+        tenable_log_record.status = "ERROR"  # Ensure this is a valid choice
+        tenable_log_record.log_message = f"Failed during scan launch operation: {str(exc)[:500]}"
+        assessment.scan_status = Assessment.SCAN_ERROR  # Ensure this is a valid choice
+        assessment.scan_status_message = f"Error launching scan: {str(exc)[:250]}"
+        # No explicit self.retry here, task-level retry should handle if not caught by specific error types.
+
+    finally:
+        if tenable_log_record:  # Check if tenable_log_record was successfully created
+            tenable_log_record.save()
+
+        assessment_update_fields = ['scan_status', 'scan_status_message', 'tenable_scan_uuid']
+        # Only add last_tenable_scan_launch_time if it was actually set (on successful launch)
+        if assessment.last_tenable_scan_launch_time and assessment.scan_status == Assessment.SCAN_LAUNCHED:
+            assessment_update_fields.append('last_tenable_scan_launch_time')
+        assessment.save(update_fields=assessment_update_fields)
+
+        logger.info(
+            f"[Task:{task_id}] Completed scan launch process for Assessment {assessment.id}. Assessment status message: {assessment.scan_status_message}")
+        return f"Scan launch for Assessment {assessment.id} finished. Status: {assessment.scan_status_message}"
+# CHANGES END — GEMINI-2025-05-17 10:39:00

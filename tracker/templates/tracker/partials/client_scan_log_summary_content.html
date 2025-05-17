@@ -1,0 +1,76 @@
+{% load tz humanize %}
+
+<div class="scan-log-summary-details p-3">
+    {% if tenable_api_error %}
+        <div class="alert alert-danger" role="alert">
+            <h6 class="alert-heading">Tenable API Error</h6>
+            <p class="mb-0 small">{{ tenable_api_error }}</p>
+            <hr>
+            <p class="mb-0 small">The displayed data below is from the local log and may not be up-to-date.</p>
+        </div>
+    {% endif %}
+
+    {% if scan_deleted_in_tenable %}
+        <div class="alert alert-warning" role="alert">
+            <i class="fas fa-exclamation-triangle me-2"></i>
+            <strong>Scan Not Found in Tenable:</strong> This scan (run or definition) could not be found in Tenable. It may have been deleted.
+        </div>
+    {% endif %}
+
+    <h6 class="mb-3 border-bottom pb-2">Scan Log Details: <em class="fw-normal">{{ scan_log.scan_name|default:"Unnamed Scan" }}</em></h6>
+
+    <div class="row">
+        <div class="col-md-6">
+            <p class="mb-1"><strong class="text-secondary">Log Record ID:</strong> <code class="small">{{ scan_log.id }}</code></p>
+            <p class="mb-1"><strong class="text-secondary">Logged At (Created):</strong> {{ scan_log.created_at|date:"d M Y, H:i:s" }} {{ scan_log.created_at.tzinfo }}</p>
+            <p class="mb-1"><strong class="text-secondary">Last Updated:</strong> {{ scan_log.updated_at|date:"d M Y, H:i:s" }} {{ scan_log.updated_at.tzinfo }}</p>
+        </div>
+        <div class="col-md-6">
+            <p class="mb-1"><strong class="text-secondary">Current Status:</strong>
+                {% if scan_log.status == "LAUNCHED" or scan_log.status == "COMPLETED" %}
+                    <span class="badge bg-success">{{ scan_log.status|default:"N/A" }}</span>
+                {% elif scan_log.status == "ALREADY_RUNNING" or scan_log.status == "LAUNCH_CONFLICT" or scan_log.status == "RUNNING" %}
+                    <span class="badge bg-warning text-dark">{{ scan_log.status|default:"N/A" }}</span>
+                {% elif "ERROR" in scan_log.status|upper or "DELETED_IN_TENABLE" == scan_log.status %}
+                    <span class="badge bg-danger">{{ scan_log.status|default:"N/A" }}</span>
+                {% elif scan_log.status == "PENDING_LAUNCH" %}
+                    <span class="badge bg-info text-dark">{{ scan_log.status|default:"N/A" }}</span>
+                {% else %}
+                    <span class="badge bg-secondary">{{ scan_log.status|default:"N/A" }}</span>
+                {% endif %}
+            </p>
+            <p class="mb-1"><strong class="text-secondary">Tenable Scan Definition ID:</strong> {{ scan_log.tenable_scan_definition_id|default:"N/A" }}</p>
+            <p class="mb-1"><strong class="text-secondary">Tenable Policy/Template ID:</strong> <code class="small">{{ scan_log.tenable_policy_identifier|default:"N/A" }}</code></p>
+            {% if scan_log.tenable_scan_run_uuid %}
+                <p class="mb-0"><strong class="text-secondary">Tenable Scan Run UUID:</strong> <code class="small">{{ scan_log.tenable_scan_run_uuid }}</code></p>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if scan_log.log_message %}
+        <hr class="my-2">
+        <p class="mb-1"><strong class="text-secondary">Log Message:</strong></p>
+        <pre class="small bg-light p-2 border rounded" style="white-space: pre-wrap; word-break: break-all;">{{ scan_log.log_message }}</pre>
+    {% endif %}
+
+    <hr class="my-3">
+    <div class="d-flex justify-content-end">
+        {% if scan_deleted_in_tenable %}
+             <button class="btn btn-sm btn-danger"
+                    hx-post="{% url 'tracker:delete_scan_log_htmx' scan_log.id %}"
+                    hx-target="#scan-log-item-{{ scan_log.id.hex }}" {# Target the whole accordion item #}
+                    hx-swap="outerHTML"
+                    hx-confirm="This scan is deleted in Tenable. Delete this local log record permanently?">
+                <i class="fas fa-trash-alt me-1"></i> Delete Local Log (Scan Gone from Tenable)
+            </button>
+        {% else %}
+            <button class="btn btn-sm btn-outline-danger"
+                    hx-post="{% url 'tracker:delete_scan_log_htmx' scan_log.id %}"
+                    hx-target="#scan-log-item-{{ scan_log.id.hex }}" {# Target the whole accordion item #}
+                    hx-swap="outerHTML"
+                    hx-confirm="Are you sure you want to delete this local scan log record? This does not delete the scan in Tenable.">
+                <i class="fas fa-trash-alt me-1"></i> Delete Local Log
+            </button>
+        {% endif %}
+    </div>
+</div>

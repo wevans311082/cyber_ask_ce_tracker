@@ -44,6 +44,7 @@
       {% include "tracker/partials/client_external_ips_card.html" %}
       {% include "tracker/partials/client_ce_plus_sample_card.html" %}
       {% include "tracker/partials/client_downloads_card.html" %}
+      {% include "tracker/partials/client_assessment_scan_history_card.html" with tenable_scan_logs=tenable_scan_logs assessment=assessment %}
     </main>
 
     {# Right Sidebar Info Area #}

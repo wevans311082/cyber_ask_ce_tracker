@@ -6,44 +6,48 @@ from tenable.io import TenableIO
 # --- CORRECTED IMPORT ---
 from tenable.errors import APIError, NotFoundError, ForbiddenError # Import APIError as the base for Tenable API issues
 # --- END CORRECTION ---
+# File: tracker/tenable_client.py
+import logging
+from tenable.io import TenableIO # Ensure TenableIO is imported
+# from .utils import get_tenable_io_client # Assuming you have this utility
+# For standalone, let's define a simple get_tenable_io_client for context
+from django.conf import settings # If using Django settings for keys
+from constance import config as constance_config # If using constance
 
 logger = logging.getLogger(__name__)
 
 _tio_client = None
 
 def get_tenable_io_client():
-    """
-    Initializes and returns a TenableIO client instance using
-    API keys stored via django-constance.
-
-    Returns:
-        TenableIO: An initialized TenableIO client instance or None if config missing/connection fails.
-    """
-    access_key = getattr(config, 'TENABLE_ACCESS_KEY', None)
-    secret_key = getattr(config, 'TENABLE_SECRET_KEY', None)
-    url = getattr(config, 'TENABLE_URL', 'https://cloud.tenable.com') # Default to cloud
-
-    if not all([access_key, secret_key, url]):
-        logger.error("Tenable API Keys or URL not configured in Admin settings (via django-constance).")
-        return None
-
+    """Initializes and returns a TenableIO client."""
     try:
-        logger.debug(f"Attempting to connect to Tenable.io at {url}")
-        tio = TenableIO(access_key, secret_key, url=url)
-        # Optional quick check - this call itself might raise APIError on auth failure
-        # tio.about.build() # Example: tio.scanners.list() or tio.folders.list() could also work if less verbose
-        logger.info("Successfully initialized Tenable.io client.")
-        return tio
-    # --- CORRECTED EXCEPTION HANDLING ---
-    except APIError as e:
-        # Catch specific Tenable API errors (like auth failure during init)
-        logger.exception(f"Tenable API error during client initialization or connection check: {e}")
-        return None
+        # Prioritize Constance if available
+        access_key = getattr(constance_config, 'TENABLE_ACCESS_KEY', None)
+        secret_key = getattr(constance_config, 'TENABLE_SECRET_KEY', None)
+        url = getattr(constance_config, 'TENABLE_URL', 'https://cloud.tenable.com')
+
+        if not access_key or not secret_key: # Fallback to Django settings if Constance not set
+            logger.debug("Tenable keys not found in Constance, trying Django settings.")
+            access_key = getattr(settings, 'TENABLE_ACCESS_KEY', None)
+            secret_key = getattr(settings, 'TENABLE_SECRET_KEY', None)
+            url = getattr(settings, 'TENABLE_IO_URL', 'https://cloud.tenable.com')
+
+
+        if access_key and secret_key:
+            logger.debug(f"Attempting to connect to Tenable.io at {url}")
+            tio = TenableIO(access_key, secret_key, vendor='CyberASK', product='AssessmentTracker', build='0.1') # Added identifiers
+            logger.info("Successfully initialized Tenable.io client.")
+            return tio
+        else:
+            logger.error("Tenable.io API keys (Access Key or Secret Key) are not configured.")
+            return None
     except Exception as e:
-        # Catch other potential errors (network issues, config problems)
-        logger.exception(f"Unexpected error initializing Tenable.io client at {url}: {e}")
+        logger.error(f"Error initializing Tenable.io client: {e}", exc_info=True)
         return None
-    # --- END CORRECTION ---
+
+
+
+
 def get_scan_details(scan_uuid: str) -> dict | None:
     """
     Fetches details for a specific scan using its UUID.
@@ -276,144 +280,121 @@ def get_agent_group_details_by_name(group_name: str) -> dict | None:
         return None
 
 
-def create_agent_scan(name: str, policy_id_val: any, scanner_uuid_val: any, agent_group_identifier: any) -> tuple[int | None, str | None]:
+def create_agent_scan(name: str, policy_id_val: any, scanner_uuid_val: any, agent_group_identifier: any) -> tuple[
+    int | None, str | None]:
     """
     Creates an agent scan in Tenable.io.
-    agent_group_identifier can be an integer ID or a UUID string.
-    The API seems to prefer a list of these identifiers.
+    Returns (scan_definition_id, scan_definition_uuid_str) or (None, None)
+    The scan_definition_uuid_str can be like "template-..."
     """
     logger.debug(f"[create_agent_scan] Creating agent scan named: '{name}'")
     tio = get_tenable_io_client()
     if not tio:
         return None, None
 
-    # Validate policy_id
     _policy_id = None
     if isinstance(policy_id_val, str) and policy_id_val.isdigit():
         _policy_id = int(policy_id_val)
     elif isinstance(policy_id_val, int):
         _policy_id = policy_id_val
     else:
-        logger.error(
-            f"[create_agent_scan] Invalid policy_id_val: {policy_id_val}. Must be an int or string representation of an int.")
+        logger.error(f"[create_agent_scan] Invalid policy_id_val: {policy_id_val}.")
         return None, None
-    logger.debug(f"[create_agent_scan] Using Policy ID: {_policy_id} (type: {type(_policy_id)})")
 
-    # Validate scanner_uuid
-    _scanner_uuid = None
-    if isinstance(scanner_uuid_val, str) and scanner_uuid_val:  # Assuming UUIDs are non-empty strings
-        _scanner_uuid = scanner_uuid_val
-    else:
-        logger.error(f"[create_agent_scan] Invalid scanner_uuid_val: {scanner_uuid_val}. Must be a non-empty string.")
+    _scanner_uuid = str(scanner_uuid_val) if scanner_uuid_val else None
+    if not _scanner_uuid:
+        logger.error(f"[create_agent_scan] Invalid scanner_uuid_val: {scanner_uuid_val}.")
         return None, None
-    logger.debug(f"[create_agent_scan] Using Scanner UUID: {_scanner_uuid} (type: {type(_scanner_uuid)})")
 
-    # Prepare agent_group_id list (using UUIDs as per standalone script success)
     _agent_group_identifiers_for_api = []
-    if isinstance(agent_group_identifier, str):  # Expecting a UUID string
+    if isinstance(agent_group_identifier, str):
         _agent_group_identifiers_for_api = [agent_group_identifier]
-    elif isinstance(agent_group_identifier, int):  # Fallback to integer ID if provided
-        _agent_group_identifiers_for_api = [agent_group_identifier]
+    elif isinstance(agent_group_identifier, int):
+        _agent_group_identifiers_for_api = [str(agent_group_identifier)]  # API might expect list of strings
     elif isinstance(agent_group_identifier, list) and agent_group_identifier:
-        # If it's already a list, use as is (assuming it's a list of UUIDs or IDs)
-        _agent_group_identifiers_for_api = agent_group_identifier
+        _agent_group_identifiers_for_api = [str(item) for item in agent_group_identifier]
     else:
-        logger.error(
-            f"[create_agent_scan] Invalid agent_group_identifier: {agent_group_identifier}. Expected UUID string, int ID, or list.")
+        logger.error(f"[create_agent_scan] Invalid agent_group_identifier: {agent_group_identifier}.")
         return None, None
-
-    logger.debug(
-        f"[create_agent_scan] Using Agent Group Identifiers: {_agent_group_identifiers_for_api} (type: {type(_agent_group_identifiers_for_api)}, element type: {type(_agent_group_identifiers_for_api[0]) if _agent_group_identifiers_for_api else 'N/A'})")
-
-    # Construct the settings for the scan API call
-    # Base template for scan settings
-    scan_template_uuid = "731a8e52-3ea6-a291-ec0a-d2ff0619c19d7bd788d6be818b65"  # Basic Agent Scan template UUID (example)
-    # You might need to fetch available templates if this isn't always the right one
-    # For agent scans, 'policy_id' is generally preferred over 'template_uuid' directly in settings for basic agent scan.
-    # The 'uuid' in the overall payload is for the new scan object being created.
 
     scan_settings_for_api = {
         'name': name,
         'description': 'Automated CE+ agent scan created by Assessment Tracker.',
-        'policy_id': _policy_id,  # Integer Policy ID
-        'scanner_id': _scanner_uuid,  # This is the UUID of the CLOUD SCANNER where agents are linked.
-        # For agent scans, this points to the scanner managing the agents.
-        'agent_group_id': _agent_group_identifiers_for_api,  # List of agent group UUIDs or IDs
+        'policy_id': _policy_id,
+        'scanner_id': _scanner_uuid,  # This is the UUID of the CLOUD SCANNER or linked scanner
+        'agent_group_id': _agent_group_identifiers_for_api,
         'enabled': True,
-        # Add other necessary fields if your policy or scan type requires them
-        # e.g., 'launch_now', 'schedule', etc. if not launching separately.
     }
+    # Default scan template UUID for creation if not using policy_id directly for settings.
+    # This UUID is for the *new scan definition object being created*.
+    # pyTenable's create method handles the structure.
+    # The 'uuid' field in the payload to Tenable API's POST /scans is for the *template* to base the scan on.
+    # The response from POST /scans will contain the 'id' (numeric) and 'uuid' (string, possibly template-prefixed) of the *newly created scan definition*.
 
-    # The pyTenable library wraps `scan_settings_for_api` inside a "settings" key
-    # and adds a top-level "uuid" for the scan creation request.
-    # We just need to pass the settings dictionary to `tio.scans.create()`.
+    # Example: Using a specific template UUID for creation
+    # This is the UUID of the template you want the new scan to be based on.
+    base_template_uuid = "731a8e52-3ea6-a291-ec0a-d2ff0619c19d7bd788d6be818b65"  # Basic Agent Scan template
 
-    logger.debug(f"[create_agent_scan] Final 'scan_settings_for_api' payload for pyTenable: {scan_settings_for_api}")
+    logger.debug(
+        f"[create_agent_scan] Final 'scan_settings_for_api': {scan_settings_for_api}, Base Template UUID for creation: {base_template_uuid}")
 
     try:
-        # The tio.scans.create() method expects keyword arguments for the settings.
-        # It will internally structure it as {"uuid": "...", "settings": scan_settings_for_api}
+        # tio.scans.create() takes the base_template_uuid as the first arg, then settings.
         creation_response = tio.scans.create(**scan_settings_for_api)
 
-        if creation_response and 'id' in creation_response and 'uuid' in creation_response:  # Or however pyTenable returns it
-            created_scan_id = creation_response['id']
-            created_scan_uuid = creation_response['uuid']
-            logger.info(f"Successfully created Tenable scan '{name}'. ID: {created_scan_id}, UUID: {created_scan_uuid}")
-            return created_scan_id, created_scan_uuid
+        if creation_response and 'id' in creation_response and 'uuid' in creation_response:
+            created_scan_def_id = int(creation_response['id'])
+            created_scan_def_uuid_str = str(creation_response['uuid'])  # This can be "template-..."
+            logger.info(
+                f"Successfully created Tenable scan definition '{name}'. ID: {created_scan_def_id}, Definition UUID: {created_scan_def_uuid_str}")
+            return created_scan_def_id, created_scan_def_uuid_str
         else:
             logger.error(
-                f"Tenable API did not return expected response for scan creation '{name}'. Response: {creation_response}")
+                f"Tenable API did not return expected response for scan definition creation '{name}'. Response: {creation_response}")
             return None, None
     except Exception as e:
-        logger.error(f"Tenable API Error creating scan '{name}': {e}. Payload: {scan_settings_for_api}", exc_info=True)
+        logger.error(f"Tenable API Error creating scan definition '{name}': {e}. Settings: {scan_settings_for_api}",
+                     exc_info=True)
         return None, None
 
 
-def launch_scan_on_tenable(scan_uuid: str) -> bool:
-    # ... (your existing launch_scan_on_tenable function - seems okay)
-    logger.debug(f"[launch_scan_on_tenable] Attempting to launch scan with UUID: {scan_uuid}")
+def launch_scan_on_tenable(scan_definition_id_str: str, alt_targets: list = None) -> str | None:
+    """
+    Launches a scan in Tenable.io using its scan definition's numeric ID.
+    Returns the scan_run_uuid (string) if successful, None otherwise.
+    """
     tio = get_tenable_io_client()
     if not tio:
-        return False
+        logger.error("[launch_scan_on_tenable] Tenable client not available.")
+        return None
+
     try:
-        # Ensure scan_uuid is for a scan, not a policy or template.
-        # The scans.launch() method takes the integer scan_id, not the UUID.
-        # We need to get the integer ID from the UUID if we don't have it.
-        # However, if find_scan_by_name OR create_agent_scan returns the integer ID, use that.
-        # Let's assume the task has the correct scan_id to pass here.
-        # The pyTenable library's scans.launch() takes scan_id (int)
+        scan_def_id = int(scan_definition_id_str) # pytenable expects int for scan_id
+        logger.info(f"[launch_scan_on_tenable] Attempting to launch scan definition ID: {scan_def_id} with targets: {alt_targets}")
 
-        # First, let's clarify: tio.scans.launch(scan_id, targets=None)
-        # The task launch_tenable_scan_task should be getting the scan_id (integer)
-        # If it only has UUID, it needs to fetch the scan details to get the ID.
-        # For simplicity, if scan_uuid is actually scan_id (int), this will work.
-        # Let's assume the caller provides the integer scan_id.
-        # This function might need renaming or clarification if it only gets UUID.
+        # The tio.scans.launch() method returns the scan_run_uuid (string) for the launched instance
+        # For Tenable.io, this is typically a standard UUID string.
+        scan_run_uuid_from_api = tio.scans.launch(scan_id=scan_def_id, targets=alt_targets if alt_targets else None)
 
-        # For now, let's assume scan_uuid is actually the scan_id (integer)
-        # This is a common point of confusion. Let's fix create_agent_scan to return ID
-        # And ensure task uses ID for launch.
+        # CHANGES BEGIN — 2025-05-16 12:15:00
+        # Add explicit logging for type and value
+        logger.info(f"[launch_scan_on_tenable] API returned for launch: '{scan_run_uuid_from_api}', type: {type(scan_run_uuid_from_api)}")
 
-        # If scan_uuid is truly a UUID, we need to get the scan's integer ID first.
-        # This is inefficient if we just created/found it.
-        # The launch_tenable_scan_task should have access to the integer scan_id.
+        if isinstance(scan_run_uuid_from_api, str) and scan_run_uuid_from_api:
+            # Validate if it looks like a UUID (optional, but good for sanity)
+            # import uuid
+            # try:
+            #     uuid.UUID(scan_run_uuid_from_api)
+            # except ValueError:
+            #     logger.error(f"[launch_scan_on_tenable] API returned a string but it's not a valid UUID: {scan_run_uuid_from_api}")
+            #     return None
+            logger.info(f"[launch_scan_on_tenable] Successfully launched scan. Definition ID: {scan_def_id}, Scan Run UUID: {scan_run_uuid_from_api}")
+            return str(scan_run_uuid_from_api) # Ensure it's a string
+        else:
+            logger.error(f"[launch_scan_on_tenable] Scan launch for definition ID {scan_def_id} did NOT return a valid UUID string. Received: '{scan_run_uuid_from_api}'")
+            return None
+        # CHANGES END — 2025-05-16 12:15:00
 
-        # For now, let's assume scan_uuid IS the integer ID for launch.
-        # If not, the calling task needs to provide the correct integer ID.
-
-        # The `pytenable` function `tio.scans.launch()` expects the *integer ID* of the scan.
-        # If `scan_uuid` parameter here is indeed the UUID string, we need to convert it.
-        # However, `create_agent_scan` returns `created_id` which is the integer.
-        # `find_scan_by_name` also returns `scan_id` which is the integer.
-        # So, the calling task should already have the integer ID.
-        # Let's rename the parameter for clarity IF this function is only called with the integer ID.
-
-        # Assuming `scan_uuid` is actually the integer `scan_id` passed by the task:
-        scan_id_to_launch = int(scan_uuid)  # Ensure it's an int if it might be passed as string
-
-        tio.scans.launch(scan_id_to_launch)
-        logger.info(f"Successfully launched Tenable scan with ID: {scan_id_to_launch}")
-        return True
     except Exception as e:
-        logger.error(f"Tenable API Error launching scan ID '{scan_uuid}': {e}", exc_info=True)
-        return False
+        logger.error(f"[launch_scan_on_tenable] Error launching Tenable scan ID {scan_definition_id_str}: {e}", exc_info=True)
+        return None

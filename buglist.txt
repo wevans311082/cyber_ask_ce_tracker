@@ -188,7 +188,7 @@ AI:40 Post-engagement feedback analysis: sentiment-and-theme extraction from cli
 Bug Report
 Bug:1 (High) Fix non-functional workflow action buttons (Start/Done/Reopen) for Clients.
 Bug:2 (High) Resolve issue where Tenable code to get scan status is not working correctly.
-Bug:3 (High) Prevent duplicate scans being created by the Tenable scan-launch code.
+Bug:3 (High) Prevent duplicate scans being created by the Tenable scan-launch code. - FIXED
 Bug:4 (High) Verify and ensure default Tenable Scan Policy/Scanner settings are correctly configured and used by scan-launch tasks.
 Bug:5 (Medium) Ensure all relevant user actions are recorded in the Assessment Log audit trail.
 Bug:6 (Medium) Uploaded reports aren’t linking to assessments.
@@ -200,6 +200,7 @@ Bug:11 (Medium) Admin dashboard Assessment Awaiting Scheduling –
 • Assigned Assessor isn’t showing
 • Action buttons not working
 • Assessment ID not showing
+Bug:12 (High) The launch tenable scan can't handle if there is a scan already active
 
 
 

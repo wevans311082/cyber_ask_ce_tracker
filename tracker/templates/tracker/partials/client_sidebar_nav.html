@@ -1,172 +1,187 @@
 {% load i18n %}
-<nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar">
-  <div class="position-sticky pt-3" style="top: 1rem;">
-    <a href="{% url 'tracker:client_assessment_list' %}" class="btn btn-outline-secondary d-block mb-3">
-      <i class="fas fa-arrow-left"></i> {% translate "Back to My Assessments" %}
-    </a>
 
-    <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
-      <span>{% translate "On This Page" %}</span>
-    </h6>
-    <div class="accordion accordion-flush" id="leftNavAccordion">
+<nav id="sidebarMenu" class="col-md-3 col-lg-2 d-md-block bg-white border-end collapse">
+  <div class="position-sticky pt-3">
 
-      <!-- Scope -->
-      <div class="card mb-2">
-        <div class="card-header p-0 bg-transparent border-0">
-          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
-                  data-bs-toggle="collapse" data-bs-target="#collapseScopeNav"
-                  aria-expanded="false" aria-controls="collapseScopeNav">
-            <i class="fas fa-sitemap fa-fw me-2"></i> {% translate "Scope" %} ({{ scope_summary.total_items|default:0 }})
-          </button>
-        </div>
-        <div id="collapseScopeNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
-          <div class="card-body small">
-            <a href="#scope-management-section" class="nav-link text-primary d-block mb-2">
+    <!-- Back Button -->
+    <div class="px-3 mb-4">
+      <a href="{% url 'tracker:client_assessment_list' %}"
+         class="btn btn-outline-secondary btn-sm w-100">
+        <i class="fas fa-arrow-left me-1"></i>
+        {% translate "Back to My Assessments" %}
+      </a>
+    </div>
+
+    <!-- MAIN NAVIGATION -->
+    <ul class="nav flex-column px-3">
+      <li class="nav-item mb-2">
+        <span class="small text-uppercase text-muted">
+          {% translate "On This Page" %}
+        </span>
+      </li>
+
+      {% comment %} ========= Scope ========= {% endcomment %}
+      <li class="nav-item mb-1">
+        <a class="nav-link d-flex justify-content-between align-items-center"
+           data-bs-toggle="collapse" href="#nav-scope" role="button"
+           aria-expanded="false" aria-controls="nav-scope">
+          <span><i class="fas fa-sitemap me-2"></i>{% translate "Scope" %}</span>
+          <span class="badge bg-primary">{{ scope_summary.total_items|default:"0" }}</span>
+        </a>
+        <ul class="nav flex-column collapse ps-4" id="nav-scope">
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#scope-management-section">
               {% translate "View Summary" %}
             </a>
-            {% if can_edit_scope %}
-              <a href="{% url 'tracker:client_scope_manage' assessment.pk %}" class="btn btn-sm btn-primary d-block">
-                <i class="fas fa-edit"></i> {% translate "Manage Scope Items" %}
-              </a>
-            {% endif %}
-          </div>
-        </div>
-      </div>
+          </li>
+          {% if can_edit_scope %}
+          <li class="nav-item">
+            <a class="nav-link py-1" href="{% url 'tracker:client_scope_manage' assessment.pk %}">
+              <i class="fas fa-edit me-1"></i>{% translate "Manage Items" %}
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </li>
 
-      <!-- Networks -->
-      <div class="card mb-2">
-        <div class="card-header p-0 bg-transparent border-0">
-          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
-                  data-bs-toggle="collapse" data-bs-target="#collapseNetworksNav"
-                  aria-expanded="false" aria-controls="collapseNetworksNav">
-            <i class="fas fa-network-wired fa-fw me-2"></i> {% translate "Networks" %} ({{ assessment.networks.count }})
-          </button>
-        </div>
-        <div id="collapseNetworksNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
-          <div class="card-body small">
-            <a href="#networks-section" class="nav-link text-primary d-block mb-2">
+      {% comment %} ========= Networks ========= {% endcomment %}
+      <li class="nav-item mb-1">
+        <a class="nav-link d-flex justify-content-between align-items-center"
+           data-bs-toggle="collapse" href="#nav-networks" role="button"
+           aria-expanded="false" aria-controls="nav-networks">
+          <span><i class="fas fa-network-wired me-2"></i>{% translate "Networks" %}</span>
+          <span class="badge bg-primary">{{ assessment.networks.count }}</span>
+        </a>
+        <ul class="nav flex-column collapse ps-4" id="nav-networks">
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#networks-section">
               {% translate "View Details" %}
             </a>
-            {% if not assessment.status|slice:":8" == 'Complete' %}
-              <a href="{% url 'tracker:client_network_list' assessment.pk %}" class="btn btn-sm btn-primary d-block">
-                <i class="fas fa-edit"></i> {% translate "Manage Networks" %}
-              </a>
-            {% endif %}
-          </div>
-        </div>
-      </div>
+          </li>
+          {% if not assessment.status|slice:":8" == 'Complete' %}
+          <li class="nav-item">
+            <a class="nav-link py-1" href="{% url 'tracker:client_network_list' assessment.pk %}">
+              <i class="fas fa-edit me-1"></i>{% translate "Manage Networks" %}
+            </a>
+          </li>
+          {% endif %}
+        </ul>
+      </li>
 
-      <!-- Cloud Services -->
-      <div class="card mb-2">
-        <div class="card-header p-0 bg-transparent border-0">
-          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
-                  data-bs-toggle="collapse" data-bs-target="#collapseCloudServicesNav"
-                  aria-expanded="false" aria-controls="collapseCloudServicesNav">
-            <i class="fas fa-cloud fa-fw me-2"></i> {% translate "Cloud Services" %} ({{ assessment.assessment_cloud_services.count }})
-          </button>
-        </div>
-        <div id="collapseCloudServicesNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
-          <div class="card-body small">
-            <a href="#cloud-services-section" class="nav-link text-primary d-block mb-2">
+      {% comment %} ========= Cloud Services ========= {% endcomment %}
+      <li class="nav-item mb-1">
+        <a class="nav-link d-flex justify-content-between align-items-center"
+           data-bs-toggle="collapse" href="#nav-cloud" role="button"
+           aria-expanded="false" aria-controls="nav-cloud">
+          <span><i class="fas fa-cloud me-2"></i>{% translate "Cloud Services" %}</span>
+          <span class="badge bg-primary">{{ assessment.assessment_cloud_services.count }}</span>
+        </a>
+        <ul class="nav flex-column collapse ps-4" id="nav-cloud">
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#cloud-services-section">
               {% translate "View Details" %}
             </a>
-            <a href="{% url 'tracker:client_assessment_cloud_service_list' assessment.pk %}" class="btn btn-sm btn-primary d-block">
-              <i class="fas fa-edit"></i> {% translate "Manage Cloud Services" %}
+          </li>
+          <li class="nav-item">
+            <a class="nav-link py-1" href="{% url 'tracker:client_assessment_cloud_service_list' assessment.pk %}">
+              <i class="fas fa-edit me-1"></i>{% translate "Manage Services" %}
             </a>
-          </div>
-        </div>
-      </div>
+          </li>
+        </ul>
+      </li>
 
-      <!-- External IPs -->
-      <div class="card mb-2">
-        <div class="card-header p-0 bg-transparent border-0">
-          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
-                  data-bs-toggle="collapse" data-bs-target="#collapseExternalIPsNav"
-                  aria-expanded="false" aria-controls="collapseExternalIPsNav">
-            <i class="fas fa-crosshairs fa-fw me-2"></i> {% translate "External IPs" %} ({{ assessment.external_ips.count }})
-          </button>
-        </div>
-        <div id="collapseExternalIPsNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
-          <div class="card-body small">
-            <a href="#external-ips-section" class="nav-link text-primary d-block mb-2">
+      {% comment %} ========= External IPs ========= {% endcomment %}
+      <li class="nav-item mb-1">
+        <a class="nav-link d-flex justify-content-between align-items-center"
+           data-bs-toggle="collapse" href="#nav-ips" role="button"
+           aria-expanded="false" aria-controls="nav-ips">
+          <span><i class="fas fa-crosshairs me-2"></i>{% translate "External IPs" %}</span>
+          <span class="badge bg-primary">{{ assessment.external_ips.count }}</span>
+        </a>
+        <ul class="nav flex-column collapse ps-4" id="nav-ips">
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#external-ips-section">
               {% translate "View Details" %}
             </a>
-            <a href="{% url 'tracker:client_externalip_list' assessment.pk %}" class="btn btn-sm btn-primary d-block">
-              <i class="fas fa-edit"></i> {% translate "Manage Targets" %}
+          </li>
+          <li class="nav-item">
+            <a class="nav-link py-1" href="{% url 'tracker:client_externalip_list' assessment.pk %}">
+              <i class="fas fa-edit me-1"></i>{% translate "Manage Targets" %}
             </a>
-          </div>
-        </div>
-      </div>
+          </li>
+        </ul>
+      </li>
 
-      <!-- Workflow -->
-      <div class="card mb-2">
-        <div class="card-header p-0 bg-transparent border-0">
-          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
-                  data-bs-toggle="collapse" data-bs-target="#collapseWorkflowNav"
-                  aria-expanded="false" aria-controls="collapseWorkflowNav">
-            <i class="fas fa-tasks fa-fw me-2"></i> {% translate "Workflow" %}
-          </button>
-        </div>
-        <div id="collapseWorkflowNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
-          <div class="card-body small">
-            <a href="#workflow-visual-section" class="nav-link text-primary d-block mb-1">
-              {% translate "View Visual" %}
-            </a>
-            <a href="#workflow-checklist-section" class="nav-link text-primary d-block">
-              {% translate "View Checklist" %}
-            </a>
-          </div>
-        </div>
-      </div>
+      {% comment %} ========= Workflow ========= {% endcomment %}
+      <li class="nav-item mb-1">
+        <a class="nav-link d-flex justify-content-between align-items-center"
+           data-bs-toggle="collapse" href="#nav-workflow" role="button"
+           aria-expanded="false" aria-controls="nav-workflow">
+          <span><i class="fas fa-tasks me-2"></i>{% translate "Workflow" %}</span>
+          <i class="fas fa-chevron-down small"></i>
+        </a>
+        <ul class="nav flex-column collapse ps-4" id="nav-workflow">
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#workflow-visual-section">{% translate "Visual" %}</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#workflow-checklist-section">{% translate "Checklist" %}</a>
+          </li>
+        </ul>
+      </li>
 
-      <!-- CE+ Sample -->
+      {% comment %} ========= CE+ Sample (optional) ========= {% endcomment %}
       {% if assessment.assessment_type == 'CE+' %}
-      <div class="card mb-2">
-        <div class="card-header p-0 bg-transparent border-0">
-          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
-                  data-bs-toggle="collapse" data-bs-target="#collapseCESampleNav"
-                  aria-expanded="false" aria-controls="collapseCESampleNav">
-            <i class="fas fa-vial fa-fw me-2"></i> {% translate "CE+ Sample" %}
-          </button>
-        </div>
-        <div id="collapseCESampleNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
-          <div class="card-body small">
-            <a href="#ce-plus-sample-section" class="nav-link text-primary d-block">
+      <li class="nav-item mb-1">
+        <a class="nav-link d-flex align-items-center"
+           data-bs-toggle="collapse" href="#nav-cesample" role="button"
+           aria-expanded="false" aria-controls="nav-cesample">
+          <span><i class="fas fa-vial me-2"></i>{% translate "CE+ Sample" %}</span>
+        </a>
+        <ul class="nav flex-column collapse ps-4" id="nav-cesample">
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#ce-plus-sample-section">
               {% translate "View Details" %}
             </a>
-          </div>
-        </div>
-      </div>
+          </li>
+        </ul>
+      </li>
       {% endif %}
 
-      <!-- Downloads -->
-      <div class="card mb-2">
-        <div class="card-header p-0 bg-transparent border-0">
-          <button class="btn btn-light w-100 text-start d-flex align-items-center collapsed"
-                  data-bs-toggle="collapse" data-bs-target="#collapseDownloadsNav"
-                  aria-expanded="false" aria-controls="collapseDownloadsNav">
-            <i class="fas fa-download fa-fw me-2"></i> {% translate "Downloads" %}
-          </button>
-        </div>
-        <div id="collapseDownloadsNav" class="accordion-collapse collapse" data-bs-parent="#leftNavAccordion">
-          <div class="card-body small">
-            <a href="#downloads-section" class="nav-link text-primary d-block">
+      {% comment %} ========= Downloads ========= {% endcomment %}
+      <li class="nav-item mb-1">
+        <a class="nav-link d-flex align-items-center"
+           data-bs-toggle="collapse" href="#nav-downloads" role="button"
+           aria-expanded="false" aria-controls="nav-downloads">
+          <span><i class="fas fa-download me-2"></i>{% translate "Downloads" %}</span>
+        </a>
+        <ul class="nav flex-column collapse ps-4" id="nav-downloads">
+          <li class="nav-item">
+            <a class="nav-link py-1" href="#downloads-section">
               {% translate "View Files" %}
             </a>
-          </div>
-        </div>
-      </div>
+          </li>
+        </ul>
+      </li>
+    </ul>
 
-    </div> {# End Accordion #}
-
-    <h6 class="sidebar-heading d-flex justify-content-between align-items-center px-3 mt-4 mb-1 text-muted text-uppercase">
-      <span>{% translate "Other Actions" %}</span>
-    </h6>
-    <div class="list-group list-group-flush">
-      <button type="button" class="list-group-item list-group-item-action"
-              data-bs-toggle="modal" data-bs-target="#logModal">
-        <i class="fas fa-history fa-fw me-2"></i> {% translate "View Assessment Log" %}
-      </button>
+    <!-- OTHER ACTIONS -->
+    <div class="mt-5 px-3">
+      <span class="small text-uppercase text-muted">
+        {% translate "Other Actions" %}
+      </span>
+      <ul class="nav flex-column mt-2">
+        <li class="nav-item">
+          <button type="button"
+                  class="nav-link btn btn-link p-0 d-flex align-items-center"
+                  data-bs-toggle="modal"
+                  data-bs-target="#logModal">
+            <i class="fas fa-history me-2"></i>
+            {% translate "View Assessment Log" %}
+          </button>
+        </li>
+      </ul>
     </div>
+
   </div>
 </nav>

@@ -10,6 +10,16 @@ from datetime import date, timedelta
 from .models import Client, UserProfile, Assessment
 from .forms import ClientForm
 
+
+import uuid
+from unittest.mock import patch, MagicMock
+from django.test import TestCase, override_settings
+from django.contrib.auth import get_user_model
+from django.utils import timezone
+
+from .models import Assessment, Client, TenableScanLog # Assuming Client model exists
+from .tasks import launch_tenable_scan_task
+
 # Create your tests here.
 
 class ClientModelTest(TestCase):
@@ -142,3 +152,130 @@ class ClientFormTest(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn('contact_email', form.errors)
         self.assertEqual(form.errors['contact_email'], ['Enter a valid email address.'])
+
+
+MOCK_TENANCY_SCAN_DEFINITION_UUID = str(uuid.uuid4())
+MOCK_TENANCY_SCAN_DEFINITION_ID = "12345"
+
+class TenableTasksTests(TestCase):
+
+    def setUp(self):
+        # Create a dummy user
+        self.user = User.objects.create_user(username='testuser', password='password')
+        # Create a dummy client
+        self.client = Client.objects.create(name="Test Client Ltd")
+        # Create a dummy assessment
+        self.assessment = Assessment.objects.create(
+            client=self.client,
+            # Add any other required fields for Assessment model
+            # For example:
+            # tenable_scan_uuid=str(uuid.uuid4()) # If assessment had its own scan definition
+        )
+        self.targets = ["192.168.1.10", "domain.example.com"] # Example targets
+
+    @override_settings(
+        TENABLE_ACCESS_KEY="dummy_access_key",
+        TENABLE_SECRET_KEY="dummy_secret_key",
+        TENABLE_IO_URL="https://dummy.tenable.io",
+        TENANCY_SCAN_UUID=MOCK_TENANCY_SCAN_DEFINITION_UUID,
+        TENANCY_SCAN_ID=MOCK_TENANCY_SCAN_DEFINITION_ID
+    )
+    @patch('tracker.tasks.get_tenable_client')
+    def test_launch_tenable_scan_task_success(self, mock_get_tenable_client):
+        # Mock the TenableIOClient and its launch_scan method
+        mock_tio_client = MagicMock()
+        mock_scan_run_uuid = str(uuid.uuid4()) # This is the UUID of the scan *instance*
+        mock_tio_client.launch_scan.return_value = mock_scan_run_uuid
+        mock_get_tenable_client.return_value = mock_tio_client
+
+        # Call the task directly for testing
+        # In a real Celery setup, you might use .delay() or .apply_async()
+        # and have Celery run in eager mode for tests.
+        launch_tenable_scan_task(self.assessment.id, self.targets, self.user.id)
+
+        # 1. Verify TenableIOClient.launch_scan was called correctly
+        expected_scan_name = f"Assessment {self.assessment.id} - {self.assessment.client.name} - {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+        # Note: The exact timestamp in scan_name might cause flakiness if not handled (e.g., by also mocking timezone.now within the task's scope or checking parts of the name)
+        # For simplicity, we'll check the call was made.
+        self.assertTrue(mock_tio_client.launch_scan.called)
+        call_args = mock_tio_client.launch_scan.call_args
+        self.assertEqual(call_args[0][0], MOCK_TENANCY_SCAN_DEFINITION_UUID) # scan_uuid argument
+        self.assertEqual(call_args[0][1], self.targets) # targets argument
+        self.assertTrue(call_args[0][2].startswith(f"Assessment {self.assessment.id} - {self.assessment.client.name}")) # scan_name argument (partial check)
+
+
+        # 2. Verify TenableScanLog entry was created
+        self.assertEqual(TenableScanLog.objects.count(), 1)
+        log_entry = TenableScanLog.objects.first()
+
+        self.assertIsNotNone(log_entry)
+        self.assertEqual(log_entry.assessment, self.assessment)
+        self.assertTrue(log_entry.scan_name.startswith(f"Assessment {self.assessment.id} - {self.assessment.client.name}"))
+        self.assertEqual(str(log_entry.scan_uuid), MOCK_TENANCY_SCAN_DEFINITION_UUID) # Scan *Definition* UUID
+        self.assertEqual(log_entry.tenable_scan_id, MOCK_TENANCY_SCAN_DEFINITION_ID) # Scan *Definition* ID
+        self.assertEqual(str(log_entry.scan_run_uuid), mock_scan_run_uuid) # Scan *Instance/Run* UUID
+        self.assertEqual(log_entry.initiated_by, self.user)
+        self.assertIsNotNone(log_entry.initiated_at)
+        self.assertEqual(log_entry.status_from_tenable, "LAUNCHED") # Or "REQUESTED", "PENDING" depending on your logic
+
+        # Check that result fields are initially empty/None
+        self.assertIsNone(log_entry.completed_at)
+        self.assertIsNone(log_entry.assets_scanned)
+        self.assertIsNone(log_entry.critical_vuls)
+        self.assertIsNone(log_entry.high_vuls)
+        self.assertIsNone(log_entry.medium_vuls)
+        self.assertIsNone(log_entry.low_vuls)
+        self.assertIsNone(log_entry.raw_summary_data)
+        self.assertIsNone(log_entry.last_fetched_from_tenable)
+
+    @override_settings(
+        TENABLE_ACCESS_KEY="dummy_access_key",
+        TENABLE_SECRET_KEY="dummy_secret_key",
+        TENABLE_IO_URL="https://dummy.tenable.io",
+        TENANCY_SCAN_UUID=MOCK_TENANCY_SCAN_DEFINITION_UUID,
+        TENANCY_SCAN_ID=MOCK_TENANCY_SCAN_DEFINITION_ID
+    )
+    @patch('tracker.tasks.get_tenable_client')
+    @patch('tracker.tasks.logger') # Mock the logger
+    def test_launch_tenable_scan_task_api_failure(self, mock_logger, mock_get_tenable_client):
+        # Mock the TenableIOClient to raise an exception
+        mock_tio_client = MagicMock()
+        mock_tio_client.launch_scan.side_effect = Exception("Tenable API Error")
+        mock_get_tenable_client.return_value = mock_tio_client
+
+        # Call the task
+        with self.assertRaises(Exception): # Expecting the task to re-raise or handle
+            launch_tenable_scan_task(self.assessment.id, self.targets, self.user.id)
+
+        # Verify no TenableScanLog entry was created on failure (unless you have specific error logging in the DB)
+        self.assertEqual(TenableScanLog.objects.count(), 0)
+
+        # Verify error was logged
+        self.assertTrue(mock_logger.error.called)
+        # You can make more specific assertions about the log message if needed
+        # print(mock_logger.error.call_args_list) # to see what was logged
+
+    @override_settings(
+        TENABLE_ACCESS_KEY="dummy_access_key",
+        TENABLE_SECRET_KEY="dummy_secret_key",
+        TENABLE_IO_URL="https://dummy.tenable.io",
+        TENANCY_SCAN_UUID=MOCK_TENANCY_SCAN_DEFINITION_UUID,
+        TENANCY_SCAN_ID=MOCK_TENANCY_SCAN_DEFINITION_ID
+    )
+    @patch('tracker.tasks.get_tenable_client')
+    def test_launch_tenable_scan_task_no_user(self, mock_get_tenable_client):
+        # Test case where user_id is None
+        mock_tio_client = MagicMock()
+        mock_scan_run_uuid = str(uuid.uuid4())
+        mock_tio_client.launch_scan.return_value = mock_scan_run_uuid
+        mock_get_tenable_client.return_value = mock_tio_client
+
+        launch_tenable_scan_task(self.assessment.id, self.targets, user_id=None)
+
+        self.assertEqual(TenableScanLog.objects.count(), 1)
+        log_entry = TenableScanLog.objects.first()
+        self.assertIsNotNone(log_entry)
+        self.assertEqual(log_entry.assessment, self.assessment)
+        self.assertIsNone(log_entry.initiated_by) # Check user is None
+        self.assertEqual(str(log_entry.scan_run_uuid), mock_scan_run_uuid)
+        self.assertEqual(log_entry.status_from_tenable, "LAUNCHED")

@@ -10,6 +10,9 @@ from . import wizard_views
 
 print("--- [DEBUG] tracker/urls.py is being loaded NOW ---")
 
+from django.http import HttpResponse
+def placeholder_scan_summary_view(request, scan_log_id):
+    return HttpResponse(f"Placeholder for scan log ID: {scan_log_id} summary. To be implemented.")
 
 app_name = 'tracker'
 
@@ -120,6 +123,14 @@ urlpatterns = [
     path('assessment/<int:assessment_id>/launch_scan_action/', views.launch_tenable_scan_trigger_view, name='launch_tenable_scan'),
     path('assessment/<int:assessment_id>/tenable_scan_status/', views.get_tenable_scan_status_ajax, name='get_tenable_scan_status_ajax'),
 
+
+    path('assessment/scan_log/<int:scan_log_id>/summary/', placeholder_scan_summary_view, name='get_tenable_scan_summary'),
+
+    path('htmx/scan_log/<uuid:log_id>/summary/', views.get_scan_log_summary_htmx, name='get_scan_log_summary_htmx'),
+    path('htmx/scan_log/<uuid:log_id>/delete/', views.delete_scan_log_htmx, name='delete_scan_log_htmx'),
+
+
+    path('assessment/<int:assessment_pk>/scan_log/<uuid:log_id>/results_raw/', views.view_scan_results_raw, name='view_scan_results_raw'),
 
 
     path('account/settings/', views.account_settings_view, name='account_settings'),
