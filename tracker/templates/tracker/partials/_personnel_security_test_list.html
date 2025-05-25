@@ -1,0 +1,78 @@
+{% load i18n tz %}
+
+<div id="personnel-security-test-list-for-{{ personnel.pk }}" class="mt-3">
+    <h5>{% blocktranslate with person_name=personnel.full_name %}Security Test Log for: {{ person_name }}{% endblocktranslate %}</h5>
+
+    {% if test_list %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>{% translate "Date" %}</th>
+                        <th>{% translate "Test Type" %}</th>
+                        <th>{% translate "Description" %}</th>
+                        <th>{% translate "Outcome" %}</th>
+                        <th>{% translate "Device" %}</th>
+                        <th>{% translate "Evidence" %}</th>
+                        <th>{% translate "Actions" %}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for test in test_list %}
+                        <tr id="personnel-security-test-{{ test.pk }}-row">
+                            <td>{{ test.test_date|date:"Y-m-d H:i"|default_if_none:"" }}</td>
+                            <td>{{ test.get_test_type_display }}</td>
+                            <td>{{ test.test_description|truncatechars:30 }}</td>
+                            <td>{{ test.get_outcome_display }}</td>
+                            <td>{{ test.scoped_item.identifier|default_if_none:"N/A" }}</td>
+                            <td>
+                                {% if test.evidence %}
+                                    <a href="{{ test.evidence.file.url }}" target="_blank" title="{{ test.evidence.description }}">
+                                        <i class="fas fa-paperclip"></i> {{ test.evidence.description|truncatechars:15|default:test.evidence.filename }}
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted">{% translate "N/A" %}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button
+                                    hx-get="{% url 'tracker:personnel_security_test_update' assessment_pk=assessment.pk personnel_pk=personnel.pk test_pk=test.pk %}"
+                                    hx-target="#security-test-form-container-for-{{ personnel.pk }}"
+                                    hx-swap="innerHTML"
+                                    class="btn btn-sm btn-outline-primary"
+                                    title="{% translate 'Edit Test Log' %}">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                <button
+                                    hx-post="{% url 'tracker:personnel_security_test_delete' assessment_pk=assessment.pk personnel_pk=personnel.pk test_pk=test.pk %}"
+                                    hx-confirm="{% blocktranslate with test_desc=test.test_description|default:'this test' %}Are you sure you want to delete the log for {{ test_desc }}?{% endblocktranslate %}"
+                                    hx-target="#personnel-security-test-{{ test.pk }}-row"
+                                    hx-swap="outerHTML"
+                                    class="btn btn-sm btn-outline-danger"
+                                    title="{% translate 'Delete Test Log' %}">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>{% translate "No security tests have been logged for this person yet." %}</p>
+    {% endif %}
+
+    <div id="security-test-form-container-for-{{ personnel.pk }}" class="mt-2">
+        {# This div will be targeted by HTMX to load the add/edit form for this specific personnel's tests #}
+    </div>
+
+    <button
+        hx-get="{% url 'tracker:personnel_security_test_create' assessment_pk=assessment.pk personnel_pk=personnel.pk %}"
+        hx-target="#security-test-form-container-for-{{ personnel.pk }}"
+        hx-swap="innerHTML"
+        class="btn btn-info btn-sm mt-2"
+    >
+        <i class="fas fa-plus"></i> {% translate "Log New Security Test" %}
+    </button>
+     <hr class="my-3">
+</div>

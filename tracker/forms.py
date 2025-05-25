@@ -1091,3 +1091,204 @@ class AssessmentInfoFormRefined44(forms.ModelForm):  # Or your exact form class 
             if not field.required:
                 field.label_suffix = mark_safe(
                     f'{field.label_suffix or ""} <span class="text-muted small">({_("optional")})</span>')
+
+
+
+class AssessmentPersonnelForm(forms.ModelForm):
+    class Meta:
+        model = AssessmentPersonnel
+        fields = [
+            'full_name',
+            'email',
+            'phone_number',
+            'mobile_number',
+            'department',
+            'role_in_assessment',
+            'notes',
+            # 'assessment' will be set in the view based on context.
+            # 'added_by' will be set in the view to the current user.
+        ]
+        widgets = {
+            'full_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control'}),
+            'phone_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'mobile_number': forms.TextInput(attrs={'class': 'form-control'}),
+            'department': forms.TextInput(attrs={'class': 'form-control'}),
+            'role_in_assessment': forms.TextInput(attrs={'class': 'form-control'}),
+            'notes': forms.Textarea(attrs={'class': 'form-control', 'rows': 3}),
+        }
+        help_texts = {
+            'full_name': _('Full name of the contact person.'),
+            'email': _('Email address (optional).'),
+            'phone_number': _('Primary contact phone number (optional).'),
+            'mobile_number': _('Mobile phone number (optional).'),
+            'department': _('Department or team they belong to (optional).'),
+            'role_in_assessment': _('Their specific role or responsibility for this assessment (e.g., "Server Admin for SRV01", "Main Point of Contact").'),
+            'notes': _('Any additional relevant notes about this contact (optional).'),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Make fields not explicitly required by the model also not required in the form
+        # if they are blank=True on the model. Model fields handle this by default,
+        # but this is an explicit way if needed for further customization.
+        self.fields['email'].required = False
+        self.fields['phone_number'].required = False
+        self.fields['mobile_number'].required = False
+        self.fields['department'].required = False
+        self.fields['notes'].required = False
+
+
+
+class PersonnelCloudServiceAccessForm(forms.ModelForm):
+    class Meta:
+        model = PersonnelCloudServiceAccess
+        fields = [
+            'personnel',
+            'assessment_cloud_service',
+            'access_level',
+            'is_admin_access',
+            'mfa_enabled_for_personnel',
+            'personnel_mfa_proof', # Added new field
+            'notes',
+            # 'recorded_by' will be set in the view.
+        ]
+        widgets = {
+            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}), # Added form-control
+            'personnel': forms.Select(attrs={'class': 'form-select'}),
+            'assessment_cloud_service': forms.Select(attrs={'class': 'form-select'}),
+            'access_level': forms.TextInput(attrs={'class': 'form-control'}),
+            'is_admin_access': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+            'mfa_enabled_for_personnel': forms.Select(
+                choices=[('', _('Unknown')), (True, _('Yes')), (False, _('No'))],
+                attrs={'class': 'form-select'}
+            ),
+            'personnel_mfa_proof': forms.ClearableFileInput(attrs={'class': 'form-control'}), # Added widget for styling
+        }
+        help_texts = {
+            'personnel': _("The contact person from this assessment."),
+            'assessment_cloud_service': _("The specific cloud service within this assessment."),
+            'access_level': _("Describe the person's role or permission level (e.g., 'Global Admin', 'Standard User')."),
+            'is_admin_access': _("Does this person have administrative rights on this service?"),
+            'mfa_enabled_for_personnel': _("Is MFA confirmed as enabled for this person on this service?"),
+            'personnel_mfa_proof': _("Optional: Screenshot or file proving MFA is active for this person on this service. Current file will be shown if one exists."),
+            'notes': _("Any verification details, specific permission notes, or MFA observations."),
+        }
+
+    def __init__(self, *args, **kwargs):
+        assessment_pk = kwargs.pop('assessment_pk', None)
+        personnel_pk = kwargs.pop('personnel_pk', None)
+
+        super().__init__(*args, **kwargs)
+
+        if assessment_pk:
+            try:
+                assessment = Assessment.objects.get(pk=assessment_pk)
+                self.fields['assessment_cloud_service'].queryset = AssessmentCloudService.objects.filter(
+                    assessment=assessment
+                ).select_related('cloud_service_definition')
+                self.fields['personnel'].queryset = AssessmentPersonnel.objects.filter(
+                    assessment=assessment
+                )
+            except Assessment.DoesNotExist: # Handle case where assessment_pk is invalid
+                self.fields['assessment_cloud_service'].queryset = AssessmentCloudService.objects.none()
+                self.fields['personnel'].queryset = AssessmentPersonnel.objects.none()
+
+        else:
+            self.fields['assessment_cloud_service'].queryset = AssessmentCloudService.objects.none()
+            self.fields['personnel'].queryset = AssessmentPersonnel.objects.none()
+
+        if personnel_pk and assessment_pk: # Ensure assessment_pk is also present for safety
+            try:
+                personnel_instance = AssessmentPersonnel.objects.get(pk=personnel_pk, assessment_id=assessment_pk)
+                self.fields['personnel'].initial = personnel_instance
+                self.fields['personnel'].disabled = True
+            except AssessmentPersonnel.DoesNotExist:
+                pass # Or raise an error if personnel_pk must be valid
+
+        # Ensure all fields have appropriate Bootstrap classes if not specified above
+        # CheckboxInput and ClearableFileInput might need specific handling by your CSS
+        # or you might rely on Bootstrap's default rendering for them when they have 'form-control'.
+        # For file inputs, 'form-control' helps with sizing and appearance.
+        # For checkboxes, 'form-check-input' is standard.
+
+
+class PersonnelSecurityTestForm(forms.ModelForm):
+    class Meta:
+        model = PersonnelSecurityTest
+        fields = [
+            'assessment_personnel', # Will likely be pre-set and disabled in the view
+            'scoped_item',
+            'test_type',
+            'test_description',
+            'test_date',
+            'outcome',
+            'malware_sample_name',
+            'notes',
+            'evidence',
+            # 'recorded_by' will be set in the view.
+        ]
+        widgets = {
+            'assessment_personnel': forms.Select(attrs={'class': 'form-select'}),
+            'scoped_item': forms.Select(attrs={'class': 'form-select'}),
+            'test_type': forms.Select(attrs={'class': 'form-select'}),
+            'test_description': forms.TextInput(attrs={'class': 'form-control'}),
+            'test_date': forms.DateTimeInput(attrs={'type': 'datetime-local', 'class': 'form-control'}),
+            'outcome': forms.Select(attrs={'class': 'form-select'}),
+            'malware_sample_name': forms.TextInput(attrs={'class': 'form-control'}),
+            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
+            'evidence': forms.Select(attrs={'class': 'form-select'}), # ForeignKey to Evidence model
+        }
+        help_texts = {
+            'assessment_personnel': _("The personnel contact involved in this test."),
+            'scoped_item': _("Optional: The specific scoped device involved in the test."),
+            'test_type': _("Select the type of security test performed."),
+            'test_description': _("Brief description or scenario of the test (e.g., 'EICAR.zip via email to user')."),
+            'test_date': _("Date and time the test was conducted."),
+            'outcome': _("Select the outcome of the test."),
+            'malware_sample_name': _("Name or identifier of the malware sample used (e.g., 'EICAR test file')."),
+            'notes': _("Detailed observations, user actions, system responses, etc."),
+            'evidence': _("Optional: Link to existing uploaded evidence supporting the test outcome."),
+        }
+
+    def __init__(self, *args, **kwargs):
+        assessment_pk = kwargs.pop('assessment_pk', None)
+        personnel_pk = kwargs.pop('personnel_pk', None)
+        super().__init__(*args, **kwargs)
+
+        if assessment_pk:
+            try:
+                assessment = Assessment.objects.get(pk=assessment_pk)
+                # Filter ScopedItem choices to those belonging to the current assessment
+                self.fields['scoped_item'].queryset = ScopedItem.objects.filter(
+                    assessment=assessment
+                )
+                # Filter Evidence choices to those belonging to the current assessment
+                # This assumes Evidence model has an 'assessment' ForeignKey.
+                # From tracker/models.py, Evidence.assessment is a ForeignKey to Assessment.
+                self.fields['evidence'].queryset = Evidence.objects.filter(
+                    assessment=assessment
+                ).order_by('-uploaded_at')
+
+                # Filter personnel to only those belonging to this assessment for safety,
+                # though it will be pre-set by personnel_pk.
+                self.fields['assessment_personnel'].queryset = AssessmentPersonnel.objects.filter(
+                    assessment=assessment
+                )
+            except Assessment.DoesNotExist:
+                self.fields['scoped_item'].queryset = ScopedItem.objects.none()
+                self.fields['evidence'].queryset = Evidence.objects.none()
+                self.fields['assessment_personnel'].queryset = AssessmentPersonnel.objects.none()
+        else:
+            # No assessment_pk, so no relevant choices.
+            self.fields['scoped_item'].queryset = ScopedItem.objects.none()
+            self.fields['evidence'].queryset = Evidence.objects.none()
+            self.fields['assessment_personnel'].queryset = AssessmentPersonnel.objects.none()
+
+        if personnel_pk and assessment_pk:
+            try:
+                personnel_instance = AssessmentPersonnel.objects.get(pk=personnel_pk, assessment_id=assessment_pk)
+                self.fields['assessment_personnel'].initial = personnel_instance
+                self.fields['assessment_personnel'].disabled = True # Disable as it's context-set
+            except AssessmentPersonnel.DoesNotExist:
+                pass # Or handle error if personnel_pk must be valid

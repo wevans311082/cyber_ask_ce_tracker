@@ -107,6 +107,7 @@ from tracker.utils import *
 from tracker.mixin import *
 from tracker.views import *
 from . import step_views
+from . import personnel_views
 
 logger = logging.getLogger(__name__)
 
@@ -266,24 +267,28 @@ def htmx_fetch_tenable_scan_results(request, log_id):
         )
 
 
-class LoadAssessmentCardContentView(ClientRequiredMixin, View):
-    # ... (NAMED_CARD_TEMPLATES and CONTEXT_FUNCTION_MAP remain the same) ...
+class LoadAssessmentCardContentView(ClientRequiredMixin, View): # Ensure ClientRequiredMixin is appropriate or use a more general one
     NAMED_CARD_TEMPLATES = {
         'workflow_checklist': 'tracker/partials/workflow_checklist_card.html',
         'assessment_info': 'tracker/partials/assessment_info_card.html',
+        # Although we'll call a view directly for personnel,
+        # having an entry here can be good for consistency or if you ever want a static fallback.
+        # For direct view calling, this specific template path might not be used if the card_name is intercepted.
+        'personnel_contacts': 'tracker/partials/_assessment_personnel_list.html',
     }
 
+    # CONTEXT_FUNCTION_MAP might not need a new entry if we call the view directly.
+    # If assessment_personnel_list_partial needed extra context from here, we'd add it.
+    # For now, it's self-contained.
     CONTEXT_FUNCTION_MAP = {
         'tracker/partials/client_scope_summary.html': 'get_scope_summary_context',
-        # ... other existing step-specific card mappings ...
         'tracker/partials/step/step_agree_date.html': 'get_step_agree_date_context',
-        # Mappings for named cards
         'tracker/partials/workflow_checklist_card.html': 'get_workflow_checklist_context',
         'tracker/partials/assessment_info_card.html': 'get_assessment_info_context',
     }
 
     def get_workflow_step_for_view(self, assessment, step_pk, request):
-        # ... (this helper method remains the same) ...
+        # ... (this helper method remains the same as you provided) ...
         profile = request.user.userprofile  # type: ignore
         if not profile or not profile.client or assessment.client != profile.client:
             logger.warning(
@@ -296,6 +301,7 @@ class LoadAssessmentCardContentView(ClientRequiredMixin, View):
         )
         return workflow_step
 
+
     def get(self, request, assessment_pk, step_pk=None, card_name=None, **kwargs):
         print(f"\n--- Debugging LoadAssessmentCardContentView.get() ---")
         print(f"Request path: {request.path}")
@@ -307,27 +313,55 @@ class LoadAssessmentCardContentView(ClientRequiredMixin, View):
         print("Request IS HTMX.")
 
         try:
-            profile = request.user.userprofile  # type: ignore
-            if not profile or not profile.client:
-                print("User profile or client link missing.")
+            # Permission check: Ensure user is client and this assessment belongs to them.
+            # Your ClientRequiredMixin might handle parts of this, but explicit checks are good.
+            profile = request.user.userprofile
+            if not profile or not profile.client: # Ensure user has a profile and is linked to a client
+                print(f"User {request.user.username} has no associated client profile.")
                 raise PermissionDenied("User has no associated client.")
             assessment = get_object_or_404(Assessment, pk=assessment_pk)
             if assessment.client != profile.client:
-                print("Assessment client does not match user's client.")
-                raise PermissionDenied("Assessment not found or permission denied.")
+                print(f"Assessment client {assessment.client.id} does not match user's client {profile.client.id}.")
+                raise PermissionDenied("This assessment does not belong to your client account.")
             print(f"Successfully fetched assessment ID: {assessment.pk} for user {request.user.username}")
-        except (Http404, PermissionDenied) as e:
-            print(f"Error fetching assessment or permission denied: {str(e)}")
-            # ... (your existing error response logic) ...
-            logger.warning(
-                f"Initial assessment access failed for assessment_pk={assessment_pk}, user={request.user.username}: {str(e)}")
-            return HttpResponse("Error: Assessment not found or permission denied.",
-                                status=403 if isinstance(e, PermissionDenied) else 404)
+
+        except Http404:
+            logger.warning(f"Assessment with pk={assessment_pk} not found for user {request.user.username}.")
+            return HttpResponse("Error: Assessment not found.", status=404)
+        except PermissionDenied as e:
+            logger.warning(f"Permission denied for assessment_pk={assessment_pk}, user={request.user.username}: {str(e)}")
+            return HttpResponse(f"Error: {str(e)}", status=403)
+        except Exception as e: # Catch other potential errors like UserProfile.DoesNotExist
+            logger.error(f"Unexpected error during assessment access for user {request.user.username}, assessment_pk={assessment_pk}: {e}", exc_info=True)
+            return HttpResponse("Error: An unexpected issue occurred while accessing the assessment.", status=500)
+
+
+        # --- MODIFICATION FOR PERSONNEL CONTACTS CARD ---
+        if card_name == 'personnel_contacts':
+            print(f"Specific handling for named card: '{card_name}'. Calling assessment_personnel_list_partial view.")
+            # Directly call the view function that renders the personnel list partial
+            # This view function handles its own context and template rendering.
+            try:
+                # Ensure this import is at the top of the file:
+                from .personnel_views import assessment_personnel_list_partial
+                response = assessment_personnel_list_partial(request, assessment_pk=assessment.pk)
+                # Add HX-Trigger for nav update if needed for this card type
+                response['HX-Trigger-After-Swap'] = json.dumps({'updateNavActiveState': {'cardName': card_name}})
+                print("--- Exiting LoadAssessmentCardContentView.get() via personnel_contacts direct call ---")
+                return response
+            except Exception as e_personnel_view:
+                logger.error(f"Error calling assessment_personnel_list_partial for card '{card_name}': {e_personnel_view}", exc_info=True)
+                # Fallback to a generic error card content if the direct view call fails
+                error_context = {'assessment': assessment, 'workflow_step': None,
+                                 'error_message': _("Error loading personnel contacts. An administrator has been notified.")}
+                html_content = render_to_string('tracker/partials/_default_card_content.html', error_context, request=request)
+                return HttpResponse(html_content, status=500)
+        # --- END MODIFICATION ---
 
         card_template = None
-        workflow_step_for_context = None  # Will hold the specific step if card is step-based
+        workflow_step_for_context = None
 
-        if card_name:
+        if card_name: # This will now handle other named cards like 'assessment_info', 'workflow_checklist'
             print(f"Processing named card: '{card_name}'")
             card_template = self.NAMED_CARD_TEMPLATES.get(card_name)
             print(f"Template path from NAMED_CARD_TEMPLATES: '{card_template}'")
@@ -342,7 +376,6 @@ class LoadAssessmentCardContentView(ClientRequiredMixin, View):
                 print(f"Template path from step_definition: '{card_template}'")
             except (Http404, PermissionDenied) as e:
                 print(f"Error fetching workflow_step: {str(e)}")
-                # ... (your existing error response logic for step fetch failure) ...
                 logger.warning(
                     f"HTMX card load: Error fetching step - {type(e).__name__} for assess_pk={assessment_pk}, step_pk={step_pk}, user={request.user.username}")
                 status_code = 404 if isinstance(e, Http404) else 403
@@ -351,14 +384,12 @@ class LoadAssessmentCardContentView(ClientRequiredMixin, View):
                     'error_message': _("Error loading step details. It may not exist or you may not have permission.")
                 }, request=request)
                 return HttpResponse(error_card_html, status=status_code)
-
         else:
             print("Error: Neither card_name nor step_pk provided.")
             return HttpResponseBadRequest("Card identifier not provided.")
 
         if not card_template:
             print(f"Error: No card_template could be determined. Using default error card.")
-            # ... (your existing logic for no card_template, e.g., render _default_card_content.html) ...
             logger.warning(
                 f"No card template could be determined for assess_pk={assessment_pk}, step_pk={step_pk}, card_name={card_name}. Using default.")
             card_template = 'tracker/partials/_default_card_content.html'
@@ -410,7 +441,6 @@ class LoadAssessmentCardContentView(ClientRequiredMixin, View):
         except Exception as e_render_main:
             print(f"ERROR rendering template '{card_template}': {str(e_render_main)}")
             logger.error(f"Error rendering main card template '{card_template}': {e_render_main}", exc_info=True)
-            # ... (your existing error rendering logic) ...
             default_error_context = {'assessment': assessment, 'workflow_step': workflow_step_for_context,
                                      'error_message': _("Error rendering this content card.")}
             html_content = render_to_string('tracker/partials/_default_card_content.html', default_error_context,
@@ -422,56 +452,6 @@ class LoadAssessmentCardContentView(ClientRequiredMixin, View):
         elif card_name:
             response['HX-Trigger-After-Swap'] = json.dumps({'updateNavActiveState': {'cardName': card_name}})
         print("--- Exiting LoadAssessmentCardContentView.get() ---")
-        return response
-
-        # Prepare base context. 'workflow_step' here refers to the specific step the card might be about.
-        # For named cards like the checklist, workflow_step_for_context will be None.
-        # Context functions need to handle workflow_step_for_context being None if they are used for named cards.
-        base_context = {'assessment': assessment, 'workflow_step': workflow_step_for_context, 'user': request.user}
-
-        function_name_str = self.CONTEXT_FUNCTION_MAP.get(card_template)
-        specific_context = {}
-
-        if function_name_str and hasattr(step_views, function_name_str):
-            context_function = getattr(step_views, function_name_str)
-            try:
-                # Pass assessment, the specific workflow_step (or None), and request
-                specific_context = context_function(assessment, workflow_step_for_context, request)
-            except Exception as e_context:
-                logger.error(
-                    f"Error calling context function '{function_name_str}' from step_views for template '{card_template}': {e_context}",
-                    exc_info=True)
-                base_context['card_error'] = _("Error preparing dynamic content for this card.")
-        elif function_name_str:
-            logger.error(
-                f"Context function '{function_name_str}' mapped for '{card_template}' but NOT found in step_views module.")
-            base_context['card_error'] = _("Card configuration error (server: context function missing).")
-        else:
-            logger.info(
-                f"No specific context function mapped for template '{card_template}'. Using base context only.")
-
-        base_context.update(specific_context)
-
-        try:
-            html_content = render_to_string(card_template, base_context, request=request)
-        except Exception as e_render_main:
-            logger.error(
-                f"Error rendering main card template '{card_template}' (Assessment: {assessment.pk}): {e_render_main}",
-                exc_info=True)
-            default_error_context = {
-                'assessment': assessment, 'workflow_step': workflow_step_for_context,
-                'error_message': _("Error rendering this content card. An administrator has been notified.")
-            }
-            html_content = render_to_string('tracker/partials/_default_card_content.html', default_error_context,
-                                            request=request)
-
-        response = HttpResponse(html_content)
-        # Trigger nav update only if it was a step-specific card
-        if step_pk:
-            response['HX-Trigger-After-Swap'] = json.dumps({'updateNavActiveState': {'stepPk': step_pk}})
-        elif card_name:  # For named cards, you might want a different or no specific nav update
-            response['HX-Trigger-After-Swap'] = json.dumps(
-                {'updateNavActiveState': {'cardName': card_name}})  # Or a generic event
         return response
 
 

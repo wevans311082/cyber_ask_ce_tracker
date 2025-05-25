@@ -1,0 +1,112 @@
+{% load i18n %}
+
+<div id="personnel-cloud-access-form-content" class="border rounded p-3 bg-light mb-3">
+    <form method="post"
+        {% if form.instance.pk %}
+            hx-post="{% url 'tracker:personnel_cloud_access_update' assessment_pk=assessment.pk personnel_pk=personnel.pk access_pk=form.instance.pk %}"
+        {% else %}
+            hx-post="{% url 'tracker:personnel_cloud_access_create' assessment_pk=assessment.pk personnel_pk=personnel.pk %}"
+        {% endif %}
+        hx-target="#personnel-cloud-access-list-for-{{ personnel.pk }}"
+        hx-swap="innerHTML"
+        enctype="multipart/form-data" {# IMPORTANT for file uploads #}
+        novalidate
+    >
+        {% csrf_token %}
+        <h5>{{ view_title }}</h5>
+        <hr>
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+            </div>
+        {% endif %}
+
+        {# Personnel field (usually disabled/hidden as it's context-set) #}
+        {% if form.personnel %}
+        <div class="mb-3 form-field-{{ form.personnel.name }}">
+            <label for="{{ form.personnel.id_for_label }}" class="form-label">{{ form.personnel.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                {{ form.personnel }}
+            </div>
+            {% if form.personnel.help_text %}<small class="form-text text-muted">{{ form.personnel.help_text }}</small>{% endif %}
+            {% if form.personnel.errors %}<div class="invalid-feedback d-block">{% for error in form.personnel.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+        {% endif %}
+
+        {# Assessment Cloud Service #}
+        <div class="mb-3 form-field-{{ form.assessment_cloud_service.name }}">
+            <label for="{{ form.assessment_cloud_service.id_for_label }}" class="form-label">{{ form.assessment_cloud_service.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-cloud"></i></span>
+                {{ form.assessment_cloud_service }}
+            </div>
+            {% if form.assessment_cloud_service.help_text %}<small class="form-text text-muted">{{ form.assessment_cloud_service.help_text }}</small>{% endif %}
+            {% if form.assessment_cloud_service.errors %}<div class="invalid-feedback d-block">{% for error in form.assessment_cloud_service.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        {# Access Level #}
+        <div class="mb-3 form-field-{{ form.access_level.name }}">
+            <label for="{{ form.access_level.id_for_label }}" class="form-label">{{ form.access_level.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-shield-alt"></i></span>
+                {{ form.access_level }}
+            </div>
+            {% if form.access_level.help_text %}<small class="form-text text-muted">{{ form.access_level.help_text }}</small>{% endif %}
+            {% if form.access_level.errors %}<div class="invalid-feedback d-block">{% for error in form.access_level.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        {# Is Admin Access (Checkbox) #}
+        <div class="mb-3 form-check form-field-{{ form.is_admin_access.name }}">
+            {{ form.is_admin_access }}
+            <label for="{{ form.is_admin_access.id_for_label }}" class="form-check-label">{{ form.is_admin_access.label }}</label>
+            {% if form.is_admin_access.help_text %}<small class="form-text text-muted d-block">{{ form.is_admin_access.help_text }}</small>{% endif %}
+            {% if form.is_admin_access.errors %}<div class="invalid-feedback d-block">{% for error in form.is_admin_access.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        {# MFA Enabled for Personnel (Select: Yes/No/Unknown) #}
+        <div class="mb-3 form-field-{{ form.mfa_enabled_for_personnel.name }}">
+            <label for="{{ form.mfa_enabled_for_personnel.id_for_label }}" class="form-label">{{ form.mfa_enabled_for_personnel.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-user-lock"></i></span>
+                {{ form.mfa_enabled_for_personnel }}
+            </div>
+            {% if form.mfa_enabled_for_personnel.help_text %}<small class="form-text text-muted">{{ form.mfa_enabled_for_personnel.help_text }}</small>{% endif %}
+            {% if form.mfa_enabled_for_personnel.errors %}<div class="invalid-feedback d-block">{% for error in form.mfa_enabled_for_personnel.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        {# Personnel MFA Proof (File Upload) #}
+        <div class="mb-3 form-field-{{ form.personnel_mfa_proof.name }}">
+            <label for="{{ form.personnel_mfa_proof.id_for_label }}" class="form-label">{{ form.personnel_mfa_proof.label }}</label>
+            {{ form.personnel_mfa_proof }} {# Uses ClearableFileInput by default #}
+            {% if form.instance.pk and form.instance.personnel_mfa_proof %}
+                <small class="form-text text-muted">{% translate "Currently:" %} <a href="{{ form.instance.personnel_mfa_proof.url }}" target="_blank">{{ form.instance.personnel_mfa_proof.name|cut:"mfa_proof/assessment_"|cut:"personnel_specific/personnel_"|cut:"cloud_service_"|truncatechars:40 }}</a></small>
+            {% endif %}
+            {% if form.personnel_mfa_proof.help_text %}<small class="form-text text-muted d-block">{{ form.personnel_mfa_proof.help_text }}</small>{% endif %}
+            {% if form.personnel_mfa_proof.errors %}<div class="invalid-feedback d-block">{% for error in form.personnel_mfa_proof.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        {# Notes #}
+        <div class="mb-3 form-field-{{ form.notes.name }}">
+            <label for="{{ form.notes.id_for_label }}" class="form-label">{{ form.notes.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-sticky-note"></i></span>
+                {{ form.notes }}
+            </div>
+            {% if form.notes.help_text %}<small class="form-text text-muted">{{ form.notes.help_text }}</small>{% endif %}
+            {% if form.notes.errors %}<div class="invalid-feedback d-block">{% for error in form.notes.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        <div class="mt-3">
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="fas fa-save"></i> {% translate "Save Access Record" %}
+            </button>
+            <button type="button"
+                onclick="this.closest('#personnel-cloud-access-form-content').remove();"
+                class="btn btn-secondary btn-sm">
+                {% translate "Cancel" %}
+            </button>
+        </div>
+    </form>
+</div>

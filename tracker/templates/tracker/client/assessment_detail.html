@@ -76,6 +76,16 @@
                   title="{% translate 'View Full Workflow Checklist' %}">
               <i class="fas fa-tasks me-1"></i> {% translate "View Workflow Checklist" %}
           </button>
+
+          {# New Button for Personnel Contacts #}
+          <button class="btn btn-outline-dark btn-sm"
+                  hx-get="{% url 'tracker:load_named_card' assessment_pk=assessment.pk card_name='personnel_contacts' %}"
+                  hx-target="#main-assessment-content-area"
+                  hx-swap="innerHTML"
+                  title="{% translate 'View Personnel Contacts' %}">
+              <i class="fas fa-users me-1"></i> {% translate "View Personnel Contacts" %}
+          </button>
+
       </div>
 
       <div id="main-assessment-content-area" class="mb-4">

@@ -150,4 +150,35 @@ urlpatterns = [
     path('assessment/<int:assessment_pk>/save_info/', views.save_assessment_info, name='save_assessment_info'),
 
 
+
+    path('assessment/<int:assessment_pk>/personnel/', views.assessment_personnel_list_partial,name='assessment_personnel_list_partial'),
+
+    path('assessment/<int:assessment_pk>/personnel/add/', views.AssessmentPersonnelCreateView.as_view(), name='assessment_personnel_create'),
+
+    # Placeholder URLs for update and delete, which we will create views for next
+    path('assessment/<int:assessment_pk>/personnel/<int:pk>/update/', views.AssessmentPersonnelUpdateView.as_view(),  name='assessment_personnel_update'),
+    path('assessment/<int:assessment_pk>/personnel/<int:pk>/delete/', views.AssessmentPersonnelDeleteView.as_view(),  name='assessment_personnel_delete'),
+
+
+
+
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/cloud-access/', views.personnel_cloud_service_access_list_partial, name='personnel_cloud_service_access_list_partial'),
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/cloud-access/add/', views.PersonnelCloudServiceAccessCreateView.as_view(), name='personnel_cloud_access_create'),
+
+    # Placeholder URLs for update and delete of PersonnelCloudServiceAccess
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/cloud-access/<int:access_pk>/update/', views.PersonnelCloudServiceAccessUpdateView.as_view(), name='personnel_cloud_access_update'),
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/cloud-access/<int:access_pk>/delete/', views.PersonnelCloudServiceAccessDeleteView.as_view(), name='personnel_cloud_access_delete'),
+
+
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/security-tests/',views.personnel_security_test_list_partial, name='personnel_security_test_list_partial'),
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/security-tests/add/', views.PersonnelSecurityTestCreateView.as_view(), name='personnel_security_test_create'),
+
+    # Placeholder URLs for update and delete of PersonnelSecurityTest
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/security-tests/<int:test_pk>/update/', views.PersonnelSecurityTestUpdateView.as_view(), name='personnel_security_test_update'),
+    path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/security-tests/<int:test_pk>/delete/', views.PersonnelSecurityTestDeleteView.as_view(), name='personnel_security_test_delete'),
+
+
+
+
+
 ]

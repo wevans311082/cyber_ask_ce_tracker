@@ -48,3 +48,6 @@ from .step_views import *
 
 # Workflow views
 from .workflow_views import *
+
+#
+from .personnel_views import *

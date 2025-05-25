@@ -1,0 +1,90 @@
+{% load i18n tz %}
+
+<div id="personnel-cloud-access-list-for-{{ personnel.pk }}" class="mt-3">
+    <h5>{% blocktranslate with person_name=personnel.full_name %}Cloud Service Access for: {{ person_name }}{% endblocktranslate %}</h5>
+
+    {% if access_list %}
+        <table class="table table-sm table-hover">
+            <thead class="table-light">
+                <tr>
+                    <th>{% translate "Cloud Service" %}</th>
+                    <th>{% translate "Access Level" %}</th>
+                    <th>{% translate "Admin Access?" %}</th>
+                    <th>{% translate "MFA Enabled?" %}</th>
+                    <th>{% translate "MFA Proof" %}</th>
+                    <th>{% translate "Notes" %}</th>
+                    <th>{% translate "Actions" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for access in access_list %}
+                    <tr id="personnel-cloud-access-{{ access.pk }}-row">
+                        <td>{{ access.assessment_cloud_service.cloud_service_definition.name }}</td>
+                        <td>{{ access.access_level|default_if_none:"" }}</td>
+                        <td>
+                            {% if access.is_admin_access %}
+                                <i class="fas fa-check-circle text-success" title="{% translate 'Yes' %}"></i>
+                            {% else %}
+                                <i class="fas fa-times-circle text-muted" title="{% translate 'No' %}"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if access.mfa_enabled_for_personnel is True %}
+                                <i class="fas fa-user-lock text-success" title="{% translate 'Yes' %}"></i>
+                            {% elif access.mfa_enabled_for_personnel is False %}
+                                <i class="fas fa-user-unlock text-danger" title="{% translate 'No' %}"></i>
+                            {% else %}
+                                <i class="fas fa-question-circle text-muted" title="{% translate 'Unknown' %}"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if access.personnel_mfa_proof %}
+                                <a href="{{ access.personnel_mfa_proof.url }}" target="_blank" class="btn btn-sm btn-outline-info">
+                                    <i class="fas fa-eye"></i> {% translate "View" %}
+                                </a>
+                            {% else %}
+                                <span class="text-muted">{% translate "N/A" %}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ access.notes|truncatechars:30|default_if_none:"" }}</td>
+                        <td>
+                            <button
+                                hx-get="{% url 'tracker:personnel_cloud_access_update' assessment_pk=assessment.pk personnel_pk=personnel.pk access_pk=access.pk %}"
+                                hx-target="#cloud-access-form-container-for-{{ personnel.pk }}"
+                                hx-swap="innerHTML"
+                                class="btn btn-sm btn-outline-primary"
+                                title="{% translate 'Edit Access' %}">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button
+                                hx-post="{% url 'tracker:personnel_cloud_access_delete' assessment_pk=assessment.pk personnel_pk=personnel.pk access_pk=access.pk %}"
+                                hx-confirm="{% blocktranslate with service_name=access.assessment_cloud_service.cloud_service_definition.name %}Are you sure you want to delete access to {{ service_name }} for this person?{% endblocktranslate %}"
+                                hx-target="#personnel-cloud-access-{{ access.pk }}-row"
+                                hx-swap="outerHTML"
+                                class="btn btn-sm btn-outline-danger"
+                                title="{% translate 'Delete Access' %}">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>{% translate "No cloud service access records have been added for this person yet." %}</p>
+    {% endif %}
+
+    <div id="cloud-access-form-container-for-{{ personnel.pk }}" class="mt-2">
+        {# This div will be targeted by HTMX to load the add/edit form for this specific personnel #}
+    </div>
+
+    <button
+        hx-get="{% url 'tracker:personnel_cloud_access_create' assessment_pk=assessment.pk personnel_pk=personnel.pk %}"
+        hx-target="#cloud-access-form-container-for-{{ personnel.pk }}"
+        hx-swap="innerHTML"
+        class="btn btn-success btn-sm mt-2"
+    >
+        <i class="fas fa-plus"></i> {% translate "Add Cloud Service Access" %}
+    </button>
+    <hr class="my-3">
+</div>

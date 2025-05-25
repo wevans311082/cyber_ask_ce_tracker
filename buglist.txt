@@ -25,6 +25,17 @@ Prompt (OutlookCal-F2 - New): Develop one-way calendar synchronization (App -> O
 Prompt (F43): Implement report data collation and export: collate scope, test plans, results, evidence, and remediation data; enable export of this structured data (JSON/CSV/text) for external CE+ report generation. (Future basic PDF is IMPRV-009/Feature:20).
 Prompt (New - from "Assesors profile"): Design and implement a comprehensive "Assessor Profile" feature: include a new model, a visually appealing card-based UI, and editable profile details.
 New Features (Medium Priority)
+Prompt (F44): Design a CE+ Policy Questionnaire module: structured Q&A forms for capturing narrative evidence of policies and processes, mandatory-completion enforcement, and an “Assessor Notes” editor for free-text justifications.
+Prompt (F45): Implement an Observation Session workflow: allow assessors to record user interactions, log timestamps, capture screen recordings or screenshots, and record pass/fail outcomes for malware protection tests.
+Prompt (F46): Develop a Log Ingestion and Parsing module: ingest AV and OS logs, parse relevant entries for evidence, and guide extraction of certificate-store listings as structured data.
+Prompt (F47): Create a Wi-Fi Security Assessment feature: discover wireless SSIDs, check encryption strength (WPA2/3), detect open networks or default credentials, and upload SSID-level evidence.
+Prompt (F48): Implement Network Segmentation Verification tools: guide documentation and evidence collection of VLAN/ACL configurations, firewall rules, or other segmentation controls between scoped and non-scoped assets.
+Prompt (F49): Add a CVSS-Based Patch Analysis module: cross-reference patch release dates and CVSS v3 ≥7 scores, auto-flag late patches against the 14-day requirement, and generate templated advisory notes for assessor approval.
+Prompt (F50): Enforce Mandatory Field and Failure Rules: block progression on self-assessment scope and control questionnaires if required fields are blank or marked “N/A,” and automatically flag overall assessment failures with assessor justification.
+Prompt (F51): Develop a Test File Library: allow upload, versioning, and categorization of malware/executable test files, and distribute secure file URLs to clients and assessors for testing.
+Prompt (F52): Implement a Report Authoring interface: WYSIWYG editor for inline assessor commentary and export to the official CE Plus PDF template with correct section numbering, control mappings, and audit-proof headers/footers.
+
+
 
 Prompt (F12): Develop automated CE+ sample validation rules: assist assessors by highlighting if a selected device sample meets CE+ diversity criteria (OS types, device roles, network segments).
 Prompt (F13): Implement custom report templates and branding: allow administrators to define basic templates for generated assessment reports and add company branding (logo, colors).

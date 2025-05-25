@@ -48,6 +48,20 @@ def validate_ip_or_hostname(value):
                  f"'{value}' is not a valid IP address or resolvable hostname.",
                  code='invalid_ip_or_hostname'
              )
+def personnel_mfa_proof_upload_path(instance, filename):
+    # instance is PersonnelCloudServiceAccess
+    assessment_id = instance.assessment_cloud_service.assessment.id
+    personnel_id = instance.personnel.id
+    cloud_service_id = instance.assessment_cloud_service.cloud_service_definition.id
+    ext = filename.split('.')[-1]
+    unique_filename = f"{uuid.uuid4()}.{ext}"
+    return os.path.join('mfa_proof',
+                        f'assessment_{assessment_id}',
+                        'personnel_specific',
+                        f'personnel_{personnel_id}',
+                        f'cloud_service_{cloud_service_id}',
+                        unique_filename)
+
 
 
 class ScanStatus(models.TextChoices):
@@ -597,8 +611,6 @@ class AssessmentCloudService(models.Model):
     @property
     def user_proof_filename(self):
         return os.path.basename(self.mfa_user_proof.name) if self.mfa_user_proof else None
-
-
 class ExternalIP(models.Model):
     """
     Represents an external IP address or hostname in scope for scanning.
@@ -1125,8 +1137,6 @@ class Browser(models.Model):
 
     def __str__(self):
         return f"{self.name} v{self.version}"
-
-
 class WorkflowStepDefinition(models.Model):
     """Defines a standard step in the CE+ assessment workflow."""
     ASSIGNEE_CHOICES = (
@@ -1176,8 +1186,6 @@ class WorkflowStepDefinition(models.Model):
 
     def __str__(self):
         return f"{self.step_order}. {self.name}"
-
-
 class AssessmentWorkflowStep(models.Model):
     """Tracks the status of a specific workflow step for an assessment."""
     class Status(models.TextChoices):
@@ -1247,9 +1255,6 @@ class AssessmentWorkflowStep(models.Model):
 
         print(f"DEBUG (is_update_allowed): Unknown AssigneeType '{assignee_type}', returning False.") # Added print
         return False
-
-
-
 class Conversation(models.Model):
     # One conversation per assessment between client and assessor
     assessment = models.OneToOneField(
@@ -1295,8 +1300,6 @@ class Conversation(models.Model):
     # Optional: Get last message for display in lists
     def get_last_message(self):
         return self.messages.order_by('-timestamp').first()
-
-
 class Message(models.Model):
     conversation = models.ForeignKey(
         Conversation,
@@ -1331,3 +1334,198 @@ class Message(models.Model):
             # self.conversation.save(update_fields=['updated_at'])
             return True
         return False
+
+
+class AssessmentPersonnel(models.Model):
+    assessment = models.ForeignKey(
+        'Assessment',  # Use string if Assessment is defined later or to avoid circular import
+        on_delete=models.CASCADE,
+        related_name='personnel_contacts', # Changed related_name to avoid clash if 'personnel' was used elsewhere
+        verbose_name=_("Assessment")
+    )
+    full_name = models.CharField(max_length=255, verbose_name=_("Full Name"))
+    email = models.EmailField(verbose_name=_("Email Address"), blank=True, null=True, help_text=_("Contact email for this person (optional)."))
+    phone_number = models.CharField(max_length=30, blank=True, verbose_name=_("Work Phone Number"))
+    mobile_number = models.CharField(max_length=30, blank=True, verbose_name=_("Mobile Phone Number"))
+    department = models.CharField(max_length=100, blank=True, verbose_name=_("Department / Team"))
+    role_in_assessment = models.CharField(
+        max_length=150,
+        verbose_name=_("Role in Assessment Context"),
+        help_text=_("e.g., Primary Technical Contact, System Administrator for 'Server X', End-user for testing")
+    )
+    notes = models.TextField(blank=True, verbose_name=_("Notes"))
+
+    # Tracks who (which platform user) added this contact record
+    added_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, # Or 'UserProfile' if you prefer to link to the profile
+        on_delete=models.SET_NULL,
+        null=True, blank=True, # Can be blank if added by a system process, or null if user deleted
+        related_name='added_assessment_contacts',
+        verbose_name=_("Added By (Platform User)")
+    )
+    date_added = models.DateTimeField(auto_now_add=True, verbose_name=_("Date Added"))
+    date_updated = models.DateTimeField(auto_now=True, verbose_name=_("Date Updated"))
+
+    class Meta:
+        verbose_name = _("Assessment Personnel Contact")
+        verbose_name_plural = _("Assessment Personnel Contacts")
+        # A person with the same name and role is likely a duplicate for the same assessment.
+        # Email might not always be provided or unique if it's a generic role account.
+        unique_together = [['assessment', 'full_name', 'role_in_assessment']]
+        ordering = ['assessment', 'full_name']
+
+    def __str__(self):
+        email_str = f" ({self.email})" if self.email else ""
+        return f"{self.full_name}{email_str} - {self.role_in_assessment} (Assessment: {self.assessment.id})"
+class PersonnelCloudServiceAccess(models.Model):
+    personnel = models.ForeignKey(
+        'AssessmentPersonnel',
+        on_delete=models.CASCADE,
+        related_name='cloud_service_accesses',
+        verbose_name=_("Personnel Contact")
+    )
+    assessment_cloud_service = models.ForeignKey(
+        'AssessmentCloudService',
+        on_delete=models.CASCADE,
+        related_name='personnel_accesses',
+        verbose_name=_("Assessment Cloud Service")
+    )
+    access_level = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name=_("Access Level / Role"),
+        help_text=_("e.g., Administrator, Standard User, Read-only, Custom. Describe the user's permissions.")
+    )
+    is_admin_access = models.BooleanField(
+        default=False,
+        verbose_name=_("Has Administrative Access"),
+        help_text=_("Tick if this person has administrative privileges on this cloud service.")
+    )
+    mfa_enabled_for_personnel = models.BooleanField(
+        default=None,
+        null=True, blank=True,
+        verbose_name=_("MFA Enabled for this Personnel"),
+        help_text=_("Is Multi-Factor Authentication confirmed as enabled for this specific person on this service?")
+    )
+    # New field for personnel-specific MFA proof
+    personnel_mfa_proof = models.FileField(
+        upload_to=personnel_mfa_proof_upload_path, # New upload path function
+        null=True, blank=True,
+        verbose_name=_("Personnel MFA Proof Screenshot"),
+        help_text=_("Optional: Screenshot or file proving MFA is active for this person on this service.")
+    )
+    notes = models.TextField(
+        blank=True,
+        verbose_name=_("Verification Notes / Details"),
+        help_text=_("Details about how access was verified, specific permissions, or MFA status for this person.")
+    )
+
+    # Audit fields
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recorded_cloud_accesses',
+        verbose_name=_("Recorded By (Platform User)")
+    )
+    date_recorded = models.DateTimeField(auto_now_add=True, verbose_name=_("Date Recorded"))
+    date_updated = models.DateTimeField(auto_now=True, verbose_name=_("Date Updated"))
+
+    class Meta:
+        verbose_name = _("Personnel Cloud Service Access")
+        verbose_name_plural = _("Personnel Cloud Service Accesses")
+        unique_together = [['personnel', 'assessment_cloud_service']]
+        ordering = ['personnel', 'assessment_cloud_service']
+
+    def __str__(self):
+        return f"{self.personnel.full_name} access to {self.assessment_cloud_service.cloud_service_definition.name} (Assessment: {self.assessment_cloud_service.assessment.id})"
+class PersonnelSecurityTest(models.Model):
+    TEST_TYPE_CHOICES = [
+        ('EmailAttachment', _('Email Attachment Test')),
+        ('EmailLink', _('Email Link Test')),
+        ('BrowserWebsite', _('Browser Website Test')),
+        ('USBDevice', _('USB Device Test')),
+        ('Other', _('Other Security Test')),
+    ]
+    OUTCOME_CHOICES = [
+        ('BlockedBySystem', _('Malware/Link Blocked by System')),
+        ('NotBlockedExecuted', _('Malware/Link Not Blocked - Executed/Opened')),
+        ('NotBlockedNotExecuted', _('Malware/Link Not Blocked - Not Executed/Opened by User')),
+        ('ReportedByUser', _('Malware/Link Reported by User')),
+        ('PassedNoAction', _('Test Passed - No Adverse Action Possible/Taken')), # e.g. inert sample
+        ('FailedOther', _('Test Failed - Other')),
+        ('InProgress', _('Test In Progress')),
+    ]
+
+    assessment_personnel = models.ForeignKey(
+        'AssessmentPersonnel',
+        on_delete=models.CASCADE,
+        related_name='security_tests',
+        verbose_name=_("Personnel Tested")
+    )
+    # Optionally link to a specific device if the test was device-centric
+    scoped_item = models.ForeignKey(
+        'ScopedItem',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='security_tests',
+        verbose_name=_("Device Tested (Optional)"),
+        help_text=_("Link to the specific device in scope, if applicable.")
+    )
+    test_type = models.CharField(
+        max_length=20,
+        choices=TEST_TYPE_CHOICES,
+        verbose_name=_("Type of Security Test")
+    )
+    test_description = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name=_("Test Description/Scenario"),
+        help_text=_("e.g., 'EICAR test file in ZIP via email', 'Link to malicious_site.example.com'")
+    )
+    test_date = models.DateTimeField(
+        default=None, null=True, blank=True, # Allow scheduling or back-dating
+        verbose_name=_("Date and Time of Test")
+    )
+    outcome = models.CharField(
+        max_length=30,
+        choices=OUTCOME_CHOICES,
+        verbose_name=_("Outcome of Test")
+    )
+    malware_sample_name = models.CharField(
+        max_length=100,
+        blank=True,
+        verbose_name=_("Malware Sample Name/ID"),
+        help_text=_("Identifier for the malware sample used, if any (e.g., EICAR, specific test file name).")
+    )
+    notes = models.TextField(
+        blank=True,
+        verbose_name=_("Observations and Notes"),
+        help_text=_("Detailed observations, user actions, system responses, etc.")
+    )
+    evidence = models.ForeignKey(
+        'Evidence', # Assuming you have an Evidence model for screenshots, logs etc.
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='security_test_evidence',
+        verbose_name=_("Supporting Evidence (Optional)")
+    )
+
+    # Audit fields
+    recorded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recorded_security_tests',
+        verbose_name=_("Recorded By (Platform User)")
+    )
+    date_recorded = models.DateTimeField(auto_now_add=True, verbose_name=_("Date Recorded"))
+    date_updated = models.DateTimeField(auto_now=True, verbose_name=_("Date Updated"))
+
+    class Meta:
+        verbose_name = _("Personnel Security Test Log")
+        verbose_name_plural = _("Personnel Security Test Logs")
+        ordering = ['assessment_personnel', '-test_date', '-date_recorded']
+
+    def __str__(self):
+        return f"{self.get_test_type_display()} for {self.assessment_personnel.full_name} on {self.test_date.strftime('%Y-%m-%d') if self.test_date else 'N/A'}"

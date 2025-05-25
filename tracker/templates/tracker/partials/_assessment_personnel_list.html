@@ -1,0 +1,155 @@
+{% load i18n %}
+
+<div id="assessment-personnel-list-section">
+    <h4>{% translate "Personnel Contacts" %}</h4>
+
+    {% if personnel_list %}
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>{% translate "Full Name" %}</th>
+                    <th>{% translate "Role in Assessment" %}</th>
+                    <th>{% translate "Email" %}</th>
+                    <th>{% translate "Actions" %}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for personnel_contact in personnel_list %}
+                    <tr id="personnel-{{ personnel_contact.pk }}-row">
+                        <td>{{ personnel_contact.full_name }}</td>
+                        <td>{{ personnel_contact.role_in_assessment }}</td>
+                        <td>{{ personnel_contact.email|default:"" }}</td>
+                        <td>
+                            {# Edit Personnel Contact Button #}
+                            <button
+                                hx-get="{% url 'tracker:assessment_personnel_update' assessment_pk=assessment.pk pk=personnel_contact.pk %}"
+                                hx-target="#personnel-form-container"
+                                hx-swap="innerHTML"
+                                class="btn btn-sm btn-outline-primary mb-1"
+                                title="{% translate 'Edit Contact Details' %}">
+                                <i class="fas fa-edit"></i> {% translate "Edit" %}
+                            </button>
+
+                            {# Delete Personnel Contact Button #}
+                            <button
+                                hx-post="{% url 'tracker:assessment_personnel_delete' assessment_pk=assessment.pk pk=personnel_contact.pk %}"
+                                hx-confirm="{% blocktranslate with name=personnel_contact.full_name %}Are you sure you want to delete {{ name }}?{% endblocktranslate %}"
+                                hx-target="#personnel-{{ personnel_contact.pk }}-row"
+                                hx-swap="outerHTML"
+                                class="btn btn-sm btn-outline-danger mb-1"
+                                title="{% translate 'Delete Contact' %}">
+                                <i class="fas fa-trash"></i> {% translate "Delete" %}
+                            </button>
+
+                            {# Manage Cloud Service Access Button #}
+                            <button
+                                hx-get="{% url 'tracker:personnel_cloud_service_access_list_partial' assessment_pk=assessment.pk personnel_pk=personnel_contact.pk %}"
+                                hx-target="#cloud-access-management-area-{{ personnel_contact.pk }}"
+                                hx-swap="innerHTML"
+                                class="btn btn-sm btn-outline-info mb-1" {# Added mb-1 for spacing if buttons wrap #}
+                                title="{% translate 'Manage Cloud Service Access' %}">
+                                <i class="fas fa-cloud-upload-alt"></i> {% translate "Cloud Access" %}
+                            </button>
+
+                            {# CHANGES BEGIN — 2025-05-25 22:43:30 #}
+                            {# Log/View Security Tests Button #}
+                            <button
+                                hx-get="{% url 'tracker:personnel_security_test_list_partial' assessment_pk=assessment.pk personnel_pk=personnel_contact.pk %}"
+                                hx-target="#security-test-management-area-{{ personnel_contact.pk }}" {# Target the new div #}
+                                hx-swap="innerHTML"
+                                class="btn btn-sm btn-outline-warning" {# Different color for distinction #}
+                                title="{% translate 'Log/View Security Tests' %}">
+                                <i class="fas fa-shield-virus"></i> {% translate "Security Tests" %}
+                            </button>
+                            {# CHANGES END — 2025-05-25 22:43:30 #}
+                        </td>
+                    </tr>
+                    <tr id="personnel-{{ personnel_contact.pk }}-details-row" class="personnel-details-sub-row"> {# Combined details row #}
+                        <td colspan="4"> {# Adjust colspan to match your table #}
+                            <div id="cloud-access-management-area-{{ personnel_contact.pk }}">
+                                {# Content for cloud access records will be loaded here #}
+                            </div>
+                            {# CHANGES BEGIN — 2025-05-25 22:43:30 #}
+                            <div id="security-test-management-area-{{ personnel_contact.pk }}" class="mt-2"> {# Added mt-2 for spacing #}
+                                {# Content for security test logs will be loaded here #}
+                            </div>
+                            {# CHANGES END — 2025-05-25 22:43:30 #}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>{% translate "No personnel contacts have been added for this assessment yet." %}</p>
+    {% endif %}
+
+    {# This div is for the main personnel ADD/EDIT form #}
+    <div id="personnel-form-container" class="mt-3"></div>
+
+    <button
+        hx-get="{% url 'tracker:assessment_personnel_create' assessment_pk=assessment.pk %}"
+        hx-target="#personnel-form-container"
+        hx-swap="innerHTML"
+        class="btn btn-primary mt-2">
+        <i class="fas fa-plus"></i> {% translate "Add New Personnel Contact" %}
+    </button>
+</div>
+
+<style>
+    {# Optional: Initially hide the details rows until a button is clicked.
+       HTMX can still target and swap content into them.
+       Alternatively, they can be empty and only populated on click. #}
+    .cloud-access-details-row td div:empty {
+        /* display: none; remove this if you want the div to take up space before loading */
+        padding: 0; /* No padding if empty */
+    }
+    /* You might want some visual indication when a details row is populated */
+    .cloud-access-details-row td div:not(:empty) {
+        padding: 1rem; /* Add padding when content is loaded */
+        background-color: #f8f9fa; /* A light background for the nested content */
+        border-top: 1px solid #dee2e6;
+    }
+
+    .personnel-details-sub-row td {
+        padding: 0; /* Remove padding from the cell itself */
+        /* border-top: none; /* Optional: remove top border if it looks odd with nested content */
+    }
+    .personnel-details-sub-row td > div:not(:empty) {
+        padding: 1rem;
+        background-color: #f8f9fa; /* Light background for nested content */
+        /* border-top: 1px solid #dee2e6; /* Border for each content block if needed */
+    }
+    .personnel-details-sub-row td > div + div:not(:empty) { /* Add margin if both sections are loaded */
+        margin-top: 1rem;
+        /* border-top: 1px dashed #ccc; /* Separator line if both are visible */
+    }
+
+
+</style>
+
+{# Script to clear the form container after a successful HTMX POST that replaces the list or an item #}
+<script>
+    document.body.addEventListener('htmx:afterOnLoad', function(event) {
+        // Check if the request was a POST (typical for form submissions)
+        // and if the target was part of the personnel list or the list itself.
+        // This is a basic example; you might need more specific checks.
+        if (event.detail.xhr.status === 200 && event.detail.requestConfig.verb === 'post') {
+            const personnelFormContainer = document.getElementById('personnel-form-container');
+            if (personnelFormContainer && event.detail.target.closest('#assessment-personnel-list-section')) {
+                // If a POST was successful and updated something in this section,
+                // clear the form container.
+                // More sophisticated logic might be needed if the POST itself returns the form on error.
+                // This assumes successful POSTs replace list content or rows, not the form itself.
+                // A common pattern is for the POST to return HX-Trigger to reload the list.
+            }
+        }
+    });
+
+    // Alternative: listen for a custom event triggered by successful POSTs
+    // document.body.addEventListener('personnelListUpdated', function() {
+    //     const personnelFormContainer = document.getElementById('personnel-form-container');
+    //     if (personnelFormContainer) {
+    //         personnelFormContainer.innerHTML = '';
+    //     }
+    // });
+</script>

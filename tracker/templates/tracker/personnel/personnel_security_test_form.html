@@ -1,0 +1,132 @@
+{% load i18n %}
+
+<div id="personnel-security-test-form-content" class="border rounded p-3 bg-light mb-3">
+    <form method="post"
+        {% if form.instance.pk %}
+            hx-post="{% url 'tracker:personnel_security_test_update' assessment_pk=assessment.pk personnel_pk=personnel.pk test_pk=form.instance.pk %}"
+        {% else %}
+            hx-post="{% url 'tracker:personnel_security_test_create' assessment_pk=assessment.pk personnel_pk=personnel.pk %}"
+        {% endif %}
+        hx-target="#personnel-security-test-list-for-{{ personnel.pk }}"
+        hx-swap="innerHTML"
+        novalidate
+        {# No enctype needed as 'evidence' is a ForeignKey selector, not a direct file upload IN THIS FORM #}
+    >
+        {% csrf_token %}
+        <h5>{{ view_title }}</h5>
+        <hr>
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+            </div>
+        {% endif %}
+
+        {# Assessment Personnel (usually disabled/hidden) #}
+        {% if form.assessment_personnel %}
+        <div class="mb-3 form-field-{{ form.assessment_personnel.name }}">
+            <label for="{{ form.assessment_personnel.id_for_label }}" class="form-label">{{ form.assessment_personnel.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-user"></i></span>
+                {{ form.assessment_personnel }}
+            </div>
+            {% if form.assessment_personnel.help_text %}<small class="form-text text-muted">{{ form.assessment_personnel.help_text }}</small>{% endif %}
+            {% if form.assessment_personnel.errors %}<div class="invalid-feedback d-block">{% for error in form.assessment_personnel.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+        {% endif %}
+
+        <div class="row">
+            <div class="col-md-6 mb-3 form-field-{{ form.test_type.name }}">
+                <label for="{{ form.test_type.id_for_label }}" class="form-label">{{ form.test_type.label }}</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-vial"></i></span>
+                    {{ form.test_type }}
+                </div>
+                {% if form.test_type.help_text %}<small class="form-text text-muted">{{ form.test_type.help_text }}</small>{% endif %}
+                {% if form.test_type.errors %}<div class="invalid-feedback d-block">{% for error in form.test_type.errors %}{{ error }}{% endfor %}</div>{% endif %}
+            </div>
+            <div class="col-md-6 mb-3 form-field-{{ form.test_date.name }}">
+                <label for="{{ form.test_date.id_for_label }}" class="form-label">{{ form.test_date.label }}</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-calendar-alt"></i></span>
+                    {{ form.test_date }}
+                </div>
+                {% if form.test_date.help_text %}<small class="form-text text-muted">{{ form.test_date.help_text }}</small>{% endif %}
+                {% if form.test_date.errors %}<div class="invalid-feedback d-block">{% for error in form.test_date.errors %}{{ error }}{% endfor %}</div>{% endif %}
+            </div>
+        </div>
+
+        <div class="mb-3 form-field-{{ form.test_description.name }}">
+            <label for="{{ form.test_description.id_for_label }}" class="form-label">{{ form.test_description.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-file-alt"></i></span>
+                {{ form.test_description }}
+            </div>
+            {% if form.test_description.help_text %}<small class="form-text text-muted">{{ form.test_description.help_text }}</small>{% endif %}
+            {% if form.test_description.errors %}<div class="invalid-feedback d-block">{% for error in form.test_description.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3 form-field-{{ form.outcome.name }}">
+                <label for="{{ form.outcome.id_for_label }}" class="form-label">{{ form.outcome.label }}</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-poll-h"></i></span>
+                    {{ form.outcome }}
+                </div>
+                {% if form.outcome.help_text %}<small class="form-text text-muted">{{ form.outcome.help_text }}</small>{% endif %}
+                {% if form.outcome.errors %}<div class="invalid-feedback d-block">{% for error in form.outcome.errors %}{{ error }}{% endfor %}</div>{% endif %}
+            </div>
+            <div class="col-md-6 mb-3 form-field-{{ form.malware_sample_name.name }}">
+                <label for="{{ form.malware_sample_name.id_for_label }}" class="form-label">{{ form.malware_sample_name.label }}</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-bug"></i></span>
+                    {{ form.malware_sample_name }}
+                </div>
+                {% if form.malware_sample_name.help_text %}<small class="form-text text-muted">{{ form.malware_sample_name.help_text }}</small>{% endif %}
+                {% if form.malware_sample_name.errors %}<div class="invalid-feedback d-block">{% for error in form.malware_sample_name.errors %}{{ error }}{% endfor %}</div>{% endif %}
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6 mb-3 form-field-{{ form.scoped_item.name }}">
+                <label for="{{ form.scoped_item.id_for_label }}" class="form-label">{{ form.scoped_item.label }}</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-crosshairs"></i></span>
+                    {{ form.scoped_item }}
+                </div>
+                {% if form.scoped_item.help_text %}<small class="form-text text-muted">{{ form.scoped_item.help_text }}</small>{% endif %}
+                {% if form.scoped_item.errors %}<div class="invalid-feedback d-block">{% for error in form.scoped_item.errors %}{{ error }}{% endfor %}</div>{% endif %}
+            </div>
+            <div class="col-md-6 mb-3 form-field-{{ form.evidence.name }}">
+                <label for="{{ form.evidence.id_for_label }}" class="form-label">{{ form.evidence.label }}</label>
+                <div class="input-group">
+                    <span class="input-group-text"><i class="fas fa-paperclip"></i></span>
+                    {{ form.evidence }}
+                </div>
+                {% if form.evidence.help_text %}<small class="form-text text-muted">{{ form.evidence.help_text }}</small>{% endif %}
+                {% if form.evidence.errors %}<div class="invalid-feedback d-block">{% for error in form.evidence.errors %}{{ error }}{% endfor %}</div>{% endif %}
+            </div>
+        </div>
+
+        <div class="mb-3 form-field-{{ form.notes.name }}">
+            <label for="{{ form.notes.id_for_label }}" class="form-label">{{ form.notes.label }}</label>
+            <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-sticky-note"></i></span>
+                {{ form.notes }}
+            </div>
+            {% if form.notes.help_text %}<small class="form-text text-muted">{{ form.notes.help_text }}</small>{% endif %}
+            {% if form.notes.errors %}<div class="invalid-feedback d-block">{% for error in form.notes.errors %}{{ error }}{% endfor %}</div>{% endif %}
+        </div>
+
+        <div class="mt-3">
+            <button type="submit" class="btn btn-success btn-sm">
+                <i class="fas fa-save"></i> {% translate "Save Test Log" %}
+            </button>
+            <button type="button"
+                onclick="this.closest('#personnel-security-test-form-content').remove();"
+                class="btn btn-secondary btn-sm">
+                {% translate "Cancel" %}
+            </button>
+        </div>
+    </form>
+</div>
