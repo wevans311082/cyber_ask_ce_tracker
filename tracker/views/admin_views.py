@@ -215,3 +215,34 @@ class UserUpdateView(AdminRequiredMixin, UpdateView):
     def form_invalid(self, form):
         messages.error(self.request, "Please correct the errors below.")
         return super().form_invalid(form)
+
+
+@login_required # or appropriate permission
+def eol_product_cycle_modal_view(request, product_slug):
+    product = get_object_or_404(EOLProduct.objects.prefetch_related('cycles'), slug=product_slug)
+    # Order cycles, e.g., by release date descending
+    cycles = product.cycles.all().order_by('-release_date', '-cycle_slug')
+    context = {
+        'product': product,
+        'cycles': cycles,
+        # Pass a dynamic title for the modal (optional, can also be done with JS)
+        'dynamic_modal_title': _("Cycle Details for %(product_name)s") % {'product_name': product.name}
+    }
+    # This new partial template will display the table of cycles
+    return render(request, 'tracker/partials/_eol_product_cycles_table.html', context)
+
+
+class EOLProductDashboardView(AdminRequiredMixin, ListView):
+    model = EOLProduct
+    template_name = 'tracker/admin/eol_product_dashboard.html' # New template
+    context_object_name = 'products'
+    paginate_by = 24 # Show 24 cards per page (adjust as needed for layout)
+
+    def get_queryset(self):
+        # Prefetch related cycles to efficiently get the count of cycles per product
+        return EOLProduct.objects.all().prefetch_related('cycles').order_by('name')
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context['view_title'] = _('EndOfLife.date Product Dashboard')
+        return context

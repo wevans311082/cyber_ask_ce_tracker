@@ -178,7 +178,12 @@ urlpatterns = [
     path('assessment/<int:assessment_pk>/personnel/<int:personnel_pk>/security-tests/<int:test_pk>/delete/', views.PersonnelSecurityTestDeleteView.as_view(), name='personnel_security_test_delete'),
 
 
+    path('admin-tools/eol-dashboard/', views.EOLProductDashboardView.as_view(), name='eol_product_dashboard'),
 
 
+
+path('eol-product/<slug:product_slug>/cycles-modal/',
+     views.eol_product_cycle_modal_view, # View to be created
+     name='eol_product_cycle_modal'),
 
 ]

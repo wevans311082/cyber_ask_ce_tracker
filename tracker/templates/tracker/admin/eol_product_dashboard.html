@@ -1,0 +1,206 @@
+{% extends "tracker/base.html" %}
+{% load i18n static tz %}
+
+{% block title %}{{ view_title|default:_("EOL Product Dashboard") }}{% endblock %}
+
+{% block extra_head %}
+<style>
+/* CSS for the flip card (Adapted from your example and previous iterations) */
+.eol-dashboard-container { display: flex; flex-wrap: wrap; gap: 25px; padding: 20px; justify-content: center; }
+.eol-card { overflow: visible; width: 230px; height: 280px; perspective: 1000px; }
+.eol-card .content { width: 100%; height: 100%; transform-style: preserve-3d; transition: transform 0.7s cubic-bezier(0.4, 0.2, 0.2, 1); box-shadow: 0px 5px 15px rgba(0, 0, 0, 0.2); border-radius: 8px; }
+.eol-card:hover .content { transform: rotateY(180deg); }
+.eol-card .front, .eol-card .back { background-color: #343a40; color: white; position: absolute; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 8px; overflow: hidden; padding: 20px; box-sizing: border-box; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+.eol-card .back { transform: rotateY(180deg); }
+
+/* FRONT OF CARD: Name, Current Version, EOL Date ONLY */
+.eol-card .front .product-name-main {
+    font-size: 1.3em;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 20px;
+    word-break: break-word;
+}
+.eol-card .front .info-item {
+    font-size: 0.9em;
+    color: #e9ecef;
+    margin-bottom: 12px;
+    width: 100%; /* Ensure items take width for centering text */
+}
+.eol-card .front .info-item .label {
+    display: block;
+    font-size: 0.75em;
+    color: #adb5bd;
+    margin-bottom: 3px;
+    text-transform: uppercase;
+}
+.eol-card .front .info-item .value {
+    font-size: 1.05em;
+    font-weight: 500;
+    color: #ffffff;
+}
+.eol-card .front .info-item .value .cycle-slug-display {
+    font-size: 0.85em;
+    color: #ced4da;
+}
+.eol-card .front .info-item .value .lts-badge {
+    font-size: 0.7em;
+    padding: .2em .4em;
+    vertical-align: middle;
+}
+.eol-card .front .info-item .value.eol-passed {
+    color: #ffc107; /* Bootstrap warning yellow */
+    font-weight: bold;
+}
+.eol-card .front .info-item .value.no-eol-info { /* For when no date is available */
+    font-style: italic;
+    color: #ced4da;
+}
+
+
+/* BACK OF CARD */
+.eol-card .back .back-content-title { font-size: 1.1em; font-weight: 600; margin-bottom: 10px; }
+.eol-card .back p { font-size: 0.85em; margin-bottom: 8px; color: #e9ecef; }
+.eol-card .back p strong { color: #f8f9fa; }
+.eol-card .back .product-slug-back { font-size: 0.75em; color: #adb5bd; margin-bottom: 10px; word-break: break-all; }
+.eol-card .back .details-link { display: inline-block; margin-top: 15px; padding: 8px 15px; background-color: #007bff; color: white; text-decoration: none; border-radius: 5px; font-size: 0.9em; transition: background-color 0.2s; }
+.eol-card .back .details-link:hover { background-color: #0056b3; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3>{{ view_title|default:_("EOL Product Dashboard") }}</h3>
+        {# Admin link to manage EOLProducts - ensure EOLProduct is registered in admin.py #}
+        {# <a href="{% url 'admin:tracker_eolproduct_changelist' %}" class="btn btn-outline-secondary btn-sm" target="_blank">
+            <i class="fas fa-cog"></i> {% translate "Manage in Admin" %}
+        </a> #}
+    </div>
+
+    {% if products %}
+        <div class="eol-dashboard-container">
+            {% for product in products %}
+            {% with rep_cycle=product.representative_cycle_info %}
+            <div class="eol-card" id="eol-product-{{ product.slug }}">
+                <div class="content">
+                    {# ===================================================================== #}
+                    {# FRONT OF THE CARD: Name, Representative Version, EOL/Support Date   #}
+                    {# ===================================================================== #}
+                    <div class="front">
+                        <div class="product-name-main">{{ product.name }}</div>
+
+                        <div class="info-item">
+                            <span class="label">{% translate "Representative Version" %}</span>
+                            <span class="value">
+                                {{ rep_cycle.latest_version|default:"-" }} {# Show hyphen if no version #}
+                                {% if rep_cycle.cycle_slug and rep_cycle.latest_version %}
+                                    <span class="cycle-slug-display">({{ rep_cycle.cycle_slug }})</span>
+                                {% elif rep_cycle.cycle_slug %}
+                                     <span class="cycle-slug-display">({{ rep_cycle.cycle_slug }})</span>
+                                {% endif %}
+                                {% if rep_cycle.lts %}
+                                    <span class="badge bg-info lts-badge ms-1">LTS</span>
+                                {% endif %}
+                            </span>
+                        </div>
+
+                        {% now "Y-m-d" as today_date_str %}
+                        <div class="info-item">
+                            <span class="label">{% translate "EOL / Support Ends" %}</span>
+                            {% if rep_cycle.eol_date %}
+                                <span class="value {% if rep_cycle.eol_date|date:'Y-m-d' < today_date_str %}eol-passed{% endif %}">
+                                    {{ rep_cycle.eol_date|date:"Y-m-d" }}
+                                </span>
+                            {% elif rep_cycle.support_date %}
+                                <span class="value {% if rep_cycle.support_date|date:'Y-m-d' < today_date_str %}eol-passed{% endif %}">
+                                    {{ rep_cycle.support_date|date:"Y-m-d" }} <small>({% translate "Support" %})</small>
+                                </span>
+                            {% else %}
+                                <span class="value no-eol-info">{% translate "Not Specified" %}</span> {# Clearer than N/A #}
+                            {% endif %}
+                        </div>
+                    </div>
+                    {# ===================================================================== #}
+                    {# END OF FRONT OF THE CARD                                              #}
+                    {# ===================================================================== #}
+
+                    <div class="back">
+                        <div class="back-content">
+                            <p class="back-content-title"><strong>{{ product.name }}</strong></p>
+                            <p class="product-slug-back">({{ product.slug }})</p>
+                            <hr style="border-color: #6c757d; width:80%;">
+                            <p>
+                                {% translate "Cycles Tracked:" %} <strong>{{ product.cycles.count }}</strong>
+                            </p>
+                            {% if product.last_cycle_data_fetched %}
+                            <p><small>
+                                {% translate "Cycle Data Last Fetched:" %}<br>{{ product.last_cycle_data_fetched|date:"Y-m-d H:i" }}
+                            </small></p>
+                            {% endif %}
+                            {# Button to trigger modal with all cycles for this product #}
+                            <button class="btn btn-sm details-link"
+                                    hx-get="{% url 'tracker:eol_product_cycle_modal' product_slug=product.slug %}"  {# This URL needs to be defined #}
+                                    hx-target="#eolProductCycleModalContainer" {# Changed target to a general container #}
+                                    hx-swap="innerHTML"
+                                    data-bs-toggle="modal" data-bs-target="#eolProductCycleModal">
+                                {% translate "View All Cycles" %}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endwith %}
+            {% endfor %}
+        </div>
+
+        {% if is_paginated %}
+            {% include "tracker/partials/pagination.html" with page_obj=page_obj %}
+        {% endif %}
+
+    {% else %}
+        <div class="alert alert-info mt-3" role="alert">
+            {% translate "No End-of-Life products found in the local database. Please run the 'sync_eol_data' management command first." %}
+        </div>
+    {% endif %}
+</div>
+
+{# Bootstrap Modal Structure (place once, outside the loop, for HTMX content) #}
+<div class="modal fade" id="eolProductCycleModal" tabindex="-1" aria-labelledby="eolProductCycleModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable"> {# Made modal larger #}
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="eolProductCycleModalLabel">{% translate "Product Cycle Details" %}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div id="eolProductCycleModalContainer"> {# Specific container for HTMX content #}
+          <div class="modal-body"> {# Default modal body structure if HTMX fails or for initial state #}
+            <p class="text-center"><i class="fas fa-spinner fa-spin"></i> {% translate "Loading cycle details..." %}</p>
+          </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{% translate "Close" %}</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Optional: If you need to update modal title dynamically or handle other events
+document.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target.id === 'eolProductCycleModalContainer') {
+        // Example: If your HTMX response for the modal body includes a data attribute for the title
+        const loadedContent = event.detail.target.querySelector('[data-modal-title]');
+        const modalTitleElement = document.getElementById('eolProductCycleModalLabel');
+        if (loadedContent && loadedContent.dataset.modalTitle && modalTitleElement) {
+            modalTitleElement.textContent = loadedContent.dataset.modalTitle;
+        } else if (modalTitleElement) {
+            // Reset to generic title or derive from button if needed
+            // For now, static title is set in modal header.
+        }
+    }
+});
+</script>
+{% endblock %}

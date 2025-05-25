@@ -351,4 +351,16 @@ class AssessorAvailabilityAdmin(admin.ModelAdmin):
     autocomplete_fields = ['assessor']
 
 
+@admin.register(EOLProduct)
+class EOLProductAdmin(admin.ModelAdmin):
+    list_display = ('name', 'slug', 'last_cycle_data_fetched', 'last_seen_in_api_all_list')
+    search_fields = ('name', 'slug')
+
+@admin.register(EOLProductCycle)
+class EOLProductCycleAdmin(admin.ModelAdmin):
+    list_display = ('product', 'cycle_slug', 'release_date', 'eol_date', 'lts_status', 'last_fetched_details')
+    list_filter = ('product', 'lts_status')
+    search_fields = ('product__name', 'product__slug', 'cycle_slug')
+    autocomplete_fields = ['product'] # If using Django _UUID_SUPPORT or newer admin
+
 

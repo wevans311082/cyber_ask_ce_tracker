@@ -18,6 +18,7 @@ from django.utils import timezone
 from requests.exceptions import RequestException
 from tenable.errors import APIError, ForbiddenError, NotFoundError
 from restfly.errors import RequestConflictError
+from django.core.management import call_command
 
 # Local apps
 from cyber_ask_assessment_tracker.celery import app
@@ -1392,3 +1393,20 @@ def update_browser_versions():
             )
     except Exception as e:
         print(f"Failed to update browsers: {e}")
+
+
+@shared_task(name="tracker.tasks.sync_endoflife_data_task")
+def sync_endoflife_data_task():
+    """
+    Celery task to call the sync_eol_data management command.
+    """
+    logger.info(f"Starting scheduled EOL data sync task at {timezone.now()}")
+    try:
+        call_command('sync_eol_data')
+        logger.info("EOL data sync task completed successfully.")
+    except Exception as e:
+        logger.error(f"Error during EOL data sync task: {e}", exc_info=True)
+        # Depending on the severity, you might want to raise the error
+        # to have Celery retry or mark it as failed prominently.
+        # For now, just logging the error.
+    return "EOL data synchronization process initiated."

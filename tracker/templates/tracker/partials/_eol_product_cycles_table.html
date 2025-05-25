@@ -1,0 +1,57 @@
+{% load i18n tz %}
+
+<div class="modal-body-content p-0">
+    {% if product and cycles %}
+        {# This line must use blocktranslate for the 'with' clause #}
+        <h5 class="mb-3 ps-3 pt-3">{% blocktranslate with product_name=product.name %}Cycles for: {{ product_name }}{% endblocktranslate %}</h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped table-hover">
+                <thead class="table-light">
+                    <tr>
+                        <th>{% translate "Cycle" %}</th>
+                        <th>{% translate "Latest Ver." %}</th>
+                        <th>{% translate "LTS" %}</th>
+                        <th>{% translate "Release Date" %}</th>
+                        <th>{% translate "Support Ends" %}</th>
+                        <th>{% translate "EOL Date" %}</th>
+                        <th>{% translate "Source Link" %}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% now "Y-m-d" as today_for_comparison %}
+                    {% for cycle in cycles %}
+                    <tr>
+                        <td><strong>{{ cycle.cycle_slug }}</strong></td>
+                        <td>{{ cycle.latest_version_in_cycle|default:"-" }}</td>
+                        <td>
+                            {% if cycle.lts_status is True %}
+                                <span class="badge bg-info">LTS</span>
+                            {% elif cycle.lts_status is False %}
+                                <span class="badge bg-secondary">No</span>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ cycle.release_date|date:"Y-m-d"|default:"-" }}</td>
+                        <td class="{% if cycle.support_until_date and cycle.support_until_date|date:'Y-m-d' < today_for_comparison %}text-warning fw-bold{% endif %}">
+                            {{ cycle.support_until_date|date:"Y-m-d"|default:"-" }}
+                        </td>
+                        <td class="{% if cycle.eol_date and cycle.eol_date|date:'Y-m-d' < today_for_comparison %}text-danger fw-bold{% endif %}">
+                            {{ cycle.eol_date|date:"Y-m-d"|default:"-" }}
+                        </td>
+                        <td>
+                            {% if cycle.link_to_source %}
+                                <a href="{{ cycle.link_to_source }}" target="_blank" rel="noopener noreferrer" title="{% translate 'View source on endoflife.date' %}"><i class="fas fa-external-link-alt"></i></a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="p-3">
+            <p>{% translate "No cycle details found for this product." %}</p>
+        </div>
+    {% endif %}
+</div>

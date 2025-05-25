@@ -27,3 +27,36 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=0, minute=0),  # Daily at midnight
     },
 }
+
+
+@app.on_after_configure.connect
+def setup_periodic_tasks(sender, **kwargs):
+    # Calls scrape_nessus_agent_urls every day at midnight.
+    sender.add_periodic_task(
+        crontab(hour=0, minute=0),  # Midnight
+        # Ensure the task name matches what's in tracker/tasks.py
+        app.signature('tracker.tasks.scrape_nessus_agent_urls_task'),
+        name='scrape-nessus-agent-urls-daily'
+    )
+
+    # Validates agent URLs every hour
+    sender.add_periodic_task(
+        crontab(minute=0),  # Every hour at minute 0
+        app.signature('tracker.tasks.validate_agent_urls_task'),
+        name='validate-agent-urls-hourly'
+    )
+
+    # Updates browser versions daily at 1 AM
+    sender.add_periodic_task(
+        crontab(hour=1, minute=0),  # 1 AM
+        app.signature('tracker.tasks.update_browser_versions_task'),
+        name='update-browser-versions-daily'
+    )
+
+    # New task: Sync EndOfLife.date data daily at 2 AM (or your preferred time)
+    sender.add_periodic_task(
+        crontab(hour=0, minute=35),  # Run daily at 2:00 AM
+        # Ensure this task name matches the @shared_task name in tracker/tasks.py
+        app.signature('tracker.tasks.sync_endoflife_data_task'),
+        name='sync-endoflife-date-data-daily'
+    )

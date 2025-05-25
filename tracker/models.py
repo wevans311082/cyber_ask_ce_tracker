@@ -1529,3 +1529,126 @@ class PersonnelSecurityTest(models.Model):
 
     def __str__(self):
         return f"{self.get_test_type_display()} for {self.assessment_personnel.full_name} on {self.test_date.strftime('%Y-%m-%d') if self.test_date else 'N/A'}"
+
+
+
+
+class EOLProduct(models.Model):
+    """
+    Stores a product tracked by endoflife.date API.
+    e.g., Python, Windows 10, Django.
+    """
+    slug = models.CharField(
+        max_length=150,  # Increased length for potentially longer slugs
+        primary_key=True,
+        verbose_name=_("Product Slug"),
+        help_text=_("Unique identifier for the product from endoflife.date (e.g., 'python', 'windows-10').")
+    )
+    name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name=_("Product Name"),
+        help_text=_("Human-readable name for the product (e.g., 'Python', 'Windows 10'). Auto-generated if blank.")
+    )
+    last_cycle_data_fetched = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name=_("Last Cycle Data Fetched"),
+        help_text=_("Timestamp of when the full cycle details for this product were last successfully fetched and updated.")
+    )
+    notes = models.TextField(
+        blank=True,
+        verbose_name=_("Internal Notes"),
+        help_text=_("Any internal notes about this product mapping or EOL data handling.")
+    )
+    # Timestamp for when this product was first added or last updated in our system from the 'all.json' list
+    last_seen_in_api_all_list = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name=_("Last Seen in API 'all' List")
+    )
+
+
+    def save(self, *args, **kwargs):
+        if not self.name and self.slug:
+            # Auto-generate a name from slug if name is not provided
+            self.name = ' '.join(word.capitalize() for word in self.slug.split('-'))
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.name or self.slug
+
+    class Meta:
+        verbose_name = _("EOL Tracked Product")
+        verbose_name_plural = _("EOL Tracked Products")
+        ordering = ['name', 'slug']
+class EOLProductCycle(models.Model):
+    """
+    Stores a specific lifecycle/version for an EOLProduct.
+    e.g., Python 3.11, Windows 10 22H2.
+    """
+    product = models.ForeignKey(
+        EOLProduct,
+        on_delete=models.CASCADE,
+        related_name='cycles',
+        verbose_name=_("Product")
+    )
+    cycle_slug = models.CharField(
+        max_length=100,
+        verbose_name=_("Cycle Slug"),
+        help_text=_("Version or cycle identifier from endoflife.date (e.g., '3.11', '22H2').")
+    )
+    release_date = models.DateField(
+        null=True, blank=True,
+        verbose_name=_("Release Date")
+    )
+    eol_date = models.DateField(
+        null=True, blank=True,
+        verbose_name=_("End of Life (EOL) Date")
+    )
+    lts_status = models.BooleanField(
+        null=True, blank=True, # API uses boolean or is absent
+        verbose_name=_("LTS Status"),
+        help_text=_("Indicates if this is a Long-Term Support release.")
+    )
+    support_until_date = models.DateField(
+        null=True, blank=True,
+        verbose_name=_("Support Until Date")
+    )
+    discontinued_date = models.DateField(
+        null=True, blank=True,
+        verbose_name=_("Discontinued Date")
+    )
+    latest_version_in_cycle = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name=_("Latest Version in Cycle"),
+        help_text=_("Latest minor/patch version within this cycle (e.g., '3.11.4').")
+    )
+    link_to_source = models.URLField(
+        max_length=512, # Increased length
+        blank=True,
+        verbose_name=_("Link to Source"),
+        help_text=_("Direct link to the cycle details on endoflife.date, if available from API.")
+    )
+    # Storing the raw data can be very useful for debugging or re-parsing if logic changes
+    raw_cycle_data_json = models.JSONField(
+        null=True, blank=True,
+        verbose_name=_("Raw Cycle Data (JSON)"),
+        help_text=_("The raw JSON object for this cycle as received from the API.")
+    )
+    last_fetched_details = models.DateTimeField(
+        auto_now=True, # Automatically set when saved/updated
+        verbose_name=_("Last Fetched/Updated Details")
+    )
+
+    def __str__(self):
+        return f"{self.product.name} - Cycle {self.cycle_slug}"
+
+    class Meta:
+        verbose_name = _("EOL Product Cycle")
+        verbose_name_plural = _("EOL Product Cycles")
+        # A product can only have one entry for a given cycle slug
+        unique_together = ('product', 'cycle_slug')
+        ordering = ['product', '-release_date', 'cycle_slug']
+
+
+
