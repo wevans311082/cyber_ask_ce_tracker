@@ -1,29 +1,34 @@
 {% extends "tracker/base.html" %}
 {% load static humanize tz %}
 
-{% block title %}Raw Scan Results - {{ scan_log.scan_name|default:scan_log.id }}{% endblock %}
+
+{% block title %}Raw Scan Results - {{ filename|default:scan_log.scan_name|default:scan_log.id }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
-    <nav aria-label="breadcrumb">
-        <ol class="breadcrumb">
-            <li class="breadcrumb-item"><a href="{% url 'tracker:client_dashboard' %}">Dashboard</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'tracker:client_assessment_detail' assessment.id %}">Assessment {{ assessment.id }}</a></li>
-            <li class="breadcrumb-item active" aria-current="page">Raw Scan Results (Log: {{ scan_log.id|slice:":8" }}...)</li>
-        </ol>
-    </nav>
+
 
     <div class="card shadow-sm">
         <div class="card-header bg-primary text-white">
             <h4 class="mb-0">Raw Vulnerability Data for Scan: {{ scan_log.scan_name|default:"N/A" }}</h4>
+            {% if filename %}
+                <p class="mb-0"><small>Displaying content from: {{ filename }}</small></p>
+            {% endif %}
         </div>
         <div class="card-body">
             <p><strong>Scan Log ID:</strong> <code class="small">{{ scan_log.id }}</code></p>
             <p><strong>Tenable Scan Definition ID:</strong> {{ scan_log.tenable_scan_definition_id|default:"N/A" }}</p>
             <p><strong>Tenable Scan Run UUID:</strong> <code class="small">{{ scan_log.tenable_scan_run_uuid|default:"N/A" }}</code></p>
 
+
+            {% if scan_log.report_last_saved_at %}
+                <p><strong>Report Fetched and Saved At:</strong> {{ scan_log.report_last_saved_at|date:"d M Y H:i:s" }} ({{ scan_log.report_last_saved_at|naturaltime }})</p>
+            {% endif %}
+
+
+
             {% if scan_status_from_tenable %}
-                <p><strong>Fetched Tenable Status:</strong>
+                <p><strong>Fetched Tenable Status (at time of original fetch attempt):</strong>
                     <span class="badge
                         {% if scan_status_from_tenable|lower == 'completed' %}bg-success
                         {% elif scan_status_from_tenable|lower == 'running' or scan_status_from_tenable|lower == 'pending' or scan_status_from_tenable|lower == 'paused' %}bg-warning text-dark
@@ -37,31 +42,48 @@
 
             {% if api_error_message %}
                 <div class="alert alert-danger mt-3" role="alert">
-                    <h5 class="alert-heading">Error Fetching Results</h5>
+                    <h5 class="alert-heading">Note on Original Fetch Attempt</h5>
                     <p>{{ api_error_message }}</p>
                     {% if scan_status_from_tenable and scan_status_from_tenable|lower != 'completed' %}
-                        <p class="mb-0">Vulnerability data can typically only be fetched for completed scans.</p>
+                        <p class="mb-0">Vulnerability data could originally only be fetched for completed scans.</p>
                     {% endif %}
                 </div>
             {% endif %}
 
-            {% if raw_vulnerabilities_json %}
-                <h5 class="mt-4">Vulnerabilities Found ({{ vulnerability_count }})</h5>
-                <p><small>Displaying raw JSON output from Tenable API.</small></p>
-                <pre class="bg-light p-3 border rounded" style="max-height: 600px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;"><code>{{ raw_vulnerabilities_json }}</code></pre>
-            {% elif not api_error_message %}
-                <div class="alert alert-info mt-3" role="alert">
-                    No vulnerabilities reported or scan is not yet complete.
-                    {% if scan_status_from_tenable %} Current Tenable Status: <strong>{{ scan_status_from_tenable }}</strong>.{% endif %}
+            {% if report_data_json_str %}
+                <h5 class="mt-4">Vulnerabilities Found</h5>
+
+                <p><small>Displaying raw JSON output from the saved report file.</small></p>
+                <pre class="bg-light p-3 border rounded" style="max-height: 600px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;"><code>{{ report_data_json_str }}</code></pre>
+            {% elif not scan_log.saved_report_path %}
+
+                <div class="alert alert-warning mt-3" role="alert">
+                    No report has been fetched and saved for this scan log entry yet.
+                </div>
+            {% else %}
+
+                <div class="alert alert-danger mt-3" role="alert">
+                    The saved report file (<code>{{ scan_log.saved_report_path }}</code>) was found, but it appears to be empty or could not be read.
+                    Please try fetching the results again.
                 </div>
             {% endif %}
 
+
             <div class="mt-4">
-                <a href="{% url 'tracker:client_assessment_detail' assessment.id %}" class="btn btn-outline-secondary">
+                {% if scan_log.assessment %}
+                <a href="{% url 'tracker:client_assessment_detail' scan_log.assessment.id %}" class="btn btn-outline-secondary">
                     <i class="fas fa-arrow-left me-1"></i> Back to Assessment Details
                 </a>
+                {% endif %}
             </div>
         </div>
+
+        {% if scan_log.saved_report_path %}
+        <div class="card-footer text-muted">
+            Displayed from file: <code>{{ scan_log.saved_report_path }}</code>
+        </div>
+        {% endif %}
+
     </div>
 </div>
 {% endblock %}

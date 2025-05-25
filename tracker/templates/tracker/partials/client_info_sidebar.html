@@ -1,7 +1,7 @@
 {% load i18n %}
 <div class="card sticky-top bg-white shadow-sm" style="top: 1rem; margin-top: 1.5rem;">
   <div class="card-header">
-    <h4><i class="fas fa-info-circle"></i> {% translate "Assessment Info" %}</h4>
+    <h4><i class="fas fa-info-circle me-2"></i>{% translate "Assessment Info" %}</h4>
   </div>
   <div class="card-body">
     <dl class="row">
@@ -35,7 +35,7 @@
       </dd>
     </dl>
 
-    <h6 class="mt-3">{% translate "Key Dates" %}</h6>
+    <h6 class="mt-4">{% translate "Key Dates" %}</h6>
     <dl class="row">
       <dt class="col-sm-5">{% translate "Scheduled" %}</dt><dd class="col-sm-7">{{ assessment.scheduled_date|date:"d M Y"|default:"-" }}</dd>
       <dt class="col-sm-5">{% translate "Target End" %}</dt><dd class="col-sm-7">{{ assessment.date_target_end|date:"Y-m-d"|default:"-" }}</dd>
@@ -44,29 +44,55 @@
       <dt class="col-sm-5">{% translate "Cert Issued" %}</dt><dd class="col-sm-7">{{ assessment.date_cert_issued|date:"Y-m-d"|default:"-" }}</dd>
       <dt class="col-sm-5">{% translate "Cert Expiry" %}</dt><dd class="col-sm-7">{{ assessment.date_cert_expiry|date:"Y-m-d"|default:"-" }}</dd>
     </dl>
-    <hr>
-    <p><strong>{% translate "Primary Contact" %}:</strong> {{ assessment.primary_contact_name }}</p>
-    <p><strong>{% translate "Primary Email" %}:</strong> {{ assessment.primary_contact_email }}</p>
-    <p><strong>{% translate "Primary Phone" %}:</strong> {{ assessment.primary_contact_phone }}</p>
-    <hr>
+    <hr class="my-4">
+    <p class="mb-1"><strong>{% translate "Primary Contact" %}:</strong> {{ assessment.primary_contact_name|default:"-" }}</p>
+    <p class="mb-1"><strong>{% translate "Primary Email" %}:</strong> {{ assessment.primary_contact_email|default:"-" }}</p>
+    <p><strong>{% translate "Primary Phone" %}:</strong> {{ assessment.primary_contact_phone|default:"-" }}</p>
+    <hr class="my-4">
+
+    {% if assessment.report_file or assessment.uploaded_report %}
+      <h6 class="mb-3">{% translate "Reports" %}</h6>
+    {% endif %}
+
     {% if assessment.report_file %}
-      <div class="mb-2">
-        <a href="{{ assessment.report_file.url }}" class="btn btn-sm btn-success w-100" target="_blank">
-          <i class="fas fa-download"></i> {% translate "Download Generated Report" %}
+      <div class="mb-3">
+        <a href="{{ assessment.report_file.url }}" class="btn btn-sm btn-outline-success w-100" target="_blank">
+          <i class="fas fa-file-invoice me-2"></i>{% translate "Download Generated Report" %}
         </a>
       </div>
     {% endif %}
+
     {% if assessment.uploaded_report %}
-      <div class="mb-2">
-        <a href="{{ assessment.uploaded_report.file.url }}" class="btn btn-sm btn-info w-100" target="_blank">
-          <i class="fas fa-download"></i> {% translate "Download Uploaded Report" %} ({{ assessment.uploaded_report.file_type }})
+      <div class="mb-3">
+        <a href="{{ assessment.uploaded_report.file.url }}" class="btn btn-sm btn-outline-info w-100" target="_blank">
+          {% with file_type_lower=assessment.uploaded_report.file_type|lower %}
+            {% if file_type_lower == 'pdf' %}
+              <i class="fas fa-file-pdf text-danger me-2"></i>
+            {% elif file_type_lower == 'doc' or file_type_lower == 'docx' %}
+              <i class="fas fa-file-word text-primary me-2"></i>
+            {% elif file_type_lower == 'xls' or file_type_lower == 'xlsx' %}
+              <i class="fas fa-file-excel text-success me-2"></i>
+            {% elif file_type_lower == 'ppt' or file_type_lower == 'pptx' %}
+              <i class="fas fa-file-powerpoint text-warning me-2"></i>
+            {% elif file_type_lower == 'zip' or file_type_lower == 'rar' %}
+              <i class="fas fa-file-archive text-secondary me-2"></i>
+            {% else %}
+              <i class="fas fa-file-alt me-2"></i>
+            {% endif %}
+          {% endwith %}
+          {% translate "Download Uploaded Report" %}
+          {% if assessment.uploaded_report.file_type %}({{ assessment.uploaded_report.file_type }}){% endif %}
         </a>
-        <p class="small text-muted text-center">{% translate "Uploaded" %}: {{ assessment.uploaded_report.uploaded_at|date:"d M Y H:i" }}</p>
+        <p class="small text-muted text-center mt-1 mb-0">{% translate "Uploaded" %}: {{ assessment.uploaded_report.uploaded_at|date:"d M Y H:i" }}</p>
       </div>
     {% endif %}
-    <hr>
-    <button type="button" class="btn btn-outline-secondary w-100 mt-2" data-bs-toggle="modal" data-bs-target="#logModal">
-      <i class="fas fa-history"></i> {% translate "View Assessment Log" %}
+
+    {% if assessment.report_file or assessment.uploaded_report %}
+        <hr class="my-4">
+    {% endif %}
+
+    <button type="button" class="btn btn-outline-secondary w-100" data-bs-toggle="modal" data-bs-target="#logModal">
+      <i class="fas fa-history me-2"></i>{% translate "View Assessment Log" %}
     </button>
   </div>
 </div>

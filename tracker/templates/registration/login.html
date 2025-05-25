@@ -1,46 +1,464 @@
 {% extends "tracker/base.html" %}
-{% load static %}
+{% load static i18n %}
 
-{% block title %}Login - {{ block.super }}{% endblock %}
+{% block title %}{% translate "Login" %} - CyberASK{% endblock %}
+
+{% block extra_head %}
+    <style>
+      body, html {
+        height: 100%;
+        margin: 0;
+        /* background-color: #1f293a; /* Base dark background for the page if not set in base.html */
+        /* overflow: hidden; /* Prevent scrollbars if animation goes slightly out of bounds */
+      }
+
+      .login-page-wrapper { /* New wrapper for animation and content */
+        position: relative;
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+        align-items: center; /* Center the login content vertically */
+        justify-content: center; /* Center the login content horizontally */
+        overflow: hidden; /* Important for the animation spans */
+        background-color: #1c2025; /* Darker base for contrast with animation */
+      }
+
+      /* Uiverse.io Spinning Animation - Adapted for Full Background */
+      .login-page-wrapper > .bg-span { /* Renamed for clarity */
+        position: absolute;
+        /* Center the origin of rotation. Adjust if needed. */
+        left: 50%;
+        top: 50%;
+        width: 4px; /* Thickness of lines */
+        height: 200vh; /* Make lines long enough to cross viewport height */
+        background: #2c4766; /* Base color of lines */
+        /* transform-origin: center of the span itself (0 0 is top-left of span) */
+        /* transform-origin: 2px 100vh; */ /* Origin at the center of the span's width, and far down its length */
+        transform-origin: 50% 50%; /* Rotate around their own center, but also based on left/top */
+        /* The rotation is now applied from JS or more complex CSS to achieve a better effect */
+        /* Original was: transform: rotate(calc(var(--i) * (360deg / 50))); */
+        animation: blink-bg 8s linear infinite; /* Slower, more subtle animation */
+        animation-delay: calc(var(--i) * (8s / 50)); /* Spread out animation delays */
+        opacity: 0.3; /* Make them more like background elements */
+      }
+
+      @keyframes blink-bg {
+        0% {
+          background: #0ef; /* Bright accent color */
+          transform: rotate(calc(var(--i) * (360deg / 50))) scale(1.5);
+          opacity: 0.1;
+        }
+        25% {
+          background: #2c4766; /* Base color */
+          opacity: 0.3;
+        }
+        50% {
+          background: #0ef;
+          transform: rotate(calc(var(--i) * (360deg / 50) + 90deg)) scale(1);
+          opacity: 0.1;
+        }
+        75% {
+            background: #2c4766;
+            opacity: 0.3;
+        }
+        100% {
+            background: #0ef;
+            transform: rotate(calc(var(--i) * (360deg / 50) + 180deg)) scale(1.5);
+            opacity: 0.1;
+        }
+      }
+      /* End Uiverse Animation Adaptation */
+
+      .login-page-container {
+        position: relative; /* To sit above the animated spans */
+        z-index: 1;
+        width: 100%;
+        max-width: 1200px; /* Max width of the content row */
+        min-height: 70vh; /* Min height for the content row */
+        max-height: 650px; /* Max height for the content row */
+        display: flex; /* Ensure it's a flex container for the row */
+        box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+        border-radius: 15px; /* Rounded corners for the main container */
+        overflow: hidden; /* Clip children to rounded corners */
+      }
+
+      .login-page-container > .row {
+        flex-grow: 1;
+        width: 100%; /* Ensure row takes full width of container */
+      }
+
+      /* Left Panel - CSS Vector/Geometric Background */
+      .login-image-panel {
+        /* background-image: repeating-linear-gradient(
+            45deg,
+            rgba(0, 239, 255, 0.05),
+            rgba(0, 239, 255, 0.05) 10px,
+            rgba(44, 71, 102, 0.1) 10px,
+            rgba(44, 71, 102, 0.1) 20px
+        ); */
+        background-color: #232b38; /* Slightly lighter dark shade for left panel */
+        /* Example: Hero Patterns - Diagonal Stripes */
+        background-image: url("data:image/svg+xml,%3Csvg width='52' height='26' viewBox='0 0 52 26' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%230ef' fill-opacity='0.1'%3E%3Cpath d='M10 10c0-2.21-1.79-4-4-4-3.314 0-6-2.686-6-6h2c0 2.21 1.79 4 4 4 3.314 0 6 2.686 6 6H10zm46 14M10 36c0-2.21-1.79-4-4-4-3.314 0-6-2.686-6-6h2c0 2.21 1.79 4 4 4 3.314 0 6 2.686 6 6H10zm46 14M10 62c0-2.21-1.79-4-4-4-3.314 0-6-2.686-6-6h2c0 2.21 1.79 4 4 4 3.314 0 6 2.686 6 6H10z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 40px;
+        position:relative; /* For potential pseudo-elements if needed */
+      }
+
+      .login-image-panel::before { /* Optional subtle overlay */
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background-color: rgba(28, 32, 37, 0.3); /* Match page background, slightly transparent */
+        z-index: 0;
+      }
+
+      .login-image-panel .image-overlay-content { /* Renamed from image-overlay */
+        position: relative; /* To sit above ::before pseudo-element */
+        z-index: 1;
+        /* background-color: rgba(0, 20, 40, 0.65); Darker, slightly blue overlay */
+        /* padding: 30px; */
+        /* border-radius: 8px; */
+        max-width: 90%;
+      }
+
+      .login-image-panel h2 {
+        font-size: 2.5em;
+        margin-bottom: 20px;
+        font-weight: 600; /* Bolder */
+        color: #0ef; /* Accent color from example */
+        text-shadow: 0 0 10px rgba(0, 239, 255, 0.5);
+      }
+
+      .login-image-panel .product-description p {
+        font-size: 1.05em;
+        line-height: 1.7;
+        margin-bottom: 15px;
+        color: #cdd5de; /* Lighter text for readability */
+      }
+      .login-image-panel .product-description ul {
+        list-style: none;
+        padding-left: 0;
+        text-align: left;
+        display: inline-block; /* Center the list block */
+      }
+      .login-image-panel .product-description ul li {
+        margin-bottom: 12px;
+        font-size: 1em;
+        color: #cdd5de;
+      }
+      .login-image-panel .product-description ul li i {
+        color: #0ef;
+        margin-right: 12px;
+        width: 20px; /* Ensure icons align */
+        text-align: center;
+      }
+
+
+      .login-form-panel {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: #1f293a; /* Dark background for the form area, from Uiverse example */
+        padding: 20px 30px; /* More padding */
+      }
+
+      .login-form-content {
+        width: 100%;
+        max-width: 380px;
+      }
+
+      /* Uiverse.io Form Styles - Adapted */
+      .login-box {
+        width: 100%;
+        padding: 10px 0px; /* Reduced top/bottom padding */
+      }
+
+      .login-box h2 {
+        font-size: 2em;
+        color: #0ef;
+        text-align: center;
+        margin-bottom: 30px;
+      }
+
+      .input-box {
+        position: relative;
+        margin: 30px 0;
+      }
+
+      .input-box input {
+        width: 100%;
+        height: 50px;
+        background: transparent;
+        border: 2px solid #2c4766;
+        outline: none;
+        border-radius: 8px; /* Less rounded, more modern */
+        font-size: 1em;
+        color: #000000;
+        padding: 0 20px;
+        transition: 0.5s ease;
+      }
+
+      .input-box input:-webkit-autofill,
+      .input-box input:-webkit-autofill:hover,
+      .input-box input:-webkit-autofill:focus,
+      .input-box input:-webkit-autofill:active {
+          -webkit-box-shadow: 0 0 0 30px #1f293a inset !important;
+          -webkit-text-fill-color: #fff !important;
+          border-color: #2c4766 !important; /* Ensure border color is consistent on autofill */
+          caret-color: #005cff;
+      }
+
+
+      .input-box input:focus,
+      .input-box input:not(:placeholder-shown) /* Use this if inputs have placeholder=" " */
+       {
+        border-color: #0ef;
+      }
+
+      .input-box label {
+        position: absolute;
+        top: 50%;
+        left: 20px;
+        transform: translateY(-50%);
+        font-size: 1em;
+        color: #8899a9;
+        pointer-events: none;
+        transition: 0.3s ease;
+      }
+
+      .input-box input:focus ~ label,
+      .input-box input:not(:placeholder-shown) ~ label {
+        top: -10px;
+        font-size: 0.85em;
+        background: #1f293a;
+        padding: 0 6px;
+        color: #0ef;
+        border-radius: 3px;
+      }
+
+      .django-field-error {
+        font-size: 0.8em;
+        color: #ff4d4d;
+        padding-left: 15px;
+        margin-top: 3px;
+      }
+
+      .forgot-pass {
+        margin: -15px 0 20px; /* Adjusted margin */
+        text-align: right;
+      }
+
+      .forgot-pass a {
+        font-size: 0.9em;
+        color: #8899a9;
+        text-decoration: none;
+      }
+      .forgot-pass a:hover {
+        color: #0ef;
+        text-decoration: underline;
+      }
+
+      .login-btn {
+        width: 100%;
+        height: 50px;
+        background: #0ef;
+        border: none;
+        outline: none;
+        border-radius: 8px; /* Match input radius */
+        cursor: pointer;
+        font-size: 1.1em;
+        color: #1f293a;
+        font-weight: 600;
+        margin-top: 20px;
+      }
+      .login-btn:hover {
+        background: #00cdd1;
+      }
+
+      .form-message-area .alert {
+          border-radius: 8px;
+          font-size: 0.9em;
+          padding: 0.8rem 1rem;
+      }
+      .form-message-area .alert-danger {
+          background-color: rgba(220, 53, 69, 0.15);
+          border-color: rgba(220, 53, 69, 0.3);
+          color: #dc3545;
+      }
+       .form-message-area .alert-info {
+          background-color: rgba(13, 202, 240, 0.1);
+          border-color: rgba(13, 202, 240, 0.3);
+          color: #0dcaf0;
+      }
+
+
+       .shimmer-target {
+  /* The final, resting color of the text */
+  color: #0ef;
+  /* Prepare for animation */
+  animation: text-shimmer 4s ease-out 0.5s 1 forwards;
+  /* animation: name duration timing-function delay iteration-count fill-mode */
+  /* Runs once, 0.5s delay after page load, keeps final state */
+  /* Initially, we want the animation to define the appearance */
+  background-size: 400% 100%; /* Make gradient significantly wider than the text */
+  background-position: 150% 0; /* Start with shimmer effect off to the right */
+  -webkit-background-clip: text;
+  background-clip: text;
+  /* Text color will be made transparent by the animation for the shimmer part */
+}
+
+@keyframes text-shimmer {
+  0% {
+    color: transparent; /* Text transparent to show gradient */
+    background-image: linear-gradient(
+      90deg, /* Gradient from left to right, so position moves it right to left */
+      #0ef 0%, /* Original color, far left of gradient */
+      #0ef 30%,
+      #c0c0c0 45%, /* Silver start */
+      #e0e0e0 50%, /* Lighter Silver middle */
+      #c0c0c0 55%, /* Silver end */
+      #0ef 70%, /* Original color, far right of gradient */
+      #0ef 100%
+    );
+    background-position: 150% 0; /* Gradient starts far to the right */
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  60% { /* Shimmer has passed */
+    color: transparent; /* Still showing gradient */
+    background-image: linear-gradient(90deg, #0ef 0%, #0ef 30%, #c0c0c0 45%, #e0e0e0 50%, #c0c0c0 55%, #0ef 70%, #0ef 100%);
+    background-position: -50% 0; /* Gradient has moved far to the left */
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  100% {
+    color: #0ef; /* Solid final color */
+    background-image: none; /* Remove gradient */
+    -webkit-background-clip: initial; /* Reset clipping */
+    background-clip: initial;
+    background-position: -50% 0; /* Position no longer matters */
+  }
+}
+
+    </style>
+{% endblock %}
 
 {% block content %}
-<div class="login-page-container">
-    <div class="row g-0">
-        <div class="col-lg-7 d-none d-lg-block login-image-panel">
-            <div class="image-overlay">
-                <h2>Welcome to CyberASK</h2>
-                <p>Your assessment tracking solution.</p>
-            </div>
-        </div>
-        <div class="col-lg-5 col-md-12 login-form-panel">
-            <div class="login-form-content"> <h2>Login</h2>
-                {% if form.errors %}
-                <div class="alert alert-danger mt-3">
-                  Your username and password didn't match. Please try again.
-                </div>
-                {% endif %}
-                {% if next and not user.is_authenticated %}
-                <div class="alert alert-info mt-3">
-                  Please login to see this page.
-                </div>
-                {% endif %}
+<div class="login-page-wrapper"> {# New outer wrapper for animation #}
+    {# Animated Spans - these will be positioned behind .login-page-container #}
+    {# Showing a few, you need 50 for the original Uiverse effect #}
+    <span class="bg-span" style="--i:0;"></span>
+    <span class="bg-span" style="--i:1;"></span>
+    <span class="bg-span" style="--i:2;"></span>
+    <span class="bg-span" style="--i:3;"></span>
+    <span class="bg-span" style="--i:4;"></span>
+    <span class="bg-span" style="--i:5;"></span>
+    {# ... repeat up to --i:49 (total 50 spans) ... #}
+    <span class="bg-span" style="--i:6;"></span> <span class="bg-span" style="--i:7;"></span> <span class="bg-span" style="--i:8;"></span> <span class="bg-span" style="--i:9;"></span>
+    <span class="bg-span" style="--i:10;"></span> <span class="bg-span" style="--i:11;"></span> <span class="bg-span" style="--i:12;"></span> <span class="bg-span" style="--i:13;"></span> <span class="bg-span" style="--i:14;"></span>
+    <span class="bg-span" style="--i:15;"></span> <span class="bg-span" style="--i:16;"></span> <span class="bg-span" style="--i:17;"></span> <span class="bg-span" style="--i:18;"></span> <span class="bg-span" style="--i:19;"></span>
+    <span class="bg-span" style="--i:20;"></span> <span class="bg-span" style="--i:21;"></span> <span class="bg-span" style="--i:22;"></span> <span class="bg-span" style="--i:23;"></span> <span class="bg-span" style="--i:24;"></span>
+    <span class="bg-span" style="--i:25;"></span> <span class="bg-span" style="--i:26;"></span> <span class="bg-span" style="--i:27;"></span> <span class="bg-span" style="--i:28;"></span> <span class="bg-span" style="--i:29;"></span>
+    <span class="bg-span" style="--i:30;"></span> <span class="bg-span" style="--i:31;"></span> <span class="bg-span" style="--i:32;"></span> <span class="bg-span" style="--i:33;"></span> <span class="bg-span" style="--i:34;"></span>
+    <span class="bg-span" style="--i:35;"></span> <span class="bg-span" style="--i:36;"></span> <span class="bg-span" style="--i:37;"></span> <span class="bg-span" style="--i:38;"></span> <span class="bg-span" style="--i:39;"></span>
+    <span class="bg-span" style="--i:40;"></span> <span class="bg-span" style="--i:41;"></span> <span class="bg-span" style="--i:42;"></span> <span class="bg-span" style="--i:43;"></span> <span class="bg-span" style="--i:44;"></span>
+    <span class="bg-span" style="--i:45;"></span> <span class="bg-span" style="--i:46;"></span> <span class="bg-span" style="--i:47;"></span> <span class="bg-span" style="--i:48;"></span> <span class="bg-span" style="--i:49;"></span>
 
-                <form method="post" action="{% url 'login' %}" class="mt-4 auth-form" novalidate>
-                    {% csrf_token %}
-                    <div class="mb-3">
-                      <label for="{{ form.username.id_for_label }}" class="form-label">{{ form.username.label }}</label>
-                      {{ form.username }} {% if form.username.errors %}<div class="invalid-feedback d-block">{{ form.username.errors }}</div>{% endif %}
+
+    <div class="login-page-container"> {# This is your original container, now centered #}
+        <div class="row g-0">
+            {# Left Panel - Product Information with CSS Pattern #}
+            <div class="col-lg-7 d-none d-lg-block login-image-panel">
+                <div class="image-overlay-content"> {# Renamed for clarity #}
+                    <h2>{% translate "Welcome to" %} <span class="shimmer-target">CyberASK</span></h2>
+                    <div class="product-description">
+                        <p>{% translate "CyberASK is your streamlined solution for managing and tracking cybersecurity assessments, simplifying compliance and enhancing your security posture." %}</p>
+                        <ul>
+                            <li><i class="fas fa-shield-alt"></i> {% translate "Comprehensive Assessment Tracking" %}</li>
+                            <li><i class="fas fa-tasks"></i> {% translate "Simplified CE+ Workflow Management" %}</li>
+                            <li><i class="fas fa-users"></i> {% translate "Collaborative Platform for Clients & Assessors" %}</li>
+                            <li><i class="fas fa-chart-line"></i> {% translate "Clear Reporting and Progress Monitoring" %}</li>
+                            <li><i class="fas fa-cogs"></i> {% translate "Automated Reminders and Notifications" %}</li>
+                        </ul>
+                        <p class="mt-3">{% translate "Log in to manage your assessments, review findings, and achieve your cybersecurity certifications efficiently." %}</p>
                     </div>
-                    <div class="mb-3">
-                      <label for="{{ form.password.id_for_label }}" class="form-label">{{ form.password.label }}</label>
-                      {{ form.password }} {% if form.password.errors %}<div class="invalid-feedback d-block">{{ form.password.errors }}</div>{% endif %}
+                </div>
+            </div>
+
+            {# Right Panel - Login Form #}
+            <div class="col-lg-5 col-md-12 login-form-panel">
+                <div class="login-form-content">
+                    <div class="login-box">
+                        <h2>{% translate "Login" %}</h2>
+
+                        <div class="form-message-area mb-3"> {# Added margin-bottom #}
+                            {% if form.errors and not form.non_field_errors %}
+                            <div class="alert alert-danger">
+                              {% translate "Your username and password didn't match. Please try again." %}
+                            </div>
+                            {% endif %}
+                            {% if form.non_field_errors %}
+                                <div class="alert alert-danger">
+                                    {% for error in form.non_field_errors %}
+                                        {{ error|escape }}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+
+                            {% if next and not user.is_authenticated %}
+                            <div class="alert alert-info">
+                              {% translate "Please login to see this page." %}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <form method="post" action="{% url 'login' %}" novalidate>
+                            {% csrf_token %}
+                            <div class="input-box">
+                                <input type="{{ form.username.field.widget.input_type }}"
+                                       name="{{ form.username.name }}"
+                                       id="{{ form.username.id_for_label }}"
+                                       value="{{ form.username.value|default:'' }}"
+                                       placeholder=" " {# Important for CSS floating label via :not(:placeholder-shown) #}
+                                       required>
+                                <label for="{{ form.username.id_for_label }}">{{ form.username.label }}</label>
+                                {% if form.username.errors %}
+                                    <div class="django-field-error">{{ form.username.errors|striptags }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="input-box">
+                                <input type="{{ form.password.field.widget.input_type }}"
+                                       name="{{ form.password.name }}"
+                                       id="{{ form.password.id_for_label }}"
+                                       placeholder=" " {# Important for CSS floating label #}
+                                       required>
+                                <label for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
+                                {% if form.password.errors %}
+                                     <div class="django-field-error">{{ form.password.errors|striptags }}</div>
+                                {% endif %}
+                            </div>
+
+                            <div class="forgot-pass">
+                                <a href="{% url 'password_reset' %}">{% translate "Lost password?" %}</a>
+                            </div>
+
+                            <button type="submit" class="login-btn">{% translate "Login" %}</button>
+                            <input type="hidden" name="next" value="{{ next }}">
+                        </form>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">Login</button>
-                    <input type="hidden" name="next" value="{{ next }}">
-                </form>
-                <p class="mt-3 text-center"><a href="{% url 'password_reset' %}">Lost password?</a></p>
+                </div>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{# Removed the JS for floating labels as the CSS :not(:placeholder-shown) with placeholder=" " should handle it. #}
+{# You can add it back if needed for older browsers or specific behaviors. #}
 {% endblock %}

@@ -1,0 +1,96 @@
+{% load i18n %}
+
+{% if can_update_step %}
+    <div class="btn-toolbar" role="toolbar" aria-label="{% translate 'Step action buttons' %}">
+        <div class="btn-group btn-group-sm me-1 mb-1" role="group" aria-label="{% translate 'Primary status actions' %}">
+            {% if workflow_step.status == status_choices.NOT_STARTED %}
+                <form hx-post="{% url 'tracker:update_workflow_step_status' assessment_pk=assessment_pk step_pk=step_pk %}"
+                      hx-target="#workflow-step-row-{{ step_pk }}" hx-swap="outerHTML" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="{{ status_choices.IN_PROGRESS.value }}">
+                    <button type="submit" class="btn btn-outline-primary"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="{% translate 'Start Step' %}">
+                        <i class="fas fa-play fa-fw"></i>
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if workflow_step.status != status_choices.COMPLETE %}
+                <form hx-post="{% url 'tracker:update_workflow_step_status' assessment_pk=assessment_pk step_pk=step_pk %}"
+                      hx-target="#workflow-step-row-{{ step_pk }}" hx-swap="outerHTML" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="{{ status_choices.COMPLETE.value }}">
+                    <button type="submit" class="btn btn-outline-success"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="{% translate 'Mark as Complete' %}">
+                        <i class="fas fa-check fa-fw"></i>
+                    </button>
+                </form>
+            {% else %} {# status is COMPLETE #}
+                 <form hx-post="{% url 'tracker:update_workflow_step_status' assessment_pk=assessment_pk step_pk=step_pk %}"
+                      hx-target="#workflow-step-row-{{ step_pk }}" hx-swap="outerHTML" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="{{ status_choices.IN_PROGRESS.value }}">
+                    <button type="submit" class="btn btn-outline-secondary"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="{% translate 'Reopen Step' %}">
+                        <i class="fas fa-pencil-alt fa-fw"></i>
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+
+        <div class="btn-group btn-group-sm mb-1" role="group" aria-label="{% translate 'Secondary actions' %}">
+            {% if workflow_step.status == status_choices.IN_PROGRESS or workflow_step.status == status_choices.HELP_NEEDED %}
+                <form hx-post="{% url 'tracker:update_workflow_step_status' assessment_pk=assessment_pk step_pk=step_pk %}"
+                      hx-target="#workflow-step-row-{{ step_pk }}" hx-swap="outerHTML" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="{{ status_choices.NOT_STARTED.value }}">
+                    <button type="submit" class="btn btn-outline-secondary"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="{% translate 'Reset to Not Started' %}">
+                        <i class="fas fa-undo fa-fw"></i>
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if workflow_step.status != status_choices.HELP_NEEDED %}
+                <form hx-post="{% url 'tracker:update_workflow_step_status' assessment_pk=assessment_pk step_pk=step_pk %}"
+                      hx-target="#workflow-step-row-{{ step_pk }}" hx-swap="outerHTML" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="{{ status_choices.HELP_NEEDED.value }}">
+                    <button type="submit" class="btn btn-outline-warning text-dark"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="{% translate 'Mark as Help Needed' %}">
+                        <i class="fas fa-question-circle fa-fw"></i>
+                    </button>
+                </form>
+            {% elif workflow_step.status == status_choices.HELP_NEEDED %}
+                 <form hx-post="{% url 'tracker:update_workflow_step_status' assessment_pk=assessment_pk step_pk=step_pk %}"
+                      hx-target="#workflow-step-row-{{ step_pk }}" hx-swap="outerHTML" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="{{ status_choices.IN_PROGRESS.value }}">
+                    <button type="submit" class="btn btn-outline-info"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="{% translate 'Clear Help Needed' %}">
+                        <i class="far fa-comment-dots fa-fw"></i>
+                    </button>
+                </form>
+            {% endif %}
+
+            {% if workflow_step.step_definition.skippable and workflow_step.status != status_choices.SKIPPED %}
+                <form hx-post="{% url 'tracker:update_workflow_step_status' assessment_pk=assessment_pk step_pk=step_pk %}"
+                      hx-target="#workflow-step-row-{{ step_pk }}" hx-swap="outerHTML" class="d-inline">
+                    {% csrf_token %}
+                    <input type="hidden" name="new_status" value="{{ status_choices.SKIPPED.value }}">
+                    <button type="submit" class="btn btn-outline-dark"
+                            data-bs-toggle="tooltip" data-bs-placement="top" title="{% translate 'Skip Step' %}">
+                        <i class="fas fa-forward fa-fw"></i>
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+    <div id="step-actions-indicator-{{ step_pk }}" class="htmx-indicator small text-muted mt-1">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        {% translate "Updating..." %}
+    </div>
+
+{% else %}
+    <span class="badge bg-light text-dark p-2">{% translate "Actions Locked" %}</span>
+{% endif %}

@@ -1,26 +1,10 @@
 
 import logging
-import traceback # Import traceback for detailed error printing
+import traceback
 from datetime import date
-from .models import (
-    Assessment,
-    AssessmentCloudService,
-    AssessmentLog,
-    AssessmentWorkflowStep,
-    Client,
-    CloudServiceDefinition,
-    Evidence,
-    ExternalIP,
-    Network,
-    OperatingSystem,
-    ScopedItem,
-    UploadedReport,
-    UserProfile,
-    NessusAgentURL
-)
+from .models import *
 
-# Import log function carefully or define locally
-# (Ensures this util function can still work even if views.py has issues)
+
 try:
     from .views import log_assessment_event
     USE_LOG_ASSESSMENT_EVENT = True
@@ -31,7 +15,7 @@ except ImportError:
         print(f"Placeholder Log for Assessment {assessment.id if assessment else 'N/A'}: {event}")
         pass
 
-# Get an instance of a logger
+
 logger = logging.getLogger(__name__)
 
 
@@ -211,7 +195,6 @@ def is_admin(user):
     except Exception as e: # Catch potential related object errors
         logger.error(f"Error checking is_admin for user {user.username}: {e}", exc_info=True)
         return False
-
 def is_assessor(user):
     if not user.is_authenticated: return False
     try:
@@ -220,7 +203,6 @@ def is_assessor(user):
     except Exception as e:
         logger.error(f"Error checking is_assessor for user {user.username}: {e}", exc_info=True)
         return False
-
 def is_client(user):
     # Add detailed logging
     if not user.is_authenticated:

@@ -9,14 +9,7 @@ from .views import tenable_policy_template_list_view, tenable_scanner_list_view
 from django.urls import path
 
 # --- Import ALL necessary models ---
-from .models import (
-    Client, UserProfile, Assessment, ScopedItem, Evidence, AssessmentLog,
-    OperatingSystem, Network, CloudServiceDefinition, AssessmentCloudService,
-    WorkflowStepDefinition, AssessmentWorkflowStep, ExternalIP, UploadedReport,
-    NessusAgentURL,
-    AssessmentDateOption,  # <-- Required
-    AssessorAvailability   # <-- Required
-)
+from .models import *
 
 
 original_get_urls = admin.site.get_urls
@@ -42,7 +35,11 @@ def get_urls():
 
 admin.site.get_urls = get_urls
 
-
+@admin.register(Browser)
+class BrowserAdmin(admin.ModelAdmin):
+    list_display = ('name', 'version', 'release_date', 'is_outdated', 'manually_added')
+    list_filter = ('manually_added', 'status')
+    search_fields = ('name',)
 
 # --- User Admin (with profile inline) ---
 class UserProfileInline(admin.StackedInline):
@@ -260,9 +257,10 @@ class AssessmentCloudServiceAdmin(admin.ModelAdmin):
 # --- Workflow Definitions Admin ---
 @admin.register(WorkflowStepDefinition)
 class WorkflowStepDefinitionAdmin(admin.ModelAdmin):
-    list_display = ('step_order', 'name', 'assignee_type', 'is_active')
-    list_editable = ('is_active', 'assignee_type')
-    ordering = ('step_order',)
+    list_display = ('step_order', 'name', 'assignee_type', 'is_active', 'skippable', 'template_name', 'card_template_path') # Added here
+    list_editable = ('is_active', 'assignee_type', 'skippable', 'template_name', 'card_template_path') # And here
+    list_filter = ('assignee_type', 'is_active') # Existing, or add if you like
+    search_fields = ('name', 'description') # Existing, or add if you like
 
 # --- Assessment Workflow Step Admin ---
 @admin.register(AssessmentWorkflowStep)

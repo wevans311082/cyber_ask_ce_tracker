@@ -4,6 +4,7 @@ import os
 import re
 import time
 import uuid
+from datetime import datetime
 from urllib.parse import urljoin, urlparse
 
 # Third-party
@@ -21,24 +22,9 @@ from restfly.errors import RequestConflictError
 # Local apps
 from cyber_ask_assessment_tracker.celery import app
 
-from .models import (
-    Assessment,
-    Client,
-    ExternalIP,
-    NessusAgentURL,
-    ScopedItem,
-    TenableScanLog,
-)
+from .models import *
 
-from .tenable_client import (
-    create_agent_scan,
-    find_scan_by_name,
-    get_agent_group_details_by_name,
-    get_scan_details,
-    get_tenable_io_client,
-    launch_scan,
-    launch_scan_on_tenable,
-)
+from .tenable_client import *
 
 from .utils import log_assessment_event
 
@@ -1169,7 +1155,7 @@ def task_launch_tenable_scan(self, assessment_id):
         return f"Error: Unexpected error launching scan for Assessment {assessment_id}. Retrying."
 
 
-# CHANGES BEGIN — GEMINI-2025-05-17 10:39:00
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def launch_tenable_scan_task(self, assessment_id: int):
     task_id = getattr(self.request, 'id', f"adhoc-{uuid.uuid4().hex[:8]}")
@@ -1380,4 +1366,29 @@ def launch_tenable_scan_task(self, assessment_id: int):
         logger.info(
             f"[Task:{task_id}] Completed scan launch process for Assessment {assessment.id}. Assessment status message: {assessment.scan_status_message}")
         return f"Scan launch for Assessment {assessment.id} finished. Status: {assessment.scan_status_message}"
-# CHANGES END — GEMINI-2025-05-17 10:39:00
+
+
+@shared_task
+def update_browser_versions():
+    try:
+        response = requests.get("https://www.browsers.fyi/api/")
+        response.raise_for_status()
+        data = response.json()
+
+        for key, browser in data.items():
+            release_date = datetime.strptime(browser['release_date'], "%Y-%m-%d").date()
+
+            Browser.objects.update_or_create(
+                name=browser["name"],
+                defaults={
+                    "version": browser["version"],
+                    "release_date": release_date,
+                    "release_notes": browser.get("release_notes"),
+                    "status": browser["status"],
+                    "engine": browser["engine"],
+                    "engine_version": browser["engine_version"],
+                    "manually_added": False
+                }
+            )
+    except Exception as e:
+        print(f"Failed to update browsers: {e}")

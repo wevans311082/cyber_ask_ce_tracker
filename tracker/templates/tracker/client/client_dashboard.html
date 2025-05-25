@@ -81,7 +81,6 @@
     .badge.bg-info { background-color: #0dcaf0 !important; color: #000 !important; }
     .badge.bg-warning { background-color: #ffc107 !important; color: #000 !important; }
     .badge.bg-secondary { background-color: #6c757d !important; }
-    /* Ensure status-badge combined with bg- works if get_status_badge_class returns just color name */
     .status-badge.bg-success { background-color: #28a745 !important; }
     .status-badge.bg-danger { background-color: #dc3545 !important; }
     .status-badge.bg-info { background-color: #0dcaf0 !important; color: #000 !important; }
@@ -92,6 +91,34 @@
         vertical-align: middle;
     }
     .action-buttons .btn { margin-right: 5px; margin-bottom: 5px;}
+
+    /* Styles for conversation list items */
+    .conversation-link-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #eee;
+        text-decoration: none;
+        color: #212529;
+    }
+    .conversation-link-item:last-child {
+        border-bottom: none;
+    }
+    .conversation-link-item:hover {
+        background-color: #f8f9fa;
+        color: var(--primary-blue, #007bff);
+    }
+    .conversation-info .assessment-name {
+        font-weight: 500;
+    }
+    .conversation-info .assessor-name {
+        font-size: 0.85em;
+        color: #6c757d;
+    }
+    .unread-indicator {
+        font-size: 0.9em;
+    }
 </style>
 {% endblock %}
 
@@ -127,6 +154,7 @@
         <div class="col-lg-8">
 
             {% if most_urgent_next_step %}
+            {# Your existing "Next Action" card - unchanged #}
             <div class="card dashboard-card mb-4 border-primary">
                 <div class="card-header bg-primary text-white">
                     <h5 class="card-title-custom mb-0"><i class="fas fa-bell me-2"></i>{% translate "Your Next Action" %}</h5>
@@ -181,50 +209,69 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for assessment in assessments %}
+                                    {% for assessment_item in assessments %} {# Changed loop var to assessment_item #}
                                     <tr>
-                                        <td>{{ assessment.id }}</td>
+                                        <td>{{ assessment_item.id }}</td>
                                         <td>
-                                            <a href="{% url 'tracker:client_assessment_detail' pk=assessment.pk %}" class="text-decoration-none fw-bold">
-                                                {{ assessment.get_assessment_type_display }}
+                                            <a href="{% url 'tracker:client_assessment_detail' pk=assessment_item.pk %}" class="text-decoration-none fw-bold">
+                                                {{ assessment_item.get_assessment_type_display }}
                                             </a>
-                                            {% if assessment.client %}<br><small class="text-muted">Client: {{ assessment.client }}</small>{% endif %}
-                                            {% if assessment.start_date %}<br><small class="text-muted">Started: {{ assessment.start_date|date:"d M Y" }}</small>{% endif %}
+                                            {% if assessment_item.client %}<br><small class="text-muted">Client: {{ assessment_item.client }}</small>{% endif %}
+                                            {% if assessment_item.start_date %}<br><small class="text-muted">Started: {{ assessment_item.start_date|date:"d M Y" }}</small>{% endif %}
                                         </td>
                                         <td>
-                                            <span class="badge status-badge bg-{{ assessment.status|get_status_badge_class|default:'secondary' }}">{{ assessment.get_status_display }}</span>
+                                            <span class="badge status-badge bg-{{ assessment_item.status|get_status_badge_class|default:'secondary' }}">{{ assessment_item.get_status_display }}</span>
                                         </td>
-                                        <td>{{ assessment.assessor.username|default:"-" }}</td>
-                                        <td>{{ assessment.date_target_end|date:"Y-m-d"|default:"-" }}</td>
+                                        <td>{{ assessment_item.assessor.username|default:"-" }}</td>
+                                        <td>{{ assessment_item.date_target_end|date:"Y-m-d"|default:"-" }}</td>
                                         <td>
-                                            {% if assessment.final_outcome == 'Pass' %}
-                                                <span class="badge bg-success">{{ assessment.get_final_outcome_display|default:assessment.final_outcome }}</span>
-                                            {% elif assessment.final_outcome == 'Fail' %}
-                                                <span class="badge bg-danger">{{ assessment.get_final_outcome_display|default:assessment.final_outcome }}</span>
-                                            {% elif assessment.final_outcome %}
-                                                 <span class="badge bg-secondary">{{ assessment.get_final_outcome_display|default:assessment.final_outcome }}</span>
+                                            {% if assessment_item.final_outcome == 'Pass' %}
+                                                <span class="badge bg-success">{{ assessment_item.get_final_outcome_display|default:assessment_item.final_outcome }}</span>
+                                            {% elif assessment_item.final_outcome == 'Fail' %}
+                                                <span class="badge bg-danger">{{ assessment_item.get_final_outcome_display|default:assessment_item.final_outcome }}</span>
+                                            {% elif assessment_item.final_outcome %}
+                                                 <span class="badge bg-secondary">{{ assessment_item.get_final_outcome_display|default:assessment_item.final_outcome }}</span>
                                             {% else %}
                                                  -
                                             {% endif %}
                                         </td>
                                         <td class="action-buttons">
-                                            <a href="{% url 'tracker:client_assessment_detail' pk=assessment.pk %}" class="btn btn-sm btn-outline-primary">Details</a>
-                                            {% if assessment.status == 'Scoping_Client' %}
-                                                <a href="{% url 'client_scope_manage' pk=assessment.pk %}" class="btn btn-sm btn-outline-warning">Scope</a>
-                                            {% endif %}
-                                        </td>
+    <a href="{% url 'tracker:client_assessment_detail' pk=assessment_item.pk %}" class="btn btn-sm btn-outline-primary">Details</a>
+
+    {# CHANGES BEGIN — 2025-05-22 22:00:00 #}
+    {# Access the conversation for the current assessment_item #}
+    {% with conversation=assessment_conversations_map|get_item:assessment_item.pk %}
+        {% if conversation %}
+            <a href="{% url 'tracker:conversation_detail' pk=conversation.pk %}" class="btn btn-sm btn-outline-info position-relative">
+                <i class="fas fa-comments"></i> {% translate "Messages" %}
+                {# Optional: Add unread count badge if you implement that #}
+                {# {% get_unread_message_count conversation request.user as unread_count %} #}
+                {# {% if unread_count > 0 %} #}
+                {# <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"> #}
+                {# {{ unread_count }} #}
+                {# <span class="visually-hidden">unread messages</span> #}
+                {# </span> #}
+                {# {% endif %} #}
+            </a>
+        {% else %}
+            {# Optionally show a disabled-like button or just nothing if no conversation #}
+            {# <button class="btn btn-sm btn-outline-secondary" disabled><i class="fas fa-comments"></i> {% translate "Messages" %}</button> #}
+        {% endif %}
+    {% endwith %}
+    {# CHANGES END — 2025-05-22 22:00:00 #}
+</td>
                                     </tr>
-                                    {% get_current_workflow_step assessment as current_step %}
-                                    {% if assessment.overall_progress is not None or current_step %}
+                                    {% get_current_workflow_step assessment_item as current_step %}
+                                    {% if assessment_item.overall_progress is not None or current_step %}
                                     <tr class="assessment-details-row">
                                         <td colspan="7" style="padding-top: 0.25rem; padding-bottom: 0.75rem; border-top: none; background-color: #f9f9f9;">
-                                            {% if assessment.overall_progress is not None %}
-                                            <p class="mb-1 mt-1 small text-muted" style="font-size: 0.8em;">{% translate "Progress:" %} {{ assessment.overall_progress|default:0 }}%</p>
+                                            {% if assessment_item.overall_progress is not None %}
+                                            <p class="mb-1 mt-1 small text-muted" style="font-size: 0.8em;">{% translate "Progress:" %} {{ assessment_item.overall_progress|default:0 }}%</p>
                                             <div class="progress assessment-progress-bar mb-1" style="height: 6px;">
-                                                <div class="progress-bar" role="progressbar" style="width: {{ assessment.overall_progress|default:0 }}%;" aria-valuenow="{{ assessment.overall_progress|default:0 }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                                <div class="progress-bar" role="progressbar" style="width: {{ assessment_item.overall_progress|default:0 }}%;" aria-valuenow="{{ assessment_item.overall_progress|default:0 }}" aria-valuemin="0" aria-valuemax="100"></div>
                                             </div>
                                             {% endif %}
-                                            {% if current_step and assessment.pk is not None and current_step.pk is not None %}
+                                            {% if current_step and assessment_item.pk is not None and current_step.pk is not None %}
                                             <p class="mb-0 small" style="font-size: 0.8em;">
                                                 {% translate "Next Step:" %}
                                                 <a href="#" class="text-decoration-underline">
@@ -232,7 +279,7 @@
                                                 </a>
                                                 {% if current_step.due_date %}({% translate "Due:" %} {{ current_step.due_date|date:"d M Y" }}){% endif %}
                                             </p>
-                                            {% elif assessment.status == "Completed" or assessment.status == "Complete_Passed" or assessment.status == "Complete_Failed" %}
+                                            {% elif assessment_item.status == "Completed" or assessment_item.status == "Complete_Passed" or assessment_item.status == "Complete_Failed" %}
                                                 <p class="mb-0 small text-success" style="font-size: 0.8em;">{% translate "All steps completed." %}</p>
                                             {% elif current_step %}
                                                 <p class="mb-0 small text-muted" style="font-size: 0.8em;">Next Step: {{ current_step.workflow_step_definition.name }} (Link unavailable)</p>
@@ -250,38 +297,57 @@
                 </div>
             </div>
 
+            {# --- MODIFIED "CONTACT YOUR ASSESSOR" CARD TO "ASSESSMENT CONVERSATIONS" --- #}
             <div class="card dashboard-card mb-4">
                 <div class="card-header bg-light">
-                    <h5 class="card-title-custom mb-0"><i class="fas fa-comments me-2 text-info"></i>{% translate "Contact Your Assessor" %}</h5>
+                    <h5 class="card-title-custom mb-0"><i class="fas fa-comments me-2 text-info"></i>{% translate "Assessment Conversations" %}</h5>
                 </div>
-                <div class="card-body">
-                    <p class="text-muted">{% translate "Direct messaging with your assessor regarding your assessments." %}</p>
-                    <form method="POST" action="{% comment %}{% url 'send_assessor_message' %}{% endcomment %}">
-                        {% csrf_token %}
-                        <div class="mb-3">
-                            <label for="messageAssessmentSelect" class="form-label">{% translate "Select Assessment" %}</label>
-                            <select class="form-select" id="messageAssessmentSelect" name="assessment">
-                                <option selected disabled>{% translate "Choose assessment..." %}</option>
-                                {% for item in assessments %}
-                                <option value="{{ item.pk }}">{{ item.get_assessment_type_display }} - {{ item.start_date|date:"d M Y" }}</option>
-                                {% endfor %}
-                            </select>
+                <div class="card-body p-0"> {# Removed padding from card-body to let list group fill it #}
+                    {% if assessment_conversations_map %}
+                        <div class="list-group list-group-flush">
+                            {% for assessment_id, conversation in assessment_conversations_map.items %}
+                                {% if conversation %}
+                                    {# Find the assessment object from the main assessments list for its details #}
+                                    {% for assessment_item_for_convo in assessments %}
+                                        {% if assessment_item_for_convo.pk == assessment_id %}
+                                            <a href="{% url 'tracker:conversation_detail' pk=conversation.pk %}" class="list-group-item conversation-link-item">
+                                                <div class="conversation-info">
+                                                    <span class="assessment-name">{{ assessment_item_for_convo.get_assessment_type_display }} (ID: {{ assessment_item_for_convo.id }})</span>
+                                                    <br>
+                                                    <span class="assessor-name">{% translate "Assessor:" %} {{ assessment_item_for_convo.assessor.get_full_name|default:assessment_item_for_convo.assessor.username }}</span>
+                                                </div>
+                                                <span class="unread-indicator">
+                                                    {# Placeholder for unread count badge #}
+                                                    {% comment %}
+                                                    {% if conversation.unread_count_for_user > 0 %}
+                                                        <span class="badge bg-danger rounded-pill">{{ conversation.unread_count_for_user }}</span>
+                                                    {% else %}
+                                                        <i class="fas fa-envelope-open-text text-muted"></i>
+                                                    {% endif %}
+                                                    {% endcomment %}
+                                                    <i class="fas fa-chevron-right text-muted small"></i>
+                                                </span>
+                                            </a>
+                                        {% endif %}
+                                    {% endfor %}
+                                {% endif %}
+                            {% empty %}
+                                <div class="p-3 text-muted">
+                                    {% translate "No active conversations. Messages can be initiated with assigned assessors via the assessment details." %}
+                                </div>
+                            {% endfor %}
                         </div>
-                        <div class="mb-3">
-                            <label for="messageText" class="form-label">{% translate "Your Message" %}</label>
-                            <textarea class="form-control" id="messageText" name="message_content" rows="3" placeholder="{% translate "Type your message here..." %}"></textarea>
+                    {% else %}
+                        <div class="p-3 text-muted">
+                           {% translate "No assessments with assigned assessors found to start conversations." %}
                         </div>
-                        <button type="submit" class="btn btn-primary" disabled>{% translate "Send Message (Coming Soon)" %}</button>
-                    </form>
-                    <div id="chatLogPlaceholder" class="mt-3 p-2 border rounded" style="min-height: 100px; max-height: 300px; overflow-y: auto;">
-                         <p class="text-muted small text-center">{% translate "Message history will appear here (feature in development)." %}</p>
-                    </div>
+                    {% endif %}
                 </div>
             </div>
-
         </div>
 
         <div class="col-lg-4">
+            {# Your existing "Quick Actions", "Nessus Agent Status", "Nessus Agent Downloads", "Information & Support" cards - unchanged #}
             <div class="card dashboard-card mb-4">
                 <div class="card-header bg-light">
                     <h5 class="card-title-custom mb-0"><i class="fas fa-bolt me-2 text-warning"></i>{% translate "Quick Actions" %}</h5>
@@ -345,50 +411,50 @@
                 </div>
             </div>
 
-            <details class="mb-3"> {# 'mb-3' is an example Bootstrap margin class, adjust as needed or remove if not using Bootstrap #}
-    <summary style="cursor: pointer; font-weight: bold; margin-bottom: 0.5rem;">
-        Nessus Agent Downloads (Click to expand)
-    </summary>
-    <div class="table-responsive"> {# Optional: for better display on small screens #}
-        <table class="table table-sm"> {# Basic table styling - remove 'table table-sm' if you want truly unstyled #}
-            <thead>
-                <tr>
-                    <th scope="col" style="font-weight: normal; text-align: left;">Operating System</th>
-                    <th scope="col" style="font-weight: normal; text-align: left;">Architecture</th>
-                    <th scope="col" style="font-weight: normal; text-align: left;">Agent Version</th>
-                    <th scope="col" style="font-weight: normal; text-align: left;">OS Details</th>
-                    <th scope="col" style="font-weight: normal; text-align: left;">Download</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for agent_download in nessus_agent_urls %}
-                    <tr>
-                        <td>
-                            {% if agent_download.os_name %}
-                                <i class="{% os_to_fa_icon agent_download %} fa-fw"></i>
-                                {{ agent_download.os_name }}
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
-                        <td>{{ agent_download.architecture|default:"N/A" }}</td>
-                        <td>{{ agent_download.agent_version|default:"N/A" }}</td>
-                        <td>{{ agent_download.os_version_details|default:"N/A" }}</td>
-                        <td>
-                            <a href="{{ agent_download.download_url }}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline; color: inherit;">
-                                Click here to download
-                            </a>
-                        </td>
-                    </tr>
-                {% empty %}
-                    <tr>
-                        <td colspan="5">No valid Nessus agent download URLs available at the moment.</td>
-                    </tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-</details>
+            <details class="mb-3">
+                <summary style="cursor: pointer; font-weight: bold; margin-bottom: 0.5rem;">
+                    Nessus Agent Downloads (Click to expand)
+                </summary>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th scope="col" style="font-weight: normal; text-align: left;">Operating System</th>
+                                <th scope="col" style="font-weight: normal; text-align: left;">Architecture</th>
+                                <th scope="col" style="font-weight: normal; text-align: left;">Agent Version</th>
+                                <th scope="col" style="font-weight: normal; text-align: left;">OS Details</th>
+                                <th scope="col" style="font-weight: normal; text-align: left;">Download</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for agent_download in nessus_agent_urls %}
+                                <tr>
+                                    <td>
+                                        {% if agent_download.os_name %}
+                                            <i class="{% os_to_fa_icon agent_download %} fa-fw"></i>
+                                            {{ agent_download.os_name }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ agent_download.architecture|default:"N/A" }}</td>
+                                    <td>{{ agent_download.agent_version|default:"N/A" }}</td>
+                                    <td>{{ agent_download.os_version_details|default:"N/A" }}</td>
+                                    <td>
+                                        <a href="{{ agent_download.download_url }}" target="_blank" rel="noopener noreferrer" style="text-decoration: underline; color: inherit;">
+                                            Click here to download
+                                        </a>
+                                    </td>
+                                </tr>
+                            {% empty %}
+                                <tr>
+                                    <td colspan="5">No valid Nessus agent download URLs available at the moment.</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </details>
 
             <div class="card dashboard-card mb-4">
                 <div class="card-header bg-light">
@@ -405,7 +471,6 @@
     </div>
 </div>
 
-
     <hr>
     <div class="card mt-4 mb-4">
         <div class="card-header bg-warning text-dark">
@@ -421,12 +486,8 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-    console.log("Client dashboard JS loaded. URLs are now non-namespaced. Check browser console for errors if data is missing.");
+    console.log("Client dashboard JS loaded.");
 });
-
-</script>
-<script id="updateWorkflowStepStatusUrl" type="application/json">
-  {% url 'tracker:update_workflow_step_status' assessment_pk=0 step_pk=0 %}
 </script>
 
 {% endblock %}

@@ -1,11 +1,5 @@
-from django.urls import path
-from . import views, assessment_view
-from django.contrib import admin
+from . import views
 from django.urls import path, include # Ensure 'include' is imported
-from django.conf import settings
-from django.conf.urls.static import static
-from .views import critical_error_detail_view
-from . import wizard_views
 
 
 print("--- [DEBUG] tracker/urls.py is being loaded NOW ---")
@@ -93,20 +87,10 @@ urlpatterns = [
     path('client/assessments/<int:assessment_pk>/external-ips/<int:pk>/edit/', views.ExternalIPUpdateView.as_view(), name='client_externalip_update'),
     path('client/assessments/<int:assessment_pk>/external-ips/<int:pk>/delete/', views.ExternalIPDeleteView.as_view(), name='client_externalip_delete'),
 
-    path(
-        "client/assessments/<int:assessment_id>/wizard/",  # CHANGED from uuid to int
-        wizard_views.ClientAssessmentWizardView.as_view(),
-        name="client_assessment_wizard",
-    ),
+    path("client/assessments/<int:assessment_id>/wizard/",  views.ClientAssessmentWizardView.as_view(),name="client_assessment_wizard"),
+    path('client/assessments/<int:assessment_id>/wizard/step/<str:step>/',views.ClientAssessmentWizardStepView.as_view(), name='client_assessment_wizard_step_htmx'),
 
-    path('client/assessments/<int:assessment_id>/wizard/step/<str:step>/', # 'step' is the key used by SessionWizardView
-     wizard_views.ClientAssessmentWizardStepView.as_view(),
-     name='client_assessment_wizard_step_htmx'),
-
-
-
-
-
+    path('client/assessment/<int:assessment_pk>/load-card/step/<int:step_pk>/', views.LoadAssessmentCardContentView.as_view(),  name='load_assessment_card_content'),
 
     path('assessments/<int:assessment_pk>/workflow/step/<int:step_pk>/update_status/', views.update_workflow_step_status, name='update_workflow_step_status'),
     path('assessments/<int:assessment_pk>/map-agents/', views.MapAgentsView.as_view(), name='map_agents'),
@@ -143,6 +127,27 @@ urlpatterns = [
     path('manage/reports/unlinked/', views.UnlinkedReportListView.as_view(), name='unlinked_report_list'),
     path('manage/assessments/awaiting-scheduling/', views.AssessmentAwaitingSchedulingListView.as_view(), name='assessment_list_awaiting_scheduling'),
 
+
     path('app/critical_error_reports/<uuid:pk>/', views.critical_error_detail_view, name='critical_error_detail'),
     path('this-is-a-very-unique-test-url-for-critical-errors/<uuid:pk>/', views.critical_error_detail_view, name='critical_error_detail_debug_test'),
+    path('htmx/fetch-tenable-scan-results/<uuid:log_id>/', views.htmx_fetch_tenable_scan_results,name='htmx_fetch_tenable_scan_results'),
+    path('assessment/<int:assessment_pk>/scan-log/<uuid:log_id>/parsed-results/', views.view_parsed_scan_results, name='view_parsed_scan_results'),
+
+    path('admin/add-browser/', views.add_manual_browser, name='add_browser'),
+    path('client/browsers/', views.browser_versions_view, name='browser_versions'),
+    path('assesor/browsers/', views.browser_versions_view, name='browser_versions'),
+    path('admin/browsers/', views.browser_versions_view, name='browser_versions'),
+
+
+    path('client/conversation/<int:pk>/', views.ConversationDetailView.as_view(),name='conversation_detail' ),
+
+
+    path('assessment/<int:assessment_pk>/load-named-card/<str:card_name>/', views.LoadAssessmentCardContentView.as_view(), name='load_named_card'),
+
+
+    path('assessment/<int:assessment_pk>/step/<int:step_pk>/update_status/',views.update_workflow_step_status, name='update_workflow_step_status'),
+
+    path('assessment/<int:assessment_pk>/save_info/', views.save_assessment_info, name='save_assessment_info'),
+
+
 ]

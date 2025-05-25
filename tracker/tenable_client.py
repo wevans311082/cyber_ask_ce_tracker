@@ -1,16 +1,9 @@
-# tracker/tenable_client.py
-
 import logging
 from constance import config
 from tenable.io import TenableIO
-# --- CORRECTED IMPORT ---
-from tenable.errors import APIError, NotFoundError, ForbiddenError # Import APIError as the base for Tenable API issues
-# --- END CORRECTION ---
-# File: tracker/tenable_client.py
+from tenable.errors import APIError, NotFoundError, ForbiddenError
 import logging
 from tenable.io import TenableIO # Ensure TenableIO is imported
-# from .utils import get_tenable_io_client # Assuming you have this utility
-# For standalone, let's define a simple get_tenable_io_client for context
 from django.conf import settings # If using Django settings for keys
 from constance import config as constance_config # If using constance
 
@@ -44,10 +37,6 @@ def get_tenable_io_client():
     except Exception as e:
         logger.error(f"Error initializing Tenable.io client: {e}", exc_info=True)
         return None
-
-
-
-
 def get_scan_details(scan_uuid: str) -> dict | None:
     """
     Fetches details for a specific scan using its UUID.
@@ -214,19 +203,6 @@ def launch_scan(scan_uuid: str) -> bool:
         logger.exception(f"Unexpected error launching scan UUID {scan_uuid}: {e}")
         print(f"[DEBUG launch_scan] Unexpected Error launching scan {scan_uuid}: {e}") # DEBUG
         return False
-# CHANGES END
-
-# --- Functions for Tagging (Keep existing if any, or add as needed later) ---
-# Example placeholders if needed later:
-# def check_agent_tags(agent_uuid: str, required_tag_uuid: str) -> bool: ...
-# def apply_tag_to_agent(agent_uuid: str, tag_uuid: str) -> bool: ...# def get_tag_by_name(tag_name: str) -> dict | None: ...
-# # def check_agent_tags(agent_uuid: str, required_tag_uuid: str) -> bool: ...
-# # def apply_tag_to_agent(agent_uuid: str, tag_uuid: str) -> bool: ...
-# # def get_agent_by_name(agent_name: str) -> dict | None: ...
-# # def get_agent_group_by_name(group_name: str) -> dict | None: ...
-# # def list_agents_in_group(group_id: int) -> list: ...
-
-
 def find_scan_by_name(scan_name: str) -> tuple[int | None, str | None]:
     # ... (your existing find_scan_by_name function - seems okay)
     logger.debug(f"[find_scan_by_name] Searching for scan named: '{scan_name}'")
@@ -245,8 +221,6 @@ def find_scan_by_name(scan_name: str) -> tuple[int | None, str | None]:
     except Exception as e:
         logger.error(f"[find_scan_by_name] Error searching for scan '{scan_name}': {e}", exc_info=True)
         return None, None
-
-
 def get_agent_group_details_by_name(group_name: str) -> dict | None:
     """
     Finds details (including ID and UUID) of a Tenable.io agent group by its name.
@@ -278,10 +252,7 @@ def get_agent_group_details_by_name(group_name: str) -> dict | None:
         logger.error(f"[get_agent_group_details_by_name] Error finding agent group by name '{group_name}': {e}",
                      exc_info=True)
         return None
-
-
-def create_agent_scan(name: str, policy_id_val: any, scanner_uuid_val: any, agent_group_identifier: any) -> tuple[
-    int | None, str | None]:
+def create_agent_scan(name: str, policy_id_val: any, scanner_uuid_val: any, agent_group_identifier: any) -> tuple[int | None, str | None]:
     """
     Creates an agent scan in Tenable.io.
     Returns (scan_definition_id, scan_definition_uuid_str) or (None, None)
@@ -356,8 +327,6 @@ def create_agent_scan(name: str, policy_id_val: any, scanner_uuid_val: any, agen
         logger.error(f"Tenable API Error creating scan definition '{name}': {e}. Settings: {scan_settings_for_api}",
                      exc_info=True)
         return None, None
-
-
 def launch_scan_on_tenable(scan_definition_id_str: str, alt_targets: list = None) -> str | None:
     """
     Launches a scan in Tenable.io using its scan definition's numeric ID.

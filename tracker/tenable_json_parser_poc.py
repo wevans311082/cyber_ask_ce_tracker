@@ -523,7 +523,7 @@ if __name__ == "__main__":
     import sys
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    default_json_file_name = "202505171843_0ebbdbe2-a728-48db-9923-aad399c84585.json"
+    default_json_file_name = "202505192107_6b88595fefa24e71b01945f045e54b63.json"
     default_json_file_path = os.path.join(script_dir, default_json_file_name)
 
     if len(sys.argv) > 1:
@@ -533,7 +533,7 @@ if __name__ == "__main__":
         logging.info(f"[MAIN] No file path provided. Attempting to use default: '{json_file_path_arg}'")
 
     if not os.path.exists(json_file_path_arg):
-        original_hardcoded_path = r"C:\Users\ed311\PycharmProjects\cyber_ask_assessment_tracker\media\scan_reports\202505171843_0ebbdbe2-a728-48db-9923-aad399c84585.json"
+        original_hardcoded_path = r"C:\Users\ed311\PycharmProjects\cyber_ask_assessment_tracker\media\scan_reports\202505192107_6b88595fefa24e71b01945f045e54b63.json"
         if os.path.exists(original_hardcoded_path):
             json_file_path_arg = original_hardcoded_path
             logging.info(

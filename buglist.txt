@@ -1,237 +1,213 @@
-MVP Task List
-New Features (Prioritized)
+New Features (High Priority)
 
+Prompt (F37): Design an interactive scoping module with a guided questionnaire for clients/assessors to define full assessment scope (networks, IPs, devices, servers, cloud services, remote/third-party access, web apps); include functionality to flag out-of-scope items with justification and plan for future visual scope diagrams and pre-filled scope templates.
+Prompt (F38): Develop an intelligent CE+ sampling assistant: input total devices by OS/version; calculate minimum sample sizes per CE+/IASME rules; support random or assessor-selected sampling ensuring OS diversity; track sampled vs. total devices.
+Prompt (F39): Implement dynamic assessor test plan generation: auto-generate per-assessment checklists of required tests, mapping them directly to CE controls (e.g., A.2.3, A.3.1).
+Prompt (F40.A - Merged with BUG-001): Develop an external vulnerability scan management module: integrate Tenable.io for scheduling/tracking external IP scans; implement review and pass/fail logic against CE+ criteria; resolve existing Tenable scan-linking issues.
+Prompt (F3): Implement functionality to trigger and manage External IP Scans via Tenable.io directly from the application.
+Prompt (F40.B - Merged with IMPRV-016): Create a guided test execution module for internal authenticated scans: guide Nessus Agent deployment; track per-device scan status; review patch levels and unsupported OS; establish robust linking between Scoped Items and Tenable Agent UUIDs.
+Prompt (F9): Develop a Tenable Agent status dashboard: display linked Tenable agents' status (online, offline, version, last seen) for scoped items.
+Prompt (F1): Implement Tenable.io scan result integration: fetch results via API, parse vulnerability data, and display basic findings to Assessors.
+Prompt (F40.C - Merged with IMPRV-015): Design a malware protection check module: guide AV status/update confirmation; manage email & web-vector tests; allow structured screenshot uploads; record test-file details.
+Prompt (F40.D): Develop a secure configuration check module: guide OS version/patch verification, firewall checks, admin/standard user separation (with guidance links), app-whitelisting advice, default-credential removal confirmation, and evidence uploads.
+Prompt (F40.E): Create an MFA check module for cloud services: guide verification/enforcement of MFA for all users (especially admins); capture MFA method/strength; support evidence uploads (screenshots).
+Prompt (F40.F): Implement a mobile device check module: guide OS/patch level verification, PIN/biometric checks, no jailbreak/root detection, encryption status, corporate connectivity confirmation, malware tests, and evidence uploads.
+Prompt (F41 & F10 - Merged): Develop a centralized evidence repository and client portal: allow clients and assessors to upload and link evidence files to specific test steps, controls, or scoped items; support diverse file types; distinguish client vs. assessor evidence; track upload status, timestamps, and attribution.
+Prompt (F7): Implement client self-service for initial scope input: allow clients to pre-populate or suggest scoped items (devices, cloud services, networks) through guided forms, for subsequent assessor review and approval.
+Prompt (F8): Enhance evidence management: enable linking of specific evidence files to individual scoped items or CE+ controls/questions by both clients and assessors.
+Prompt (F42): Design a remediation tracking module: allow flagging of failed tests; assign remediation tasks to clients; provide a client view for remediation status updates and evidence re-uploads; implement an assessor review and re-test workflow.
+Prompt (F4): Implement Multi-Factor Authentication (MFA) for all user logins to the application.
+Prompt (F5): Integrate End-of-Life (EOL)/Unsupported OS checks actively into the assessment pass/fail workflow logic and reporting.
+Prompt (F6): Design a notification system for "Help Needed" workflow status: ensure it clearly alerts/notifies the relevant party (Assessor or Client) for prompt action.
+Prompt (F11): Develop direct Nessus scan import functionality: allow upload and parsing of Nessus scan files (.nessus) for environments not using Tenable.io, mapping results to scoped items.
+Prompt (OutlookCal-F1 - New): Implement OAuth 2.0 authentication for Microsoft Calendar integration: enable secure assessor account linking and token management for Outlook calendar access.
+Prompt (OutlookCal-F2 - New): Develop one-way calendar synchronization (App -> Outlook): automatically create/update events in assessors' Outlook calendars for new/updated assessment slots via Microsoft Graph API, using Celery for asynchronous tasks.
+Prompt (F43): Implement report data collation and export: collate scope, test plans, results, evidence, and remediation data; enable export of this structured data (JSON/CSV/text) for external CE+ report generation. (Future basic PDF is IMPRV-009/Feature:20).
+Prompt (New - from "Assesors profile"): Design and implement a comprehensive "Assessor Profile" feature: include a new model, a visually appealing card-based UI, and editable profile details.
+New Features (Medium Priority)
 
+Prompt (F12): Develop automated CE+ sample validation rules: assist assessors by highlighting if a selected device sample meets CE+ diversity criteria (OS types, device roles, network segments).
+Prompt (F13): Implement custom report templates and branding: allow administrators to define basic templates for generated assessment reports and add company branding (logo, colors).
+Prompt (F14): Develop bulk action capabilities for scoped items: enable assessors to bulk update OS, assign to network, mark as EOL, or add notes for multiple scoped items simultaneously.
+Prompt (F15 & IMPRV-014/Improvement:71 - Merged): Create an assessment scheduling and assessor capacity planning system: provide a visual calendar for assessors to see their scheduled assessments, mark unavailability, and allow admins/leads to view team workload and capacity.
+Prompt (OutlookCal-F3 - New): Enhance scheduling by enabling the app to read assessor free/busy information from Outlook Calendar to prevent conflicts during availability definition.
+Prompt (OutlookCal-F4 - New): Create a utility for assessors to perform an initial synchronization of existing relevant bookings from the app to their newly connected Outlook Calendar.
+Prompt (OutlookCal-F5 - New): Implement comprehensive error handling and user feedback mechanisms for Outlook Calendar synchronization status and issues.
+Prompt (F16): Implement pre-assessment questionnaires: allow creation of customizable questionnaires for clients to provide initial IT infrastructure overview, key contacts, etc., before formal scoping.
+Prompt (F17): Develop multi-language support for the user interface and key generated reports.
+Prompt (F18): Implement a change control log for assessment scope: automatically track and display significant changes made to the assessment scope after initial client agreement, with details of who made the change and when.
+Prompt (F19): Add asset tagging and grouping functionality: allow users to apply custom tags to scoped items and create logical groups for improved organization, filtering, and reporting.
+Prompt (F20 & IMPRV-009 - Merged): Implement basic assessment report generation: generate a downloadable summary report (e.g., PDF) for an assessment, including scope, key findings, and final outcome, with placeholders for detailed content.
+Prompt (F21): Enhance dashboards with key metrics and visualizations: display critical information like assessments nearing CE+ window expiry, EOL devices in scope, and overall progress using simple charts and counters.
+Prompt (F22): Implement remediation tracking for vulnerabilities: allow tracking of the remediation status for critical/high vulnerabilities identified on sampled systems within an assessment.
+Prompt (F23): Add assessor justification for CE+ sample selection: provide a dedicated field for assessors to document their rationale for including or excluding specific items in the CE+ random sample.
+Prompt (F24 & IMPRV-075 - Merged): Enhance Assessment model with contact and critical details: add fields for primary contact name, email, phone, and other key assessment details; enable display and editing of these fields for clients and assessors based on permissions.
+Prompt (F25): Implement final certificate PDF upload: allow Assessors/Admins to attach the official CE+ certificate PDF to completed and passed assessment records.
+Prompt (F26 & IMPRV-007/Improvement:60 - Merged): Develop an enhanced notification system (in-app & email): send alerts for critical status changes (e.g., scope changes, messages, evidence requests, remediation tasks, assessment status updates) and actions requiring user attention.
+Prompt (F27): Add an assessment-level notes field for remediation summary: provide a dedicated text area on the assessment to track an overall summary of remediation efforts and outcomes.
+Prompt (F28): Implement assessment user detail capture: allow recording of client staff involved in an assessment and enable mapping of these users to specific scoped devices for context during testing.
+Prompt (F34): Ensure uploaded reports are downloadable from the Assessment Information Panel/Card.
+Prompt (F35): Develop an in-browser preview feature for CE reports (e.g., PDF) for assessors to quickly reference generated or uploaded reports.
+New Features (Low Priority)
 
-New Features (Prioritized)
-Feature:1 (High) Implement Tenable scan result fetching, parsing, and basic display for Assessors.
-Feature:2 (High) Implement automated checks/reporting against CE+ vulnerability standards based on imported scan results.
-Feature:3 (High) Implement functionality to trigger External IP Scans within Tenable via the application.
-Feature:4 (High) Add MFA support for user login to the application.
-Feature:5 (High) Integrate EOL/Unsupported OS checks actively into the assessment pass/fail workflow logic.
-Feature:6 (High) Ensure “Help Needed” workflow status clearly alerts/notifies the relevant party (Assessor/Client).
-Feature:7 (High) Client Self-Service Scoping Input: Allow clients to pre-populate or suggest scoped items (devices, cloud services, networks) for assessor review, with guided forms.
-Feature:8 (High) Evidence Linking per Scoped Item/Control: Ability for clients and assessors to upload and link specific evidence files to individual scoped items or CE+ controls/questions.
-Feature:9 (High) Tenable Agent Status Dashboard: View status of Tenable agents linked to scoped items (online, offline, version, last seen).
-Feature:10 (High) Client Portal for Evidence Upload & Tracking: Dedicated area for clients to see required evidence and upload files per control/item, with status tracking.
-Feature:11 (High) Direct Nessus Scan Import & Parsing: Allow direct upload and parsing of Nessus scan files (.nessus) for environments not using Tenable.io, mapping results to scoped items.
-Feature:12 (Medium) Automated CE+ Sample Validation Rules: Assist assessors by highlighting if the selected sample meets CE+ diversity criteria (e.g., OS types, device roles, network segments).
-Feature:13 (Medium) Custom Report Templates & Branding: Allow admins to define basic templates for generated assessment reports and add company branding (logo, colors).
-Feature:14 (Medium) Bulk Actions for Scoped Items: E.g., bulk update OS, assign to network, mark as EOL, or add notes for multiple scoped items simultaneously.
-Feature:15 (Medium) Assessment Scheduling & Assessor Calendar View: Visual calendar for assessors to see their scheduled assessments, mark unavailability, and view team capacity.
-Feature:16 (Medium) Pre-Assessment Questionnaires: Customizable questionnaires for clients to provide initial information (e.g., IT infrastructure overview, key contacts) before formal scoping begins.
-Feature:17 (Medium) Multi-Language Support for UI & Key Reports: Provide UI translations and support generating key reports in multiple languages.
-Feature:18 (Medium) Change Control Log for Assessment Scope: Automatically track and display significant changes made to the assessment scope after initial client agreement.
-Feature:19 (Medium) Asset Tagging & Grouping within Application: Allow custom tagging and grouping of scoped items for better organization and filtering.
-Feature:20 (Medium) Basic Assessment Report Generation: Generate a downloadable summary report (e.g., PDF) for an assessment, including scope, key findings, and final outcome.
-Feature:21 (Medium) Dashboard Key Metrics & Visualizations: Enhance dashboards with key metrics (e.g., assessments nearing CE+ window expiry, EOL devices in scope) and simple charts.
-Feature:22 (Medium) Remediation Tracking for Vulnerabilities: Track remediation status of critical/high vulnerabilities identified on sampled systems.
-Feature:23 (Medium) Assessor Justification for CE+ Sample Selection: Add a dedicated field for assessors to record justification for including/excluding specific items in the CE+ random sample.
-Feature:24 (Medium) Add primary_contact_name, email, phone fields to the Assessment model, including display logic and editing.
-Feature:25 (Medium) Upload Final Certificate PDF: Allow Assessors/Admins to attach the final certificate PDF to completed assessment records.
-Feature:26 (Medium) Basic Email Notifications: Send email alerts for critical status changes and actions requiring user attention.
-Feature:27 (Medium) Assessment-Level Notes Field: Add a notes section for tracking overall remediation summary.
-Feature:28 (Medium) Capture Assessment User Details: Record staff involved in an assessment and allow mapping to scoped devices.
-Feature:29 (Low) Capture secondary contact details for an Assessment.
-Feature:30 (Low) Client/Assessor Communication Log: A simple, timestamped Q&A log within each assessment.
-Feature:31 (Low) Configurable Notification Preferences (User-level).
-Feature:32 (Low) Knowledge Base/FAQ Section: In-app, searchable help editable by Admins.
-Feature:33 (Low) Read-Only API for Data Retrieval: Expose high-level assessment status or client details for external dashboards.
-Feature:34 (Medium) Uploaded reports need to be downloadable from the Assessment Information Panel.
-Feature:35 (Medium) In-browser preview of the CE report to be available to the assessor for quick reference.
-Feature:36 (Low) Admin Dashboard – Celery: Implement a “Clear Failed Task Logs” button and associated view.
-Feature:37 (High) Interactive Scoping Module – guided questionnaire for clients/assessors to define full scope (networks, external IPs, user devices, servers, cloud services, remote setups, third-party devices, web apps), flag out-of-scope items with justification, visual scope diagram (future), plus pre-filled scope templates (IMPRV-011).
-Feature:38 (High) Intelligent CE+ Sampling Assistant – input total devices by OS/version; calculate minimum sample size per CE+/IASME rules; random or assessor-selected sampling ensuring OS diversity; track sampled vs. total devices (IMPRV-008).
-Feature:39 (High) Dynamic Assessor Test Plan Generation – auto-generate per-assessment checklists of required tests mapped to CE controls (e.g. A.2.3, A.3.1).
-Feature:40 (High) Guided Test Execution Modules (per sampled device/service):
-    A. External Scan Management: schedule/track Tenable.io scans; review & pass/fail by CE+ criteria; fix scan-linking (BUG-001).
-    B. Internal Authenticated Scan: guide Nessus Agent deployment; track per-device scans; review patch/unsupported-OS; link ScopedItem ↔ Agent UUID (IMPRV-016).
-    C. Malware Protection Checks: confirm AV status & updates; email- & web-vector tests; structured screenshot uploads; record test-file details (IMPRV-015).
-    D. Secure Configuration Checks: OS version/patch verification; firewall; admin vs. standard user separation (with guidance links); app-whitelisting advice; default-credential removal; evidence uploads.
-    E. MFA Checks (Cloud): verify/enforce MFA for all users (especially admins); capture method/strength; evidence screenshots.
-    F. Mobile Device Checks: OS/patch level; PIN/biometric; no jailbreak/root; encryption; corporate connectivity; malware tests; evidence uploads.
-Feature:41 (High) Centralized Evidence Repository – link client & assessor uploads to specific test steps/controls (IMPRV-002); support diverse file types; distinguish client vs. assessor evidence; timestamp & attribute.
-Feature:42 (High) Remediation Tracking Module – flag failed tests; assign remediation tasks to clients; client view for remediation status & uploads; assessor review & re-test workflow.
-Feature:43 (High) Report Data Collation & Export – collate scope, test plans, results, evidence, remediation; export structured data (JSON/CSV/text) for CE+ reports; future basic PDF report with placeholders (IMPRV-009).
+Prompt (F29): Extend assessment contacts: add fields to capture secondary contact details for an assessment.
+Prompt (F30): Implement a client/assessor communication log: create a simple, timestamped Q&A or message log within each assessment for direct communication.
+Prompt (F31): Develop configurable notification preferences: allow individual users to customize which email or in-app notifications they receive.
+Prompt (F32 & IMPRV-012/Improvement:65 - Merged): Create an in-app Knowledge Base/FAQ section: allow Admins to create, edit, and manage help articles searchable by all users.
+Prompt (F33): Develop a read-only API for data retrieval: expose high-level assessment status or client details for integration with external dashboards or systems.
+Prompt (F36): Enhance Admin Dashboard Celery Task Management: implement a "Clear Failed Task Logs" button and associated view to manage Celery task history.
+Improvements (High Priority)
 
+Prompt (IMPRV:1): Implement comprehensive testing: add unit and integration tests covering user permissions, input validation, and core assessment workflow logic.
+Prompt (IMPRV:2): Develop a dedicated Tenable API service layer: encapsulate all Tenable API calls for improved robustness, error handling, logging, and maintainability.
+Prompt (IMPRV:3): Review and enhance security measures: ensure robust CSRF protection and strict HTTP method enforcement (GET, POST, etc.) across all views.
+Prompt (IMPRV:4 & IMPRV-011 - Merged with F37): (Covered by F37: Interactive Scoping Module) - This involves enhancing the UI/UX for scope definition, potentially via a guided wizard or pre-filled templates.
+Prompt (IMPRV:5): Improve Tenable API error feedback: surface specific, user-friendly error messages from Tenable API interactions (e.g., "Invalid Credentials," "Scan Policy Not Found," "Agent Group Mismatch," "No active agents in group").
+Prompt (IMPRV:6): Implement Tenable scan result diffing: on re-scans, clearly highlight new, resolved, and recurring vulnerabilities per asset or sample.
+Prompt (IMPRV:7): Develop global search functionality: add a universal search bar allowing users to find clients, assessments, scoped items, users, etc., across the application.
+Prompt (IMPRV:8): Standardize visual feedback for actions: implement consistent use of loading spinners/indicators for background tasks (HTMX requests, Celery jobs) and clear success/error/warning icons and messages.
+Prompt (IMPRV:59 & IMPRV-004 - Merged): Design and implement a granular assessment workflow: expand status choices (e.g., "New," "Scope Definition (Client)," "Scope Review (Assessor)," "Awaiting Client Evidence," "Scheduling Tests," "Testing in Progress (External/Internal)," "Remediation Required," "Awaiting Final Review," "Report Generation," "Completed," "Failed"); include a visual workflow indicator on the assessment detail page.
+Prompt (IMPRV:61 & IMPRV-003 - Merged): Enhance the Assessor Dashboard: highlight upcoming deadlines, overdue tasks, unread client messages, and assessments requiring immediate action.
+Improvements (Medium Priority)
 
+Prompt (IMPRV:9): Enhance audit logging: implement more detailed and searchable logs for administrative actions, system events, and key assessment changes.
+Prompt (IMPRV:10 & IMPRV-068/BUG-002 - Merged): Implement session timeout management: allow administrators to configure session timeout durations and provide users with inactivity warnings before logout.
+Prompt (IMPRV:11): Improve form usability: add contextual help text and tooltips for all form fields throughout the application.
+Prompt (IMPRV:12 & IMPRV-066/UI-002 - Merged): Enhance mobile/tablet responsiveness: optimize key views, especially scope item tables and evidence upload UI, for use on field devices.
+Prompt (IMPRV:13): Conduct a review and refinement of user roles and permissions: ensure granular access control is correctly implemented and meets security requirements.
+Prompt (IMPRV:14): Optimize database query performance: review and optimize queries for key list views, reports, and dashboards using techniques like select_related, prefetch_related, and database indexing.
+Prompt (IMPRV:15): Standardize date/time display and timezone handling: ensure consistent formatting of dates and times throughout the application and proper handling of timezones for all users.
+Prompt (IMPRV:16): Refactor common view logic: extract repeated "get assessment object + permission check" logic into reusable Django mixins or decorators.
+Prompt (IMPRV:17): Consolidate duplicate views: identify and refactor views with overlapping functionality into single, more robust implementations.
+Prompt (IMPRV:18): Improve form submission error handling: ensure all forms clearly render inline validation errors next to the relevant fields.
+Prompt (IMPRV:19): Move business logic to appropriate layers: refactor business rules (e.g., CE+ date window calculations, EOL policies) from views into form validation methods or model clean methods.
+Prompt (IMPRV:20): Refine exception handling: implement more specific exception catching throughout the codebase and utilize logger.exception for better error details.
+Prompt (IMPRV:21): Harden MapAgentsView POST parsing: improve robustness against malformed map_item_<pk> keys or unexpected data.
+Prompt (IMPRV:22): Refactor large view files: break down large view files into smaller, more focused modules for better organization and maintainability.
+Prompt (IMPRV:23): Ensure comprehensive event logging: verify that all state-changing actions (especially those related to assessments and scope) log events via the log_assessment_event utility.
+Prompt (IMPRV:24): Improve pdf_extractor tool: enhance the accuracy and robustness of the PDF extraction tool used for CE reports.
+Prompt (IMPRV:25): Centralize redirect URL logic: standardize or centralize the generation of redirect URLs to reduce NoReverseMatch errors and improve maintainability.
+Prompt (IMPRV:26): Enhance workflow step guidance: link each AssessmentWorkflowStep or its definition to detailed instructions, relevant documentation, or external resources.
+Prompt (IMPRV:27): Implement advanced search and filtering: allow users to apply multi-criteria filters (e.g., status, date ranges, OS type, custom tags) on list views.
+Prompt (IMPRV:28): Conduct an accessibility (a11y) review: audit the application against WCAG 2.1 AA standards and implement necessary improvements.
+Prompt (IMPRV:29): Develop data export functionality: enable users to export key data (e.g., assessment lists, scope details, vulnerability summaries, user lists) in CSV or Excel format.
+Prompt (IMPRV:30): Enhance table design and interactivity: improve spacing, add alternating row colors, implement clear sort indicators, and consider client-side pagination or search for large tables.
+Prompt (IMPRV:31): Standardize iconography: adopt and consistently use a single icon set (e.g., Font Awesome) throughout the application.
+Prompt (IMPRV:32): Improve form field focus states: ensure clear visual indicators for focused form fields to enhance usability and accessibility.
+Prompt (IMPRV:33): Design informative empty state UIs: create helpful and visually appealing "empty state" messages (e.g., "No assessments yet, click here to create one") with clear calls to action.
+Prompt (IMPRV:34): Implement breadcrumb navigation for nested views to improve user orientation.
+Prompt (IMPRV:35): Enhance keyboard navigation and accessibility: ensure full tab-flow throughout the application and proper focus management for all interactive elements.
+Prompt (IMPRV:36): Standardize modal dialog styling and behavior for consistency across the application.
+Prompt (IMPRV:63 & IMPRV-005 - Merged): Develop bulk actions for assessors: e.g., mark multiple scope items as tested, request client updates en masse.
+Prompt (IMPRV:64 & IMPRV-006 - Merged): Implement client self-service user management: allow main client contacts to add/remove users from their organization, potentially with an optional assessor approval workflow.
+Prompt (IMPRV:69 & IMPRV-010 - Merged): Implement CE Requirements versioning: link each assessment to specific versions of "Cyber Essentials Requirements for IT infrastructure" and "Test Specification" documents.
+Prompt (IMPRV:70 & BUG-001 - Merged with F40.A/F40.B): (Covered by Tenable/Nessus integration features) - This involves robust Tenable integration, resolving hostname/scan-linking bugs, and clearer scan status feedback.
+Prompt (IMPRV:72 & UI-001 - Merged): Plan and execute a UI theme refresh: overhaul the application's UI theme using Bootstrap 5 or a modern alternative for an updated look and feel.
+Prompt (IMPRV:73 & BUG-003 - Merged): Ensure date picker consistency: select and implement a consistent, cross-browser compatible date picker component throughout the application.
+Prompt (IMPRV:74): Ensure the CE report is downloadable from the Client Assessment Details view.
+Improvements (Low Priority)
 
+Prompt (IMPRV:37): Redesign/restyle client workflow step navigation buttons for improved usability and visual appeal.
+Prompt (IMPRV:38): Enhance the application's main title bar/header for better layout and content presentation.
+Prompt (IMPRV:39): Implement user onboarding elements: add contextual help icons and tooltips throughout the application to guide new users.
+Prompt (IMPRV:40): Add support for user profile pictures/avatars.
+Prompt (IMPRV:41): Develop a "Dark Mode" theme option for the user interface.
+Prompt (IMPRV:42): Implement customizable dashboard widgets, allowing users to select and arrange the information they see.
+Prompt (IMPRV:43): Optimize performance for large data sets: implement pagination or optimize queries for all list views if performance degradation is observed with increasing data.
+Prompt (IMPRV:44): Standardize tone and format of user-facing flash messages (success, error, warning, info).
+Prompt (IMPRV:45): Conduct a codebase-wide cleanup of imports, unused variables, and dead code.
+Prompt (IMPRV:46): Implement visual progress indicators (e.g., multi-step progress bars) for wizards or lengthy multi-step processes.
+Prompt (IMPRV:47): Improve visual hierarchy on key detail pages to better guide user attention to important information.
+Prompt (IMPRV:48): Enhance the file upload UI: implement features like progress bars, client-side file type validation, and image/document previews.
+Prompt (IMPRV:49): Improve error message styling and placement for better visibility and clarity.
+Prompt (IMPRV:50): Implement more user-friendly date/time picker components across all forms.
+Prompt (IMPRV:51): Implement "sticky" table headers or action bars on long scrollable pages for easier navigation and interaction.
+Prompt (IMPRV:52): Add more obvious visual cues (e.g., asterisks, distinct styling) for required form fields.
+Prompt (IMPRV:53): Ensure consistent spacing, padding, and alignment of UI elements across the entire application.
+Prompt (IMPRV:54): Implement interactive table column sorting UI, allowing users to click headers to sort data.
+Prompt (IMPRV:55): Implement distinct visual styling for destructive actions (e.g., delete buttons) and include confirmation dialogs.
+Prompt (IMPRV:56): Implement loading skeletons for data-intensive views to improve perceived performance during data fetching.
+Prompt (IMPRV:57): Add "View All" links or similar mechanisms for truncated lists or text sections.
+Prompt (IMPRV:58): Improve admin view for "All Reports List": enhance actions like delete/cleanup and allow manual linking of reports to assessments.
+AI-Powered Enhancements (High Priority)
 
-Improvements (Prioritized)
-High
-Improvement:1 (High) Add comprehensive unit & integration tests covering permissions, validation, and core workflow logic.
-Improvement:2 (High) Wrap all Tenable API calls in a dedicated service layer for improved robustness, error handling, and maintainability.
-Improvement:3 (High) Review and tighten CSRF protection and HTTP-method enforcement across all views.
-Improvement:4 (High) Enhanced UI/UX for Scope Definition: Improve the scope-definition experience for clients and assessors, possibly via a guided wizard.
-Improvement:5 (High) Detailed Tenable API Error Feedback: Surface specific, user-friendly error messages (e.g., “Invalid Credentials,” “Scan Policy Not Found,” “Agent Group Mismatch,” “No active agents in group”).
-Improvement:6 (High) Tenable Scan Result Diffing: On re-scans, clearly show new, resolved, and existing vulnerabilities per asset or sample.
-Improvement:7 (High) Global Search Functionality: Add a universal search bar to find clients, assessments, scoped items, users, etc.
-Improvement:8 (High) Consistent Visual Feedback for Actions: Use loading spinners/indicators for background tasks and clear success/error/warning icons.
-Improvement:59 (High) Granular Assessment Workflow – expand statuses (“New”, “Scope Definition (Client)”, “Scope Review (Assessor)”, “Awaiting Client Evidence”, “Scheduling Tests”, “Testing in Progress (External)”, “Testing in Progress (Internal)”, “Remediation Required”, “Awaiting Final Review”, “Report Generation”, “Completed”, “Failed”) with visual workflow indicator (IMPRV-004).
-Improvement:60 (High) Enhanced Notification System – in-app & email alerts for scope changes, messages, evidence requests, remediation tasks, assessment status updates (IMPRV-007).
-Improvement:61 (High) Improved Assessor Dashboard – highlight deadlines, overdue tasks, unread client messages, assessments requiring action (IMPRV-003).
+Prompt (AI:1): Design an AI model for automated vulnerability risk scoring and prioritization, considering CVSS, asset criticality, and historical remediation timelines.
+Prompt (AI:2): Develop an AI feature to generate natural-language summaries of scan results, highlighting critical issues, trends, and required actions.
+Prompt (AI:3): Create an AI-driven CE+ compliance checking module that automatically generates pass/fail rationales per control based on evidence and test results.
+Prompt (AI:4): Implement an intelligent CE+ sample selection assistant using AI to ensure statistical diversity (OS types, device roles, networks) based on CE+ rules.
+Prompt (AI:5): Develop an AI module for automated evidence extraction and classification from uploaded PDFs, screenshots, and email attachments using NLP/OCR.
+Prompt (AI:6): Design an AI feature to draft audit reports: produce an editable first-pass CE+ report including scope, findings, and recommendations.
+Prompt (AI:7): Develop a conversational AI assistant for assessors: enable querying for assessment data (e.g., "Which assets are missing evidence?") and receiving instant guidance.
+Prompt (AI:8): Implement context-aware AI remediation recommendations: map vulnerabilities to tailored fix steps and relevant knowledge-base articles.
+Prompt (AI:9): Create a predictive analytics AI model to forecast which assets are most likely to show new critical findings on subsequent scans.
+Prompt (AI:10): Develop an AI-based anomaly detection system for sequential scans to flag unexpected changes or potential false positives.
+Prompt (AI:41): Implement AI-powered generation of executive summaries for CE+ reports, strictly conforming to standard format and including scope, methodology, key findings, and next-step recommendations.
+AI-Powered Enhancements (Medium Priority)
 
-Medium
-Improvement:9 (Medium) Enhanced Audit Logging: More detailed, searchable logs for admin & system events.
-Improvement:10 (Medium) Session Timeout Config & Warning: Admins set timeout durations and show inactivity warnings.
-Improvement:11 (Medium) Contextual Help Text & Tooltips for all form fields.
-Improvement:12 (Medium) Improved Mobile/Tablet Responsiveness for field use.
-Improvement:13 (Medium) Granular User Role/Permission Review & Refinement.
-Improvement:14 (Medium) Optimize Database Queries for key lists & reports (select_related, indexing, etc.).
-Improvement:15 (Medium) Standardize Date/Time Display & Timezone Handling throughout the app.
-Improvement:16 (Medium) Extract repeated “get assessment + permission check” logic into a reusable mixin/decorator.
-Improvement:17 (Medium) Consolidate duplicate views into single, robust implementations.
-Improvement:18 (Medium) Improve form-submission error handling: render inline validation errors.
-Improvement:19 (Medium) Move business-logic rules (e.g., CE+ date windows, EOL policies) into form validation or model clean methods.
-Improvement:20 (Medium) Refine exception handling: catch specific exceptions and use logger.exception.
-Improvement:21 (Medium) Harden MapAgentsView POST parsing against malformed map_item_<pk> keys.
-Improvement:22 (Medium) Refactor large view files into smaller, focused modules.
-Improvement:23 (Medium) Ensure all state-changing actions log events via the log_assessment_event utility.
-Improvement:24 (Medium) Improve accuracy & robustness of the pdf_extractor tool for CE reports.
-Improvement:25 (Medium) Centralize redirect-URL logic to reduce NoReverseMatch errors.
-Improvement:26 (Medium) Workflow Step Guidance & Resources: Link each AssessmentWorkflowStep to detailed instructions or docs.
-Improvement:27 (Medium) Advanced Search & Filtering: Allow multi-criteria filters (status, date ranges, OS type, custom tags).
-Improvement:28 (Medium) Accessibility (a11y) Review against WCAG 2.1 AA standards.
-Improvement:29 (Medium) Data Export: Enable CSV/Excel exports for assessments, scope details, vulnerability summaries, user lists.
-Improvement:30 (Medium) Enhanced Table Design & Interactivity: Better spacing, alternating rows, clear sort indicators, client-side pagination/search.
-Improvement:31 (Medium) Standardized Iconography: Adopt a single icon set (e.g., Font Awesome).
-Improvement:32 (Medium) Clearer Form Field Focus States for usability and a11y.
-Improvement:33 (Medium) Informative Empty State Designs with calls to action.
-Improvement:34 (Medium) Breadcrumb Navigation for nested views.
-Improvement:35 (Medium) Enhanced Keyboard Navigation & Accessibility (full tab-flow, focus management).
-Improvement:36 (Medium) Consistent Modal Dialog Styling & Behavior.
-Improvement:63 (Medium) Bulk Actions for Assessors – e.g., mark multiple scope items tested, request updates en‐masse (IMPRV-005).
-Improvement:64 (Medium) Client Self-Service User Management – main client contacts can add/remove org users with optional assessor approval (IMPRV-006).
-Improvement:65 (Medium) Client Knowledge Base/FAQ – in-app, searchable help editable by Admins (IMPRV-012).
-Improvement:66 (Medium) Mobile Responsiveness – optimize scope item tables and evidence-upload UI for tablets/phones (UI-002).
-Improvement:68 (Medium) Session Timeout Management – configurable timeouts and inactivity warnings (BUG-002).
-Improvement:69 (Medium) CE Requirements Versioning – link each assessment to specific versions of “Requirements for IT infrastructure” and “Test Specification” docs (IMPRV-010).
-Improvement:70 (Medium) Robust Tenable Integration – resolve hostname/scan-linking bugs (BUG-001), add clearer scan status feedback.
-Improvement:71 (Medium) Assessor Capacity Planning View – visualize assessor workload and availability (IMPRV-014).
-Improvement:72 (Medium) Theme Refresh – overhaul UI theme (e.g., Bootstrap 5 or modern alternative) (UI-001).
-Improvement:73 (Medium) Date Picker Consistency – ensure cross-browser/date-library compatibility (BUG-003).
-Improvement:74 (Medium) Client Assessment Details - the CE report should be downloadable
-Improvement:75 (Medium) Assesor and Client should be able to directly modify assessment critical details including POC etc
+Prompt (AI:11): Develop an AI feature to auto-fill scoping forms based on historical client engagement data and common infrastructure configurations.
+Prompt (AI:12): Create an intelligent questionnaire optimization AI: suggest additional scoping questions based on detected gaps or inconsistencies in client-provided information.
+Prompt (AI:13): Implement automated mapping of CVEs to CE+ controls using AI, with recommendations for required evidence artifacts.
+Prompt (AI:14): Develop real-time AI translation capabilities for the UI, generated reports, and client-assessor communications across multiple languages.
+Prompt (AI:15): Implement AI-powered sentiment analysis on client messages to identify and flag potential frustration or project delay risks.
+Prompt (AI:16): Develop AI-driven audit log summarization: compress lengthy audit trails into human-readable timelines and highlight significant events.
+Prompt (AI:17): Create AI-generated contextual tooltips: automatically explain complex form fields or workflow steps based on their definition and usage patterns.
+Prompt (AI:18): Implement AI-powered smart scheduling suggestions for assessment tasks, balancing assessor workload, travel (if applicable), and deadlines.
+Prompt (AI:19): Develop automated classification and tagging of scan findings by business impact and compliance relevance using AI.
+Prompt (AI:20): Create a client-facing AI chatbot to answer common questions about assessment status, next steps, and evidence requirements.
+Prompt (AI:21): Implement AI-powered image recognition to validate uploaded screenshots of configuration settings, logs, or other visual evidence.
+Prompt (AI:22): Develop an AI module for automated detection of missing evidence items based on the CE+ control matrix and provided test results.
+Prompt (AI:23): Implement natural-language search functionality across assessments, policies, knowledge-base articles, and system logs using AI.
+Prompt (AI:24): Create an AI recommendation engine for report templates, branding styles, and content blocks based on assessment type or client profile.
+Prompt (AI:25): Develop AI-driven next-step workflow predictions: suggest the most logical next workflow action or form for assessors to tackle based on current assessment state.
+Prompt (AI:26): Implement AI-driven risk heatmaps on dashboards: visualize risk concentrations by severity, asset type, or network segment.
+AI-Powered Enhancements (Low Priority)
 
-Low
-Improvement:37 (Low) Redesign/restyle client workflow step buttons for better usability.
-Improvement:38 (Low) Enhance the application’s main title bar (layout, content).
-Improvement:39 (Low) User Onboarding/Contextual Help icons/tooltips throughout the app.
-Improvement:40 (Low) User Profile Pictures/Avatars.
-Improvement:41 (Low) “Dark Mode” theme option.
-Improvement:42 (Low) Customizable dashboard widgets.
-Improvement:43 (Low) Implement pagination or optimize queries for large lists if needed.
-Improvement:44 (Low) Standardize tone & format of user-facing flash messages.
-Improvement:45 (Low) Codebase-wide cleanup of imports and unused variables.
-Improvement:46 (Low) Visual Progress Indicators for multi-step processes (e.g., wizards).
-Improvement:47 (Low) Improved visual hierarchy on key detail pages.
-Improvement:48 (Low) Enhanced file upload UI (progress bars, type validation, previews).
-Improvement:49 (Low) Clearer error-message styling & placement.
-Improvement:50 (Low) User-friendly date/time picker components.
-Improvement:51 (Low) “Sticky” table headers or action bars on long pages.
-Improvement:52 (Low) More obvious visual cues for required form fields.
-Improvement:53 (Low) Consistent spacing, padding, and alignment across the UI.
-Improvement:54 (Low) Interactive table-column sorting UI.
-Improvement:55 (Low) Distinct visual styling for destructive actions, with confirmations.
-Improvement:56 (Low) Loading skeletons for data-intensive views.
-Improvement:57 (Low) “View All” links for truncated lists/text.
-Improvement:58 (Low) Improve the actions of the admin view all reports list – e.g., allow delete/cleanup, manual linking to an assessment.
+Prompt (AI:27): Develop voice-to-text input for field assessors to log observations and notes hands-free.
+Prompt (AI:28): Create AI-generated infographics and visual assets (charts, diagrams) for inclusion in client reports.
+Prompt (AI:29): Implement competitive benchmarking insights: provide AI-curated summaries of public CE+ compliance posture within the client's industry.
+Prompt (AI:30): Develop AI-curated knowledge-base article suggestions: recommend relevant help articles when specific errors, vulnerabilities, or patterns are detected.
+Prompt (AI:31): Implement AI-powered code snippet suggestions for custom integration scripts (e.g., API calls, CSV exports).
+Prompt (AI:32): Develop automated accessibility auditing and AI-suggested fix recommendations for WCAG compliance within the application.
+Prompt (AI:33): Create a scenario-based test data generation tool using AI: learn patterns from existing data to generate realistic test data for unit and integration testing.
+Prompt (AI:34): Implement behavioral anomaly detection in user activity: use AI to spot unusual assessor or client actions that might indicate security risks or misuse.
+Prompt (AI:35): Develop generative design recommendations for UI themes based on company branding guidelines using AI.
+Prompt (AI:36): Implement regulatory update summarization: provide AI-distilled briefs when CE+ or related cybersecurity standards change.
+Prompt (AI:37): Develop AI-powered auto-scheduling of reminders based on project milestones, task deadlines, or risk-level triggers.
+Prompt (AI:38): Create AI-powered email draft suggestions for communicating findings, requests, or status updates to clients.
+Prompt (AI:39): Implement AI-driven language polishing for assessor notes and client-facing narratives to improve clarity, professionalism, and tone.
+Prompt (AI:40): Develop post-engagement feedback analysis using AI: extract sentiment and key themes from client survey responses.
+Bug Report (Prioritized)
 
-AI-Powered Enhancements
-High Priority
-AI:1 Automated vulnerability risk scoring & prioritization based on CVSS, asset criticality and historical remediation timelines.
-AI:2 Natural-language summary of scan results that highlights critical issues, trends and required actions.
-AI:3 AI-driven CE+ compliance checks that auto-generate pass/fail rationales per control.
-AI:4 Intelligent CE+ sample selection ensuring statistical diversity (OS types, device roles, networks).
-AI:5 Automated evidence extraction & classification from uploaded PDFs, screenshots and email attachments via NLP/OCR.
-AI:6 Draft audit-report generation: produce a first-pass, editable CE+ report including scope, findings and recommendations.
-AI:7 Conversational assistant for assessors: ask questions (“Which assets missing evidence?”) and get instant guidance.
-AI:8 Context-aware remediation recommendations that map vulnerabilities to tailored fix steps and knowledge-base articles.
-AI:9 Predictive analytics forecasting which assets are most likely to show new critical findings on next scan.
-AI:10 Anomaly detection across sequential scans to flag unexpected changes or potential false positives.
-AI:41 Automated executive summary generation conforming exactly to the CE+ standard report format, including scope, methodology, key findings and next-step recommendations.
+Prompt (BUG:1 - High): Investigate and fix non-functional workflow action buttons (Start/Done/Reopen/Help/Skip) for all user roles in the workflow checklist and individual step cards.
+Prompt (BUG:2 - High): Resolve errors in Tenable integration preventing correct fetching and interpretation of scan status.
+Prompt (BUG:4 - High): Verify and fix default Tenable Scan Policy/Scanner settings configuration to ensure correct application during scan launches.
+Prompt (BUG:612 - High - Merged from BUG:12 & related): Enhance Tenable scan launch logic to correctly handle scenarios where a scan is already active for the target, preventing errors or duplicate scan initiations.
+Prompt (BUG: Date Proposal - High - From conversation): Resolve bug where the client date proposal form is hidden if an old date option remains 'Confirmed'; ensure workflow correctly clears or updates previous confirmed statuses when rescheduling is needed.
+Prompt (BUG: Blank Edit Form - High - From conversation): Investigate and fix issue where the "Assessment Info" edit form appears blank for clients, ensuring form field filtering logic in AssessmentInfoForm.__init__ works correctly and displays client-editable fields.
+Prompt (BUG:5 - Medium): Ensure all relevant user actions and significant assessment events are comprehensively recorded in the Assessment Log audit trail.
+Prompt (BUG:6 - Medium): Investigate and fix issues where uploaded reports are not correctly linking to their corresponding assessments.
+Prompt (BUG:7 - Medium): Correct data display in the "Unlinked Reports" view in the admin dashboard to show certificate information if available.
+Prompt (BUG:8 - Medium): Correct data display in the "All Uploaded Reports" view in the admin dashboard to show certificate information.
+Prompt (BUG:9 - Medium): Fix broken action buttons (e.g., link, delete) in the "Unlinked Reports" view in the admin dashboard.
+Prompt (BUG:10 - Medium): Address UI issues and non-functional actions in the "All Uploaded Reports" view in the admin dashboard.
+Prompt (BUG:11 - Medium): Fix Admin Dashboard "Assessments Awaiting Scheduling" view: ensure assigned assessor, assessment ID are displayed, and action buttons are functional.
+Admin Dashboard - Needed Views/Modules
 
-Medium Priority
-AI:11 Auto-fill scoping forms based on historical client engagements and common configurations.
-AI:12 Intelligent questionnaire optimization: suggest additional questions based on detected scope gaps.
-AI:13 Automated mapping of CVEs to CE+ controls, with recommended evidence artifacts.
-AI:14 Real-time AI translation for UI, reports and client communications in multiple languages.
-AI:15 Sentiment analysis on client messages to surface frustration or delay risks.
-AI:16 Audit-log summarization: compress long trails into human-readable timelines and call-outs.
-AI:17 Contextual tooltips autogenerated by AI explaining complex form fields or workflow steps.
-AI:18 Smart scheduling suggestions that balance assessor workload, travel and deadlines.
-AI:19 Automated classification & tagging of scan findings by business impact and compliance relevance.
-AI:20 Client-facing chatbot to answer status, next steps, and evidence requirements.
-AI:21 Image-recognition to validate uploaded screenshots of configuration settings or logs.
-AI:22 Automated detection of missing evidence items based on CE+ control matrix.
-AI:23 Natural-language search across assessments, policies, KB articles and logs.
-AI:24 Recommendation engine for report templates, branding styles and content blocks.
-AI:25 Next-step workflow predictions: suggest which workflow action or form the assessor should tackle next.
-AI:26 AI-driven risk heatmaps on dashboards, showing hot spots by severity, asset type or network segment.
+Prompt (AdminView:1 - Medium): Develop a "System Log Viewer" in the Admin Dashboard to display application logs.
+Prompt (AdminView:2 - Medium): Create an "Assessments with Scan Issues" view in Admin Dashboard listing assessments that encountered Tenable scan errors or timeouts.
+Prompt (AdminView:3 - Medium): Develop a "Recently Completed Assessments" view in Admin Dashboard.
+Prompt (AdminView:4 - Medium): Implement full CRUD (List, Create, Update, Delete) views for Tenable Scanner configurations in Admin Dashboard.
+Prompt (AdminView:5 - Medium): Implement full CRUD views for Tenable Scan Policy configurations in Admin Dashboard.
+Prompt (AdminView:6 - Medium): Create a "Clients Awaiting Tenable Configuration" view in Admin Dashboard.
+Prompt (AdminView:7 - Medium): Implement views for listing and managing Tenable Agent Groups in Admin Dashboard.
+Prompt (AdminView:8 - Medium): Develop views for listing and managing Tenable Agent mappings to assets/clients in Admin Dashboard.
+Prompt (AdminView:9 - Medium): Create an "Assessor Availability - Pending Review" view in Admin Dashboard if assessor availability requires approval.
+Prompt (AdminView:10 - Medium): Develop a "Users with Incomplete MFA Setup" view in Admin Dashboard.
+Prompt (AdminView:11 - Medium): Implement a "Global Settings" management interface in Admin Dashboard (e.g., for Constance config if not using Django Admin directly).
+Prompt (AdminView:12 - Medium): Create a comprehensive "Audit Log Viewer" in Admin Dashboard with filtering and search capabilities.
+Prompt (AdminView:13 - Medium): Develop a "Notification Management" interface in Admin Dashboard (e.g., view/resend/manage templates if applicable).
+Backlog / Unfiltered Ideas (To Be Prioritized & Refined)
 
-Low Priority
-AI:27 Voice-to-text input for field assessors to log observations hands-free.
-AI:28 AI-generated infographics and visual assets for client reports (charts, diagrams).
-AI:29 Competitive benchmarking insights: AI-curated summary of public CE+ posture in your industry.
-AI:30 AI-curated knowledge-base article suggestions when certain errors or patterns are detected.
-AI:31 Code-snippet suggestions for custom integration scripts (e.g., API calls, CSV exports).
-AI:32 Automated accessibility auditing & fix recommendations (WCAG compliance).
-AI:33 Scenario-based test data generation for unit/integration tests using learned patterns.
-AI:34 Behavioral anomaly detection in user activity to spot unusual assessor or client actions.
-AI:35 Generative design recommendations for UI themes based on company branding guidelines.
-AI:36 Regulatory-update summarization: AI-distilled briefs when CE+ or related standards change.
-AI:37 Auto-scheduling of reminders based on project milestones or risk-level triggers.
-AI:38 AI-powered email-draft suggestions for communicating findings or requests to clients.
-AI:39 Language-polishing of assessor notes and client-facing narratives for clarity and tone.
-AI:40 Post-engagement feedback analysis: sentiment-and-theme extraction from client survey responses.
-
-Bug Report
-Bug:1 (High) Fix non-functional workflow action buttons (Start/Done/Reopen) for Clients.
-Bug:2 (High) Resolve issue where Tenable code to get scan status is not working correctly.
-Bug:3 (High) Prevent duplicate scans being created by the Tenable scan-launch code. - FIXED
-Bug:4 (High) Verify and ensure default Tenable Scan Policy/Scanner settings are correctly configured and used by scan-launch tasks.
-Bug:5 (Medium) Ensure all relevant user actions are recorded in the Assessment Log audit trail.
-Bug:6 (Medium) Uploaded reports aren’t linking to assessments.
-Bug:7 (Medium) Unlinked Report view in admin dashboard not displaying cert information.
-Bug:8 (Medium) All Uploaded Reports view in admin dashboard not displaying cert information.
-Bug:9 (Medium) Unlinked Report action buttons broken in admin dashboard.
-Bug:10 (Medium) All Uploaded Reports view in admin dashboard (actions/UI issues).
-Bug:11 (Medium) Admin dashboard Assessment Awaiting Scheduling –
-• Assigned Assessor isn’t showing
-• Action buttons not working
-• Assessment ID not showing
-Bug:12 (High) The launch tenable scan can't handle if there is a scan already active
-
-
-
-
-
-Needed Views in Admin Dashboard
-system_log_viewer
-assessment_list_scan_issues
-assessment_list_recently_completed
-tenable_scanner_list (and tenable_scanner_create, tenable_scanner_update, tenable_scanner_delete)
-tenable_policy_list (and tenable_policy_create, tenable_policy_update, tenable_policy_delete)
-client_list_awaiting_tenable_config
-tenable_agent_group_list
-tenable_agent_mapping_list
-assessor_availability_list_pending
-user_list_incomplete_mfa
-global_settings
-audit_log_viewer
-notification_management
-
-
-Admin Dashboard Views Done
-uploaded_report_list – [done]
-assessment_list_awaiting_scheduling – [done]
-unlinked_ce_reports_list – [done]
-
-
-
-Unfiltered Ideas
-
-Have the client interface have a Wizard Mode
-    Have admins be able to edit and modify the wizzard mode
-
-Allow Administrators to modify and adjust the assessment steps
+Prompt (Idea:1 - Low): Design a "Wizard Mode" for the client interface to guide them through initial assessment setup or complex tasks.
+Prompt (Idea:2 - Medium): Allow administrators to customize the "Wizard Mode" content and steps.
+Prompt (Idea:3 - Medium): Enable administrators to modify and adjust the standard assessment workflow steps and their definitions.

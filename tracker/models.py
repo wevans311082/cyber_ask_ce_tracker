@@ -3,6 +3,7 @@ from datetime import timedelta
 from django.db import models
 from django.contrib.auth.models import User
 from django.conf import settings
+from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import validate_ipv46_address
 from django.core.exceptions import ValidationError
@@ -47,6 +48,8 @@ def validate_ip_or_hostname(value):
                  f"'{value}' is not a valid IP address or resolvable hostname.",
                  code='invalid_ip_or_hostname'
              )
+
+
 class ScanStatus(models.TextChoices):
     PENDING = 'Pending', _('Pending Scan')
     SCANNED_OK = 'ScannedOK', _('Scanned - OK')
@@ -167,17 +170,6 @@ class Client(models.Model):
 
 
     def __str__(self): return self.name
-
-
-
-
-
-
-
-
-
-
-
 class Assessment(models.Model):
     STATUS_CHOICES = (
         ('Draft', 'Draft'),
@@ -202,49 +194,68 @@ class Assessment(models.Model):
         ('Fail', 'Fail'),
     )
 
-    client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name='assessments')
+    # --- CORRECTED LINE ---
+    client = models.ForeignKey('Client', on_delete=models.PROTECT, related_name='assessments')
+    # --- END CORRECTION ---
+
     assessor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='assigned_assessments',
-        limit_choices_to={'userprofile__role': 'Assessor'}  # Ensure UserProfile model and role field exist
+        limit_choices_to={'userprofile__role': 'Assessor'}
     )
     assessment_type = models.CharField(max_length=3, choices=ASSESSMENT_TYPES)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Draft')
-    scope_description = models.TextField(blank=True, help_text="Brief description of the scope boundary.")
+    scope_description = models.TextField(blank=True, help_text=_("Brief description of the scope boundary."))
     scope_type = models.CharField(max_length=10, choices=SCOPE_TYPES, default='Whole_Org')
 
+    # --- New Primary Contact Fields ---
+    primary_contact_name = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name=_("Primary Contact Name")
+    )
+    primary_contact_email = models.EmailField(
+        max_length=255,
+        blank=True,
+        verbose_name=_("Primary Contact Email")
+    )
+    primary_contact_phone = models.CharField(
+        max_length=50,
+        blank=True,
+        verbose_name=_("Primary Contact Phone")
+    )
+    # --- End of New Primary Contact Fields ---
+
     date_start = models.DateField(null=True, blank=True)
-    date_target_end = models.DateField(null=True, blank=True, verbose_name="Target End Date")
-    date_actual_end = models.DateField(null=True, blank=True, verbose_name="Actual End Date")
-    date_cert_issued = models.DateField(null=True, blank=True, verbose_name="Certificate Issued Date")
-    date_cert_expiry = models.DateField(null=True, blank=True, verbose_name="Certificate Expiry Date")
+    date_target_end = models.DateField(null=True, blank=True, verbose_name=_("Target End Date"))
+    date_actual_end = models.DateField(null=True, blank=True, verbose_name=_("Actual End Date"))
+    date_cert_issued = models.DateField(null=True, blank=True, verbose_name=_("Certificate Issued Date"))
+    date_cert_expiry = models.DateField(null=True, blank=True, verbose_name=_("Certificate Expiry Date"))
 
     date_ce_passed = models.DateField(
         null=True,
         blank=True,
-        verbose_name="CE Self-Assessment Pass Date",
-        help_text="Date the basic Cyber Essentials self-assessment was passed (for CE+ window)."
+        verbose_name=_("CE Self-Assessment Pass Date"),
+        help_text=_("Date the basic Cyber Essentials self-assessment was passed (for CE+ window).")
     )
-    ce_self_assessment_ref = models.CharField(max_length=100, blank=True, verbose_name="CE Self-Assessment Ref")
+    ce_self_assessment_ref = models.CharField(max_length=100, blank=True, verbose_name=_("CE Self-Assessment Ref"))
     final_outcome = models.CharField(max_length=4, choices=OUTCOME_CHOICES, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-    # Kept as CharField to accommodate Tenable's prefixed template UUIDs
     tenable_scan_uuid = models.CharField(
         max_length=255,
         null=True,
         blank=True,
-        unique=False,
-        verbose_name="Tenable Scan Definition UUID/Identifier",
-        help_text="Identifier of the Tenable scan definition (can be prefixed like 'template-...')"
+        unique=False, # Explicitly False, as per your model
+        verbose_name=_("Tenable Scan Definition UUID/Identifier"),
+        help_text=_("Identifier of the Tenable scan definition (can be prefixed like 'template-...')")
     )
 
-    # Scan status constants
     SCAN_NONE = 'none'
     SCAN_PENDING = 'pending_launch'
     SCAN_LAUNCHED = 'launched'
@@ -255,78 +266,60 @@ class Assessment(models.Model):
     SCAN_TIMEOUT = 'timeout'
 
     SCAN_STATUS_CHOICES = [
-        (SCAN_NONE, 'Not Scanned'),
-        (SCAN_PENDING, 'Scan Pending Launch'),  # Ensured this is present
-        (SCAN_LAUNCHED, 'Scan Launched'),
-        (SCAN_COMPLETED, 'Scan Completed by Tenable'),
-        (SCAN_PROCESSING, 'Processing Results'),
-        (SCAN_IMPORTED, 'Scan Results Imported'),
-        (SCAN_ERROR, 'Error During Scan Operations'),
-        (SCAN_TIMEOUT, 'Scan Operation Timed Out'),
+        (SCAN_NONE, _('Not Scanned')),
+        (SCAN_PENDING, _('Scan Pending Launch')),
+        (SCAN_LAUNCHED, _('Scan Launched')),
+        (SCAN_COMPLETED, _('Scan Completed by Tenable')),
+        (SCAN_PROCESSING, _('Processing Results')),
+        (SCAN_IMPORTED, _('Scan Results Imported')),
+        (SCAN_ERROR, _('Error During Scan Operations')),
+        (SCAN_TIMEOUT, _('Scan Operation Timed Out')),
     ]
 
     scan_status = models.CharField(
         max_length=30,
         choices=SCAN_STATUS_CHOICES,
         default=SCAN_NONE,
-        verbose_name="Tenable Scan Status"
+        verbose_name=_("Tenable Scan Status")
     )
-    scan_status_message = models.TextField(blank=True, null=True, verbose_name="Scan Status Message")
-    # Kept as IntegerField as per your old model for Tenable's numeric scan ID
-    tenable_scan_id = models.IntegerField(null=True, blank=True, verbose_name="Tenable Scan Definition Numeric ID")
+    scan_status_message = models.TextField(blank=True, null=True, verbose_name=_("Scan Status Message"))
+    tenable_scan_id = models.IntegerField(null=True, blank=True, verbose_name=_("Tenable Scan Definition Numeric ID"))
 
-    # Field added in previous steps, kept for Celery task functionality
     last_tenable_scan_launch_time = models.DateTimeField(
         null=True,
         blank=True,
-        verbose_name="Last Tenable Scan Launch Time"
+        verbose_name=_("Last Tenable Scan Launch Time")
     )
 
     def get_scan_status_display(self):
         return dict(self.SCAN_STATUS_CHOICES).get(self.scan_status, self.scan_status)
 
-    # Using the __str__ method from your old working model
     def __str__(self):
-        # Ensure get_assessment_type_display() is available or use self.assessment_type
-        # get_assessment_type_display is automatically provided by Django for fields with choices
-        return f"{self.client.name} - {self.get_assessment_type_display()} ({self.id})"
+        client_name = self.client.name if self.client else _("Unknown Client")
+        return f"{client_name} - {self.get_assessment_type_display()} ({self.id})"
 
     @property
     def ce_plus_window_end_date(self):
-        """
-        Calculates the end date of the CE+ 3-month window.
-        The window is 3 months from the date_ce_passed.
-        NCSC guidance often refers to 3 months or 90 days.
-        Using 90 days for a fixed duration.
-        """
         if self.assessment_type == 'CE+' and self.date_ce_passed:
             try:
-                # Adding 90 days to the date_ce_passed
                 return self.date_ce_passed + timedelta(days=90)
-            except TypeError:  # Handle case where date_ce_passed might be None despite check (though unlikely)
+            except TypeError: # pragma: no cover (should not happen with date objects)
                 return None
         return None
 
-    # Added can_launch_ce_plus_scan method from your old working model
     def can_launch_ce_plus_scan(self) -> dict:
-        """
-        Checks if conditions are met to enable the 'Launch Scan' button for CE+.
-        Returns a dictionary: {'can_launch': bool, 'reason': str}
-        """
-        # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Checking for Assessment {self.id}")
-
+        # Ensure 'scoped_items' related_name on ScopedItem model points to Assessment
+        # (e.g., assessment = models.ForeignKey(Assessment, related_name='scoped_items', ...))
         if self.assessment_type != 'CE+':
             return {'can_launch': False, 'reason': _("Scan launch is only applicable for CE+ assessments.")}
-
         try:
-            # Ensure 'scoped_items' is the correct related_name from ScopedItem to Assessment.
-            # If not, change to e.g., self.scopeditem_set
+            # Assuming ScopedItem has a field 'is_in_ce_plus_sample' (BooleanField)
+            # and 'item_type' (CharField) and 'linked_tenable_agent_uuid' (UUIDField or CharField)
             all_sampled_items = list(self.scoped_items.filter(is_in_ce_plus_sample=True))
-        except AttributeError:
+        except AttributeError: # pragma: no cover
             return {'can_launch': False,
-                    'reason': _("Internal configuration error: Cannot access scoped items (check related_name).")}
-        except Exception as e:
-            # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Error accessing scoped_items: {e}")
+                    'reason': _("Internal configuration error: Cannot access scoped items (check related_name 'scoped_items' on ScopedItem model).")}
+        except Exception as e: # pragma: no cover
             return {'can_launch': False, 'reason': _(f"Error accessing scoped item data: {e}")}
 
         if not all_sampled_items:
@@ -334,47 +327,32 @@ class Assessment(models.Model):
 
         item_types_requiring_link = ['Laptop', 'Desktop', 'Server']
         unlinked_items_count = 0
-
-        items_requiring_link_exist = False  # Flag to check if any items even need linking
+        items_requiring_link_exist = False
 
         for item in all_sampled_items:
             if item.item_type in item_types_requiring_link:
                 items_requiring_link_exist = True
                 is_linked = False
                 try:
-                    # Accessing linked_tenable_agent_uuid.
-                    # If ScopedItem.linked_tenable_agent_uuid is a UUIDField, Django will try to
-                    # convert the DB value to a uuid.UUID object here.
-                    # If the DB value is "" or "“”", this access will raise a ValidationError.
-                    agent_uuid = item.linked_tenable_agent_uuid
-                    if agent_uuid is not None and isinstance(agent_uuid, uuid.UUID):
-                        is_linked = True
-                    # Handle cases where it might be a string that needs validation,
-                    # though for a UUIDField, it should be None or a UUID object after loading.
-                    elif isinstance(agent_uuid, str) and agent_uuid.strip() != '':
-                        try:
-                            uuid.UUID(agent_uuid)  # Check if string is valid UUID format
+                    agent_uuid_val = item.linked_tenable_agent_uuid
+                    if agent_uuid_val is not None:
+                        if isinstance(agent_uuid_val, uuid.UUID):
                             is_linked = True
-                        except ValueError:
-                            is_linked = False  # String is not a valid UUID
-                    # else, it's None, an empty string, or some other type not considered linked.
-
-                except ValidationError:
-                    # If accessing item.linked_tenable_agent_uuid causes a ValidationError
-                    # (e.g., because DB has "" in a UUIDField), treat as unlinked.
-                    # This is a defensive catch. The root cause (bad data) should still be fixed.
-                    # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] ValidationError for ScopedItem {item.id} accessing linked_tenable_agent_uuid. Treating as unlinked.")
+                        elif isinstance(agent_uuid_val, str) and agent_uuid_val.strip() != '':
+                            try:
+                                uuid.UUID(agent_uuid_val) # Validate if string is a valid UUID
+                                is_linked = True
+                            except ValueError: # pragma: no cover
+                                is_linked = False # String is not a valid UUID
+                        # else: not a UUID or valid string representation
+                except Exception: # pragma: no cover
+                    # Catch any other unexpected errors during UUID validation/access
                     is_linked = False
-                except Exception as e_access:
-                    # Catch any other unexpected error during access
-                    # [DEBUG] print(f"[DEBUG Assessment.can_launch_ce_plus_scan] Error accessing linked_tenable_agent_uuid for ScopedItem {item.id}: {e_access}. Treating as unlinked.")
-                    is_linked = False  # Treat as unlinked on error
 
                 if not is_linked:
                     unlinked_items_count += 1
 
         if not items_requiring_link_exist:
-            # No items of type Laptop, Desktop, Server in the sample.
             return {'can_launch': True, 'reason': _("Scan can be launched (no sampled items require agent linking).")}
 
         if unlinked_items_count > 0:
@@ -385,52 +363,50 @@ class Assessment(models.Model):
 
         return {'can_launch': True, 'reason': _("Ready to launch scan.")}
 
-
-
-
-
-
-
-
-
-
-
-
+    class Meta:
+        verbose_name = _("Assessment")
+        verbose_name_plural = _("Assessments")
+        ordering = ['-created_at']
 class TenableScanLog(models.Model):
-    # Your existing primary key
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    assessment = models.ForeignKey('Assessment', on_delete=models.CASCADE, related_name='tenable_scan_logs') # Assuming 'Assessment' is in the same app or properly imported
+    assessment = models.ForeignKey('Assessment', on_delete=models.CASCADE, related_name='tenable_scan_logs')
 
-    # ID of the scan definition/configuration in Tenable
     tenable_scan_definition_id = models.IntegerField(
         null=True, blank=True,
         help_text="Numeric ID of the scan definition in Tenable (the 'id' field from scan creation)."
     )
-
-    # UUID of the launched scan instance/run
-    # This is the pure UUID you get from a launch response.
     tenable_scan_run_uuid = models.UUIDField(
         null=True, blank=True,
         help_text="UUID of the launched scan instance/history in Tenable (the 'scan_uuid' or 'history_uuid' from launch)."
-    ) # This was likely your old 'scan_uuid' field.
-
-    # Identifier of the policy/template used (e.g., "template-xxxx...")
-    # This needs to be a CharField because "template-..." is not a valid UUID for a UUIDField.
+    )
     tenable_policy_identifier = models.CharField(
         max_length=255, null=True, blank=True,
         help_text="Identifier of the policy/template used (e.g., 'template-uuid' from scan creation 'uuid' field)."
-    ) # This was likely your old 'policy_uuid' field causing the error.
-
+    )
     scan_name = models.CharField(max_length=255, null=True, blank=True, help_text="Name of the scan in Tenable.")
     status = models.CharField(max_length=100, null=True, blank=True, help_text="Status of the scan.")
-    # Add other fields like error messages, timestamps for creation, start, end, etc.
     log_message = models.TextField(null=True, blank=True)
-   # created_at = models.DateTimeField(auto_now_add=True)
-  #  updated_at = models.DateTimeField(auto_now=True)
 
-    created_at = models.DateTimeField(default=timezone.now)  # Changed from auto_now_add=True
-    # And ensure updated_at also has a suitable default if it's new and non-nullable
-    updated_at = models.DateTimeField(default=timezone.now)  # Or auto_now=True is usually fine for this
+    saved_report_path = models.CharField(
+        max_length=512,
+        null=True, blank=True,
+        help_text="Relative path to the saved JSON scan report within MEDIA_ROOT."
+    )
+    report_last_saved_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp of when the report was last fetched and saved."
+    )
+
+    # CHANGES BEGIN — GGGGGGGGGGGG-2025-05-18 17:45:00
+    # New field to track when the data from this scan log was parsed into asset snapshot models
+    data_parsed_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Timestamp of when scan data was last parsed into detailed asset models."
+    )
+    # CHANGES END — GGGGGGGGGGGG-2025-05-18 17:45:00
+
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         ordering = ['-created_at']
@@ -440,12 +416,10 @@ class TenableScanLog(models.Model):
     def __str__(self):
         return f"Scan Log for Assessment {self.assessment_id} - Scan Name: {self.scan_name or self.tenable_scan_definition_id}"
 
-
-
-
-
-
-
+    def save(self, *args, **kwargs):
+        if not kwargs.pop('skip_updated_at_update', False):
+            self.updated_at = timezone.now()
+        super().save(*args, **kwargs)
 class TenableScanResultSummary(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     scan_log = models.OneToOneField(
@@ -486,17 +460,6 @@ class TenableScanResultSummary(models.Model):
                (self.high_vulnerabilities or 0) + \
                (self.medium_vulnerabilities or 0) + \
                (self.low_vulnerabilities or 0)
-
-
-
-
-
-
-
-
-
-
-
 class Evidence(models.Model):
     assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='evidence_files')
     file = models.FileField(upload_to='evidence/%Y/%m/%d/')
@@ -634,115 +597,8 @@ class AssessmentCloudService(models.Model):
     @property
     def user_proof_filename(self):
         return os.path.basename(self.mfa_user_proof.name) if self.mfa_user_proof else None
-class WorkflowStepDefinition(models.Model):
-    """Defines a standard step in the CE+ assessment workflow."""
-    ASSIGNEE_CHOICES = (
-        ('Applicant', 'Applicant (Client)'), # Matched display text to previous usage
-        ('Assessor', 'Assessor (Internal Staff)'), # Matched display text to previous usage
-        ('Both', 'Both (Client and Assessor)'), # Matched display text to previous usage
-    )
 
-    step_order = models.PositiveIntegerField(unique=True, help_text="Order in which the step appears.")
-    name = models.CharField(max_length=100, help_text="Short name/identifier for the step.")
-    description = models.TextField(help_text="Full description of the step requirement.")
 
-    # Add this field:
-    template_name = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="e.g., 'step_contact_details.html' or 'info_step.html'"
-    )
-
-    assignee_type = models.CharField(
-        max_length=10,
-        choices=ASSIGNEE_CHOICES,
-        default='Both' # Note: Migration 0007 had 'Applicant' as default, your current model has 'Both'. This is fine, just an observation.
-    )
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Is this step currently part of the standard workflow?"
-    )
-
-    # Add this field (from migration 0007):
-    skippable = models.BooleanField(
-        default=False,
-        help_text="Can this step be skipped by the assignee?"
-    )
-
-    class Meta:
-        ordering = ['step_order']
-
-    def __str__(self):
-        return f"{self.step_order}. {self.name}"
-class AssessmentWorkflowStep(models.Model):
-    """Tracks the status of a specific workflow step for an assessment."""
-    class Status(models.TextChoices):
-        NOT_STARTED = 'NotStarted', _('Not Started')
-        IN_PROGRESS = 'InProgress', _('In Progress')
-        COMPLETE = 'Complete', _('Complete')
-        # --- Add this line ---
-        HELP_NEEDED = 'HelpNeeded', _('Help Needed')
-        # --- End Add ---
-        SKIPPED = 'Skipped', _('Skipped / Not Applicable')
-
-    assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='workflow_steps')
-    step_definition = models.ForeignKey(WorkflowStepDefinition, on_delete=models.PROTECT, related_name='assessment_steps')
-    # Increase max_length slightly if needed for new choice, although 'HelpNeeded' fits in 20
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOT_STARTED)
-    notes = models.TextField(blank=True, help_text="Notes specific to this step for this assessment.")
-    completed_at = models.DateTimeField(null=True, blank=True)
-    completed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+') # '+' prevents reverse accessor
-
-    class Meta:
-        ordering = ['assessment', 'step_definition__step_order']
-        unique_together = ('assessment', 'step_definition') # Only one instance per step per assessment
-
-    def __str__(self):
-        return f"Assessment {self.assessment.id} - Step {self.step_definition.step_order}: {self.get_status_display()}"
-
-    def is_update_allowed(self, user):
-        """Check if the given user can update this step's status."""
-        # Added print at the very start of the method call
-        print(f"--- METHOD CALL: is_update_allowed called for Step {self.step_definition.step_order}, User {user.username} ---")
-        if not user.is_authenticated:
-            print(f"DEBUG (is_update_allowed): User not authenticated. Returning False.")
-            return False
-
-        assignee_type = self.step_definition.assignee_type
-        # Use getattr for safer access to userprofile
-        profile = getattr(user, 'userprofile', None)
-        if not profile:
-            print(f"DEBUG (is_update_allowed): User {user.username} has no profile. Returning False.") # Added print
-            return False # User needs a profile
-
-        # Added print statements inside the logic
-        if assignee_type == 'Applicant':
-            # Explicitly check components
-            role_match = profile.role == 'Client'
-            # Ensure profile.client and self.assessment.client are not None before comparing
-            client_match = profile.client is not None and self.assessment.client is not None and self.assessment.client == profile.client
-            result = role_match and client_match
-            print(f"DEBUG (is_update_allowed): StepAssignee=Applicant, UserRole={profile.role}(Match={role_match}), ClientMatch={client_match} [AssessmentClientID={self.assessment.client.id if self.assessment.client else 'None'}, UserClientID={profile.client.id if profile.client else 'None'}], Result={result}")
-            return result
-        elif assignee_type == 'Assessor':
-            # Explicitly check components
-            is_assessor_match = profile.role == 'Assessor' and self.assessment.assessor == user
-            is_admin_role = profile.role == 'Admin'
-            result = is_assessor_match or is_admin_role
-            print(f"DEBUG (is_update_allowed): StepAssignee=Assessor, UserRole={profile.role}, IsAssessorMatch={is_assessor_match}, IsAdmin={is_admin_role}, Result={result}")
-            return result
-        elif assignee_type == 'Both':
-            # Explicitly check components
-            is_client_user = profile.role == 'Client' and profile.client is not None and self.assessment.client is not None and self.assessment.client == profile.client
-            is_assessor_match = profile.role == 'Assessor' and self.assessment.assessor == user
-            is_admin_role = profile.role == 'Admin'
-            is_assessor_admin = is_assessor_match or is_admin_role
-            result = is_client_user or is_assessor_admin
-            print(f"DEBUG (is_update_allowed): StepAssignee=Both, IsClient={is_client_user}, IsAssessorAdmin={is_assessor_admin}, Result={result}")
-            return result
-
-        print(f"DEBUG (is_update_allowed): Unknown AssigneeType '{assignee_type}', returning False.") # Added print
-        return False
 class ExternalIP(models.Model):
     """
     Represents an external IP address or hostname in scope for scanning.
@@ -947,8 +803,6 @@ class CriticalErrorLog(models.Model):
         ordering = ['-timestamp']
         verbose_name = "Critical Error Log"
         verbose_name_plural = "Critical Error Logs"
-
-
 class TenableVulnerabilityFinding(models.Model):
     class SeverityChoices(models.IntegerChoices):
         INFO = 0, 'Informational'
@@ -1076,11 +930,6 @@ class TenableVulnerabilityFinding(models.Model):
         elif not asset_info:
             asset_info = "Unknown Asset"
         return f"{self.plugin_name} (Severity: {self.get_severity_display()}) on {asset_info}"
-
-
-
-
-
 class AssetScanDataSnapshot(models.Model):
     """
     Stores the consolidated parsed data for a single asset from a single Tenable scan.
@@ -1133,8 +982,6 @@ class AssetScanDataSnapshot(models.Model):
 
     def __str__(self):
         return f"Snapshot for {self.scoped_item} from Scan {self.scan_log_id}"
-
-
 class AssetInstalledSoftware(models.Model):
     """
     Represents a piece of software installed on an asset, found during a scan.
@@ -1159,8 +1006,6 @@ class AssetInstalledSoftware(models.Model):
 
     def __str__(self):
         return f"{self.name} {self.version or ''}"
-
-
 class AssetAntivirusDetail(models.Model):
     """
     Represents an antivirus product detected on an asset during a scan.
@@ -1192,8 +1037,6 @@ class AssetAntivirusDetail(models.Model):
 
     def __str__(self):
         return f"{self.product_name} (v{self.product_version or 'N/A'})"
-
-
 class AssetListeningService(models.Model):
     """
     Represents a listening service/port on an asset found during a scan.
@@ -1217,9 +1060,274 @@ class AssetListeningService(models.Model):
 
     def __str__(self):
         return f"{self.protocol}/{self.port} ({self.process_name or self.service_display_name or 'Unknown'})"
+class AssessmentExtractedDetails(models.Model):
+    assessment = models.OneToOneField(
+        'Assessment',
+        on_delete=models.CASCADE,
+        related_name='extracted_details'
+    )
+
+    validated_by = models.CharField(max_length=255, blank=True)
+    certificate_number = models.CharField(max_length=100, blank=True)
+    insurance_number = models.CharField(max_length=100, blank=True)
+    certificate_url = models.URLField(max_length=500, blank=True)
+
+    organisation_name = models.CharField(max_length=255, blank=True)
+    organisation_number = models.CharField(max_length=50, blank=True)
+    address_line_1 = models.CharField(max_length=255, blank=True)
+    address_line_2 = models.CharField(max_length=255, blank=True)
+    town_city = models.CharField(max_length=100, blank=True)
+    county = models.CharField(max_length=100, blank=True)
+    postcode = models.CharField(max_length=20, blank=True)
+    country = models.CharField(max_length=100, blank=True)
+
+    website_address = models.URLField(max_length=255, blank=True)
+    ce_renewal = models.BooleanField(default=False)
+    assessment_scope_whole_company = models.BooleanField(default=False)
+
+    enduser_devices = models.TextField(blank=True)
+    thin_client_devices = models.TextField(blank=True)
+    server_devices = models.TextField(blank=True)
+    mobile_devices = models.TextField(blank=True)
+    networks = models.TextField(blank=True)
+    number_of_home_workers = models.IntegerField(null=True, blank=True)
+    network_equipment = models.TextField(blank=True)
+
+    cloud_services = models.TextField(blank=True, help_text="Comma-separated list")
+    internet_browsers = models.TextField(blank=True, help_text="Comma-separated list")
+    malware_protection = models.CharField(max_length=255, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def get_cloud_services_list(self):
+        return [s.strip() for s in self.cloud_services.split(',')] if self.cloud_services else []
+
+    def get_internet_browsers_list(self):
+        return [s.strip() for s in self.internet_browsers.split(',')] if self.internet_browsers else []
+
+    class Meta:
+        verbose_name = _("Assessment Extracted Detail")
+        verbose_name_plural = _("Assessment Extracted Details")
+class Browser(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    version = models.CharField(max_length=50)
+    release_date = models.DateField()
+    release_notes = models.URLField(blank=True, null=True)
+    status = models.CharField(max_length=50)
+    engine = models.CharField(max_length=50)
+    engine_version = models.CharField(max_length=50)
+    manually_added = models.BooleanField(default=False)
+
+    @property
+    def is_outdated(self):
+        return (now().date() - self.release_date) > timedelta(days=14)
+
+    def __str__(self):
+        return f"{self.name} v{self.version}"
+
+
+class WorkflowStepDefinition(models.Model):
+    """Defines a standard step in the CE+ assessment workflow."""
+    ASSIGNEE_CHOICES = (
+        ('Applicant', 'Applicant (Client)'), # Matched display text to previous usage
+        ('Assessor', 'Assessor (Internal Staff)'), # Matched display text to previous usage
+        ('Both', 'Both (Client and Assessor)'), # Matched display text to previous usage
+    )
+
+    step_order = models.PositiveIntegerField(unique=True, help_text="Order in which the step appears.")
+    name = models.CharField(max_length=100, help_text="Short name/identifier for the step.")
+    description = models.TextField(help_text="Full description of the step requirement.")
+
+    # Add this field:
+    template_name = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="e.g., 'step_contact_details.html' or 'info_step.html'"
+    )
+
+    assignee_type = models.CharField(
+        max_length=10,
+        choices=ASSIGNEE_CHOICES,
+        default='Both' # Note: Migration 0007 had 'Applicant' as default, your current model has 'Both'. This is fine, just an observation.
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Is this step currently part of the standard workflow?"
+    )
+
+    # Add this field (from migration 0007):
+    skippable = models.BooleanField(
+        default=False,
+        help_text="Can this step be skipped by the assignee?"
+    )
+
+    card_template_path = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,  # Allow it to be empty if a step has no specific card
+        verbose_name=_("Card Template Path"),
+        help_text=_(
+            "Path to the HTML partial for this step's card on the assessment detail page, e.g., 'tracker/partials/client_scope_summary.html'")
+    )
+
+    class Meta:
+        ordering = ['step_order']
+
+    def __str__(self):
+        return f"{self.step_order}. {self.name}"
+
+
+class AssessmentWorkflowStep(models.Model):
+    """Tracks the status of a specific workflow step for an assessment."""
+    class Status(models.TextChoices):
+        NOT_STARTED = 'NotStarted', _('Not Started')
+        IN_PROGRESS = 'InProgress', _('In Progress')
+        COMPLETE = 'Complete', _('Complete')
+        # --- Add this line ---
+        HELP_NEEDED = 'HelpNeeded', _('Help Needed')
+        # --- End Add ---
+        SKIPPED = 'Skipped', _('Skipped / Not Applicable')
+
+    assessment = models.ForeignKey(Assessment, on_delete=models.CASCADE, related_name='workflow_steps')
+    step_definition = models.ForeignKey(WorkflowStepDefinition, on_delete=models.PROTECT, related_name='assessment_steps')
+    # Increase max_length slightly if needed for new choice, although 'HelpNeeded' fits in 20
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NOT_STARTED)
+    notes = models.TextField(blank=True, help_text="Notes specific to this step for this assessment.")
+    completed_at = models.DateTimeField(null=True, blank=True)
+    completed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+') # '+' prevents reverse accessor
+
+    class Meta:
+        ordering = ['assessment', 'step_definition__step_order']
+        unique_together = ('assessment', 'step_definition') # Only one instance per step per assessment
+
+    def __str__(self):
+        return f"Assessment {self.assessment.id} - Step {self.step_definition.step_order}: {self.get_status_display()}"
+
+    def is_update_allowed(self, user):
+        """Check if the given user can update this step's status."""
+        # Added print at the very start of the method call
+        print(f"--- METHOD CALL: is_update_allowed called for Step {self.step_definition.step_order}, User {user.username} ---")
+        if not user.is_authenticated:
+            print(f"DEBUG (is_update_allowed): User not authenticated. Returning False.")
+            return False
+
+        assignee_type = self.step_definition.assignee_type
+        # Use getattr for safer access to userprofile
+        profile = getattr(user, 'userprofile', None)
+        if not profile:
+            print(f"DEBUG (is_update_allowed): User {user.username} has no profile. Returning False.") # Added print
+            return False # User needs a profile
+
+        # Added print statements inside the logic
+        if assignee_type == 'Applicant':
+            # Explicitly check components
+            role_match = profile.role == 'Client'
+            # Ensure profile.client and self.assessment.client are not None before comparing
+            client_match = profile.client is not None and self.assessment.client is not None and self.assessment.client == profile.client
+            result = role_match and client_match
+            print(f"DEBUG (is_update_allowed): StepAssignee=Applicant, UserRole={profile.role}(Match={role_match}), ClientMatch={client_match} [AssessmentClientID={self.assessment.client.id if self.assessment.client else 'None'}, UserClientID={profile.client.id if profile.client else 'None'}], Result={result}")
+            return result
+        elif assignee_type == 'Assessor':
+            # Explicitly check components
+            is_assessor_match = profile.role == 'Assessor' and self.assessment.assessor == user
+            is_admin_role = profile.role == 'Admin'
+            result = is_assessor_match or is_admin_role
+            print(f"DEBUG (is_update_allowed): StepAssignee=Assessor, UserRole={profile.role}, IsAssessorMatch={is_assessor_match}, IsAdmin={is_admin_role}, Result={result}")
+            return result
+        elif assignee_type == 'Both':
+            # Explicitly check components
+            is_client_user = profile.role == 'Client' and profile.client is not None and self.assessment.client is not None and self.assessment.client == profile.client
+            is_assessor_match = profile.role == 'Assessor' and self.assessment.assessor == user
+            is_admin_role = profile.role == 'Admin'
+            is_assessor_admin = is_assessor_match or is_admin_role
+            result = is_client_user or is_assessor_admin
+            print(f"DEBUG (is_update_allowed): StepAssignee=Both, IsClient={is_client_user}, IsAssessorAdmin={is_assessor_admin}, Result={result}")
+            return result
+
+        print(f"DEBUG (is_update_allowed): Unknown AssigneeType '{assignee_type}', returning False.") # Added print
+        return False
 
 
 
+class Conversation(models.Model):
+    # One conversation per assessment between client and assessor
+    assessment = models.OneToOneField(
+        'Assessment', # Assuming Assessment is defined in this models.py file
+        on_delete=models.CASCADE,
+        related_name='conversation'
+    )
+    # Use settings.AUTH_USER_MODEL for consistency with Django best practices
+    # Ensure your UserProfile model correctly links to settings.AUTH_USER_MODEL
+    # The client and assessor here are the actual User objects.
+    client = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE, # Or models.SET_NULL if you want convos to persist if a user is deleted
+        related_name='client_conversations',
+        help_text="The client user participating in the conversation."
+        # Consider adding limit_choices_to={'userprofile__role': 'Client'} if applicable
+    )
+    assessor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE, # Or models.SET_NULL
+        related_name='assessor_conversations',
+        help_text="The assessor user participating in the conversation."
+        # Consider adding limit_choices_to={'userprofile__role': 'Assessor'} if applicable
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True) # Good practice to track updates
+
+    class Meta:
+        unique_together = ('assessment', 'client', 'assessor') # Ensures one convo per unique trio, though OneToOneField on assessment already makes it unique per assessment.
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"Conversation for Assessment ID: {self.assessment.id}"
+
+    # Optional: Add a property to get the other participant
+    def get_other_participant(self, user):
+        if user == self.client:
+            return self.assessor
+        elif user == self.assessor:
+            return self.client
+        return None
+
+    # Optional: Get last message for display in lists
+    def get_last_message(self):
+        return self.messages.order_by('-timestamp').first()
 
 
+class Message(models.Model):
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name='messages'
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE, # Or models.SET_NULL
+        related_name='sent_messages'
+    )
+    content = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    read_by = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name='read_messages',
+        blank=True
+    )
 
+    class Meta:
+        ordering = ['timestamp'] # Show oldest messages first in a conversation
+
+    def __str__(self):
+        return f"Message by {self.sender.username} in Conversation for {self.conversation.assessment.id} at {self.timestamp.strftime('%Y-%m-%d %H:%M')}"
+
+    def mark_as_read(self, user): # Renamed from 'mark_read' to be more descriptive
+        """Adds the user to the read_by set if not already present."""
+        if not self.read_by.filter(pk=user.pk).exists():
+            self.read_by.add(user)
+            # Optionally, you could also update the conversation's updated_at timestamp here
+            # self.conversation.updated_at = timezone.now()
+            # self.conversation.save(update_fields=['updated_at'])
+            return True
+        return False

@@ -1,0 +1,220 @@
+{% load i18n tracker_tags %}
+
+<div class="vertical-workflow-nav card shadow-sm">
+  <div class="card-header bg-light">
+    <h5 class="mb-0">{% translate "Assessment Progress" %}</h5>
+  </div>
+  <ul class="list-group list-group-flush" id="workflow-steps-navigator">
+    {% if workflow_steps %}
+      {% for step in workflow_steps %}
+        {% if step and step.pk %}
+
+
+            <li class="list-group-item workflow-item p-0
+                       {% if step.status == 'Complete' %}status-completed{% endif %}
+                       {% if step == current_step and step.status != 'HelpNeeded' %}status-current active-step-item current-server-active{% endif %}
+                       {% if step.status == 'HelpNeeded' %}status-help-needed warning-step-item{% endif %}
+                       {% if step.status == 'InProgress' %}status-in-progress{% endif %}
+                       {% if step.status == 'NotStarted' and step != current_step %}status-not-started{% endif %}"
+                id="nav-step-{{ step.step_definition.step_order }}"
+                data-step-order="{{ step.step_definition.step_order }}">
+
+              <div class="workflow-line-container">
+                <div class="workflow-line top-line"></div>
+                <div class="workflow-marker">
+                    {% if step.status == 'Complete' %}
+                        <i class="fas fa-check-circle"></i>
+                    {% elif step == current_step and step.status != 'HelpNeeded' %}
+                        <i class="fas fa-circle-play icon-current-animated"></i>
+                    {% elif step.status == 'HelpNeeded' %}
+                        <i class="fas fa-exclamation-circle"></i>
+                    {% else %}
+
+                        <i class="far fa-circle icon-not-started"></i>
+                    {% endif %}
+                </div>
+                <div class="workflow-line bottom-line"></div>
+              </div>
+
+              <a href="#"
+                 class="workflow-step-link d-flex flex-column align-items-start p-3 text-decoration-none"
+                 hx-get="{% url 'tracker:load_assessment_card_content' assessment_pk=assessment.pk step_pk=step.pk %}"
+                 hx-target="#main-assessment-content-area"
+                 hx-swap="innerHTML"
+                 data-step-name="{{ step.step_definition.name|slugify }}"
+                 aria-current="{% if step == current_step and step.status != 'HelpNeeded' %}page{% else %}false{% endif %}">
+
+                <div class="step-heading d-flex align-items-center">
+                    <span class="step-name fw-medium me-2">{{ step.step_definition.name }}</span>
+                    <span class="assignee-icon" title="{% translate 'Assigned to:' %} {{ step.step_definition.get_assignee_type_display }}">
+                        {% if step.step_definition.assignee_type == 'Applicant' %}
+                            <i class="fas fa-user fa-fw"></i>
+                        {% elif step.step_definition.assignee_type == 'Assessor' %}
+                            <i class="fas fa-user-shield fa-fw"></i>
+                        {% elif step.step_definition.assignee_type == 'Both' %}
+                            <i class="fas fa-users fa-fw"></i>
+                        {% endif %}
+                    </span>
+                </div>
+                <small class="step-status-text text-body-secondary">
+                  {% if step.status == 'Complete' %}
+                      {% translate "Completed" %}
+                      {% if step.completed_by %}{% blocktranslate with user=step.completed_by.username date=step.completed_at|date:"d M Y" %}by {{ user }} on {{ date }}{% endblocktranslate %}{% endif %}
+                  {% elif step.status == 'HelpNeeded' %}
+                      <span class="text-warning fw-bold"><i class="fas fa-exclamation-circle me-1"></i>{% translate "Help Needed" %}</span>
+                  {% elif step == current_step and step.status != 'HelpNeeded' %}
+                      <span class="text-primary fw-bold">{% translate "Current Step" %}</span>
+                  {% else %}
+                      {{ step.get_status_display }}
+                  {% endif %}
+                </small>
+              </a>
+            </li>
+        {% else %}
+            <li class="list-group-item p-3 text-danger workflow-item status-error">
+                <div class="workflow-line-container">
+                    <div class="workflow-line top-line"></div>
+                    <div class="workflow-marker"><i class="fas fa-times-circle"></i></div>
+                    <div class="workflow-line bottom-line"></div>
+                </div>
+                <div class="ps-3">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Error: Invalid workflow step data.
+                </div>
+            </li>
+        {% endif %}
+      {% endfor %}
+    {% else %}
+      <li class="list-group-item text-muted">{% translate "Workflow steps not yet defined." %}</li>
+    {% endif %}
+  </ul>
+</div>
+
+{# --- CSS Styles from previous response - no changes needed here --- #}
+<style>
+  .vertical-workflow-nav .workflow-item {
+    position: relative;
+    padding-left: 45px !important; /* Space for line and marker */
+    border: none; /* Remove default list-group borders */
+    transition: background-color 0.2s ease-in-out;
+  }
+  .vertical-workflow-nav .workflow-item:hover {
+    background-color: #f8f9fa; /* Light hover for the whole item */
+  }
+
+  .workflow-line-container {
+    position: absolute;
+    left: 18px; /* (Marker width (e.g., 24px) / 2) - (Line width (e.g., 2px) / 2) + padding adjustment */
+    top: 0;
+    bottom: 0;
+    width: 24px; /* Approx marker size */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    z-index: 1;
+  }
+
+  .workflow-line {
+    width: 2px; /* Tube line thickness */
+    background-color: #dee2e6; /* Default (pending) line color - Bootstrap's border color */
+    flex-grow: 1;
+  }
+  .workflow-item:first-child .top-line { visibility: hidden; }
+  .workflow-item:last-child .bottom-line { visibility: hidden; }
+
+  .workflow-marker {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background-color: #fff; /* To punch out the line */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1em; /* Icon size relative to marker */
+    border: 2px solid #dee2e6; /* Default (pending) marker border */
+    z-index: 2; /* Above the line */
+    transition: all 0.3s ease;
+  }
+  .workflow-marker i {
+    transition: color 0.3s ease;
+  }
+
+  /* --- Styling based on step status --- */
+  .workflow-item.status-not-started .workflow-marker { border-color: #adb5bd; }
+  .workflow-item.status-not-started .workflow-marker i { color: #adb5bd; }
+
+  .workflow-item.status-in-progress .workflow-marker { border-color: var(--bs-info, #0dcaf0); }
+  .workflow-item.status-in-progress .workflow-marker i { color: var(--bs-info, #0dcaf0); }
+  .workflow-item.status-in-progress .top-line { background-color: var(--bs-success, #198754); }
+  .workflow-item.status-in-progress .bottom-line { background-color: #dee2e6; }
+
+  .workflow-item.status-current .workflow-marker {
+    border-color: var(--bs-primary, #0d6efd);
+    background-color: var(--bs-primary, #0d6efd);
+    transform: scale(1.15);
+    box-shadow: 0 0 0 4px rgba(var(--bs-primary-rgb), 0.25);
+  }
+  .workflow-item.status-current .workflow-marker i {
+    color: #fff;
+  }
+  .workflow-item.status-current.active-step-item,
+  .workflow-item.status-current.current-server-active {
+    background-color: #e7f1ff;
+  }
+  .workflow-item.status-current .top-line { background-color: var(--bs-success, #198754); }
+  .workflow-item.status-current .bottom-line { background-color: var(--bs-primary, #0d6efd); }
+
+  .workflow-item.status-completed .workflow-marker {
+    border-color: var(--bs-success, #198754);
+    background-color: var(--bs-success, #198754);
+  }
+  .workflow-item.status-completed .workflow-marker i {
+    color: #fff;
+  }
+  .workflow-item.status-completed .top-line,
+  .workflow-item.status-completed .bottom-line {
+    background-color: var(--bs-success, #198754);
+  }
+  .workflow-item.status-current:first-child .top-line,
+  .workflow-item.status-in-progress:first-child .top-line {
+      background-color: #dee2e6;
+  }
+
+  .workflow-item.status-help-needed .workflow-marker {
+    border-color: var(--bs-warning, #ffc107);
+    background-color: #fff;
+  }
+  .workflow-item.status-help-needed .workflow-marker i {
+    color: var(--bs-warning, #ffc107);
+  }
+  .workflow-item.status-help-needed.warning-step-item {
+    background-color: #fff3cd;
+  }
+  .workflow-item.status-help-needed .top-line { background-color: var(--bs-success, #198754); }
+  .workflow-item.status-help-needed .bottom-line { background-color: var(--bs-warning, #ffc107); }
+
+  .workflow-item.status-error .workflow-marker { border-color: var(--bs-danger, #dc3545); }
+  .workflow-item.status-error .workflow-marker i { color: var(--bs-danger, #dc3545); }
+
+  .workflow-step-link {
+    width: 100%;
+    color: #212529;
+    margin-left: 15px;
+  }
+  .vertical-workflow-nav .workflow-item.active-step-item .workflow-step-link .step-name,
+  .vertical-workflow-nav .workflow-item.current-server-active .workflow-step-link .step-name {
+      color: var(--bs-primary, #0d6efd);
+      font-weight: 500;
+  }
+
+  .step-heading { margin-bottom: 0.25rem; }
+  .step-name { font-size: 0.95rem; }
+  .assignee-icon { font-size: 0.85em; color: #6c757d; }
+  .step-status-text { font-size: 0.75rem; }
+
+  .icon-current-animated { animation: pulseRing 1.8s infinite ease-in-out; }
+  @keyframes pulseRing {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); }
+  }
+</style>

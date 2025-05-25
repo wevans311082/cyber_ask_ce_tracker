@@ -525,3 +525,14 @@ def last_uploaded_report(uploaded_reports_queryset):
     if uploaded_reports_queryset:
         return uploaded_reports_queryset.order_by('-upload_date').first()
     return None
+
+
+@register.filter(name='get_item')
+def get_item(dictionary, key):
+    """
+    Allows accessing dictionary items with a variable key in Django templates.
+    Usage: {{ my_dictionary|get_item:my_key_variable }}
+    """
+    if hasattr(dictionary, 'get'):
+        return dictionary.get(key)
+    return None

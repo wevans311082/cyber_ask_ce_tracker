@@ -5,75 +5,177 @@
   {% translate "Assessment Details" %} - #{{ assessment.id }} - {{ assessment.client.name }}
 {% endblock %}
 
-{% block extra_head %} {# Use extra_head for page-specific head elements #}
-    {# If you had specific CSS or meta tags for this page, they would go here #}
-    {# Example: <link rel="stylesheet" href="{% static 'tracker/css/assessment_detail_specific.css' %}"> #}
-    {% include "tracker/partials/client_extra_head.html" %} {# Include shared head elements if needed #}
+{% block extra_head %}
+    {% include "tracker/partials/client_extra_head.html" %}
+    <style>
+      /* Ensure main content area takes up available space */
+      .main-content-row {
+        min-height: calc(100vh - 200px); /* Adjust based on your header/footer */
+      }
+
+      /* --- Card Fade-in Animation --- */
+      #main-assessment-content-area > .card,
+      #main-assessment-content-area > div > .card { /* If cards are wrapped in another div by include */
+        animation: fadeIn 0.5s ease-in-out;
+      }
+
+      @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      /* --- HTMX Loading State --- */
+      /* Style for the area that will be updated, while waiting for HTMX response */
+      #main-assessment-content-area.htmx-request,
+      #main-assessment-content-area.htmx-request .card { /* Apply to existing card during swap */
+        opacity: 0.5; /* Dim the current content */
+        transition: opacity 300ms ease-in-out;
+      }
+      /* Optional: Add a spinner or message */
+      #main-assessment-content-area.htmx-request::before {
+        content: "{% translate 'Loading...' %}"; /* Basic text loading indicator */
+        position: absolute;
+        top: 40%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-style: italic;
+        color: #6c757d; /* Bootstrap muted color */
+        padding: 10px 20px;
+        background-color: rgba(255, 255, 255, 0.8);
+        border-radius: 5px;
+        z-index: 10; /* Ensure it's above the dimmed content */
+      }
+    </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
-  <div class="row">
+  <div class="row main-content-row">
 
-    {# Sidebar Navigation #}
-    <nav class="col-md-3 col-lg-2 d-md-block bg-light sidebar collapse" id="sidebarMenu">
-       {% include "tracker/partials/client_sidebar_nav.html" %} {# Include the sidebar navigation #}
+    {# New Vertical Workflow Navigation Sidebar #}
+    <nav class="col-md-4 col-lg-3 d-md-block bg-white border-end p-0" id="verticalWorkflowSidebar">
+       {% include "tracker/partials/_client_vertical_workflow_nav.html" with assessment=assessment current_step=current_step checklist_step_pk=checklist_step_pk %}
     </nav>
 
-    {# Main Content Area #}
-    <main class="col-md-6 col-lg-7 ms-sm-auto px-md-4">
+    {# Main Content Area - For Dynamic Cards #}
+    <main class="col-md-8 col-lg-9 ms-sm-auto px-md-4 py-3">
       {% include "tracker/partials/client_main_header.html" %}
 
-      {# CHANGES BEGIN - Add wrapper div with data-visual-url #}
-      <div id="workflow-visual-container" data-visual-url="{% url 'tracker:client_workflow_visual_partial' pk=assessment.id %}">
-          {% include "tracker/partials/client_workflow_visual.html" %}
+      <div class="mb-3 text-end">
+          <button class="btn btn-outline-info btn-sm"
+                  hx-get="{% url 'tracker:load_named_card' assessment_pk=assessment.pk card_name='assessment_info' %}"
+                  hx-target="#main-assessment-content-area"
+                  hx-swap="innerHTML"
+                  title="{% translate 'View Assessment Information' %}">
+              <i class="fas fa-info-circle me-1"></i> {% translate "View Assessment Info" %}
+          </button>
+          <button class="btn btn-outline-secondary btn-sm"
+                  hx-get="{% url 'tracker:load_named_card' assessment_pk=assessment.pk card_name='workflow_checklist' %}"
+                  hx-target="#main-assessment-content-area"
+                  hx-swap="innerHTML"
+                  title="{% translate 'View Full Workflow Checklist' %}">
+              <i class="fas fa-tasks me-1"></i> {% translate "View Workflow Checklist" %}
+          </button>
       </div>
-      {# CHANGES END #}
 
-      {% include "tracker/partials/client_scope_summary.html" %}
-
-      {# CHANGES BEGIN - Add wrapper div with data-assessment-id #}
-      <div id="workflow-checklist-wrapper" data-assessment-id="{{ assessment.id }}">
-          {% include "tracker/partials/client_workflow_checklist.html" %}
+      <div id="main-assessment-content-area" class="mb-4">
+        {% if initial_card_template_path %}
+            {% include initial_card_template_path with assessment=assessment workflow_step=current_step step=current_step status_choices=status_choices can_update_step=initial_card_can_update_step hide_actions=initial_card_hide_actions card_title=initial_card_title only_show_notes=initial_card_only_show_notes form=initial_card_form object=initial_card_object %}
+            {# Ensure 'initial_card_can_update_step' is passed from your view's context #}
+        {% elif current_step and current_step.step_definition.card_template_path %}
+             {# THIS IS THE CORRECTED LINE #}
+             {% include current_step.step_definition.card_template_path with assessment=assessment workflow_step=current_step step=current_step status_choices=status_choices can_update_step=current_step.is_update_allowed_for_current_user %}
+             {# You need to ensure 'current_step.is_update_allowed_for_current_user' is set in the view context for 'current_step' #}
+        {% else %}
+             <div class="card">
+                <div class="card-body">
+                    <p class="text-muted">{% translate "Select a step from the left to view its details or click 'View Workflow Checklist'." %}</p>
+                </div>
+            </div>
+        {% endif %}
       </div>
-       {# CHANGES END #}
 
-      {% include "tracker/partials/client_date_scheduling.html" %}
-      {% include "tracker/partials/client_networks_card.html" %}
-      {% include "tracker/partials/client_cloud_services_card.html" %}
-      {% include "tracker/partials/client_external_ips_card.html" %}
-      {% include "tracker/partials/client_ce_plus_sample_card.html" %}
-      {% include "tracker/partials/client_downloads_card.html" %}
-      {% include "tracker/partials/client_assessment_scan_history_card.html" with tenable_scan_logs=tenable_scan_logs assessment=assessment %}
+      {# Workflow Checklist Accordion has been removed #}
+
     </main>
-
-    {# Right Sidebar Info Area #}
-    <aside class="col-md-3 col-lg-3 order-md-first order-lg-last">
-      {% include "tracker/partials/client_info_sidebar.html" %}
-    </aside>
 
   </div>
 </div>
 
-{# Modals should typically be outside the main grid structure for positioning #}
 {% include "tracker/partials/client_log_modal.html" %}
 
-{% csrf_token %} {# Add CSRF token once, likely needed for AJAX POSTs from this page #}
+{% csrf_token %}
 {% endblock %}
 
 
-{% block extra_js %} {# Use extra_js for page-specific scripts #}
-    {# Load primary JS file for this view #}
+{% block extra_js %}
     <script src="{% static 'tracker/js/assessment_details.js' %}"></script>
-
-    {# Include shared extra JS if needed #}
     {% include "tracker/partials/client_extra_js.html" %}
-
-    {# Add any minor, page-specific initialization script here if necessary #}
     <script>
-        // console.log("Client Assessment Detail page specific JS loaded.");
-        // Example: Initialize tooltips if needed
-        // const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]');
-        // const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl));
+    document.addEventListener('DOMContentLoaded', function() {
+        const workflowNavList = document.getElementById('workflow-steps-navigator');
+        const mainContentArea = document.getElementById('main-assessment-content-area');
+
+        function updateActiveNavItem(targetIdentifier) {
+            if (!workflowNavList) return;
+            workflowNavList.querySelectorAll('.list-group-item').forEach(item => {
+                item.classList.remove('active-step-item', 'current-server-active');
+                const link = item.querySelector('.workflow-step-link');
+                const genericLink = item.querySelector('a');
+                if (link) {
+                    link.classList.remove('current-step-link', 'text-primary', 'fw-bold');
+                    if (!link.classList.contains('completed-step') && !link.classList.contains('help-needed-step')) {
+                        link.classList.add('text-muted');
+                    }
+                    const icon = link.closest('.list-group-item').querySelector('.step-icon');
+                    if (icon) icon.classList.remove('active-icon-animation');
+                } else if (genericLink) {
+                    genericLink.classList.remove('text-primary', 'fw-bold');
+                     if (!genericLink.classList.contains('static-active-link')) {
+                        genericLink.classList.add('text-muted');
+                    }
+                }
+            });
+
+            let activeLink;
+            if (typeof targetIdentifier === 'number' || !isNaN(parseInt(targetIdentifier))) {
+                 activeLink = workflowNavList.querySelector(`.workflow-step-link[hx-get*="/step/${targetIdentifier}/"]`);
+            }
+
+            if (activeLink && activeLink.closest('.list-group-item')) {
+                const activeListItem = activeLink.closest('.list-group-item');
+                activeListItem.classList.add('active-step-item');
+                activeLink.classList.add('current-step-link', 'text-primary', 'fw-bold');
+                activeLink.classList.remove('text-muted');
+                const activeIcon = activeListItem.querySelector('.step-icon');
+                 if (activeIcon && activeLink.classList.contains('current-step-link') &&
+                    !activeLink.classList.contains('completed-step') &&
+                    !activeLink.classList.contains('help-needed-step')) {
+                     if (activeIcon.classList.contains('fa-circle-play') || activeListItem.querySelector('.step-icon-stack')) {
+                        activeIcon.classList.add('active-icon-animation');
+                    }
+                }
+            }
+        }
+
+        document.body.addEventListener('updateNavActiveState', function(event) {
+            if (event.detail) {
+                if (event.detail.stepPk) {
+                    updateActiveNavItem(event.detail.stepPk);
+                }
+            }
+        });
+
+        {% if current_step and current_step.pk %}
+            updateActiveNavItem('{{ current_step.pk|escapejs }}');
+        {% elif workflow_steps.0 and workflow_steps.0.pk %}
+            // updateActiveNavItem('{{ workflow_steps.0.pk|escapejs }}');
+        {% endif %}
+
+        if (mainContentArea) {
+            mainContentArea.addEventListener('htmx:beforeRequest', function(evt) { });
+            mainContentArea.addEventListener('htmx:afterRequest', function(evt) { });
+        }
+    });
     </script>
 {% endblock %}

@@ -1,4 +1,4 @@
-{% load tz humanize %} {# Ensure tz and humanize are loaded for date formatting #}
+{% load tz humanize tracker_tags %}
 
 <div class="card mt-4 shadow-sm">
   <div class="card-header bg-light">
@@ -6,7 +6,7 @@
       <i class="fas fa-history me-2 text-primary"></i>Tenable Scan History
     </h5>
   </div>
-  <div class="card-body p-0"> {# Removed default padding from card-body to let list-group handle it #}
+  <div class="card-body p-0">
     {% if tenable_scan_logs %}
       <div class="accordion accordion-flush" id="scanHistoryAccordion">
         {% for scan_log in tenable_scan_logs %}
@@ -54,6 +54,20 @@
                     {% if scan_log.tenable_scan_run_uuid %}
                       <p class="mb-1"><strong>Scan Run UUID (Instance):</strong> <code class="small">{{ scan_log.tenable_scan_run_uuid }}</code></p>
                     {% endif %}
+                    {% if scan_log.saved_report_path %}
+                      <p class="mb-1"><strong>Saved Report:</strong> <code>{{ scan_log.saved_report_path }}</code>
+                        {% if scan_log.report_last_saved_at %}
+                          (Saved: {{ scan_log.report_last_saved_at|naturaltime }})
+                        {% endif %}
+                      </p>
+                    {% endif %}
+                    {# CHANGES BEGIN — GGGGGGGGGGGG-2025-05-18 20:35:00 #}
+                    {% if scan_log.data_parsed_at %}
+                      <p class="mb-1"><strong>Data Parsed:</strong> {{ scan_log.data_parsed_at|naturaltime }}</p>
+                    {% else %}
+                      <p class="mb-1 text-muted"><em>Scan data not yet processed into detailed models.</em></p>
+                    {% endif %}
+                    {# CHANGES END — GGGGGGGGGGGG-2025-05-18 20:35:00 #}
                   </div>
                 </div>
 
@@ -63,7 +77,6 @@
                     <pre class="small bg-light p-2 border rounded" style="white-space: pre-wrap; word-break: break-all;">{{ scan_log.log_message|default:"No specific error message logged." }}</pre>
                   </div>
                 {% elif scan_log.log_message and scan_log.status != "LAUNCHED" and scan_log.status != "COMPLETED" %}
-                  {# Show log message for other non-error, non-success statuses if it exists #}
                   <div class="mt-2">
                      <p class="mb-1"><strong>Log Message:</strong></p>
                      <pre class="small bg-light p-2 border rounded" style="white-space: pre-wrap; word-break: break-all;">{{ scan_log.log_message }}</pre>
@@ -72,34 +85,67 @@
 
                 <hr class="my-3">
 
-                <div class="d-flex justify-content-end align-items-center">
-                  {# Button to load/refresh summary via HTMX #}
-                  <button class="btn btn-sm btn-outline-primary"
-                          hx-get="{% url 'tracker:get_scan_log_summary_htmx' scan_log.id %}"
-                          hx-target="#scan-summary-{{ scan_log.id.hex }}"
-                          hx-swap="innerHTML"
-                          data-bs-toggle="collapse"
-                          data-bs-target="#scan-summary-collapse-{{ scan_log.id.hex }}"
-                          aria-expanded="false"
-                          aria-controls="scan-summary-collapse-{{ scan_log.id.hex }}">
-                    <i class="fas fa-file-alt me-1"></i>View/Refresh Summary
-                  </button>
+                <div class="d-flex justify-content-end align-items-center mb-2 flex-wrap">
+                    <button class="btn btn-sm btn-outline-primary mb-1 me-2"
+                            hx-get="{% url 'tracker:get_scan_log_summary_htmx' scan_log.id %}"
+                            hx-target="#scan-summary-{{ scan_log.id.hex }}"
+                            hx-swap="innerHTML"
+                            data-bs-toggle="collapse"
+                            data-bs-target="#scan-summary-collapse-{{ scan_log.id.hex }}"
+                            aria-expanded="false"
+                            aria-controls="scan-summary-collapse-{{ scan_log.id.hex }}">
+                        <i class="fas fa-file-alt me-1"></i>View/Refresh Summary
+                    </button>
 
-                  {# CHANGES BEGIN - GEMINI-2025-05-17 - Add View Raw Results button #}
-                  {% if scan_log.status == "COMPLETED" and scan_log.tenable_scan_run_uuid and scan_log.tenable_scan_definition_id %}
-                    <a href="{% url 'tracker:view_scan_results_raw' assessment_pk=scan_log.assessment.id log_id=scan_log.id %}"
-                       class="btn btn-sm btn-outline-info ms-2"
-                       target="_blank"
-                       title="View raw vulnerability data for this scan run (opens new tab)">
-                        <i class="fas fa-code me-1"></i>View Raw Results
-                    </a>
-                  {% endif %}
+                    {% if scan_log.saved_report_path %}
+                        <a href="{% url 'tracker:view_scan_results_raw' assessment_pk=scan_log.assessment.id log_id=scan_log.id %}"
+                           class="btn btn-sm btn-outline-info mb-1 me-2"
+                           target="_blank"
+                           title="View the saved raw vulnerability data for this scan run (opens new tab)">
+                            <i class="fas fa-code me-1"></i>View Saved Raw
+                        </a>
+                    {% else %}
+                         <button class="btn btn-sm btn-outline-secondary mb-1 me-2" disabled title="No report has been fetched and saved yet.">
+                            <i class="fas fa-code me-1"></i>View Saved Raw
+                        </button>
+                    {% endif %}
 
+                    {# CHANGES BEGIN — GGGGGGGGGGGG-2025-05-18 20:35:00 #}
+                    {% if scan_log.data_parsed_at %}
+                        <a href="{% url 'tracker:view_parsed_scan_results' assessment_pk=scan_log.assessment.id log_id=scan_log.id %}"
+                           class="btn btn-sm btn-success mb-1 me-2"
+                           target="_blank" {# Opens in a new tab #}
+                           title="Review detailed parsed results for this scan">
+                            <i class="fas fa-tasks me-1"></i>Review Parsed Results
+                        </a>
+                    {% else %}
+                        <button class="btn btn-sm btn-outline-secondary mb-1 me-2" disabled title="Scan data has not been parsed into detailed models yet. Fetch results first.">
+                            <i class="fas fa-tasks me-1"></i>Review Parsed Results
+                        </button>
+                    {% endif %}
+                    {# CHANGES END — GGGGGGGGGGGG-2025-05-18 20:35:00 #}
+
+                    {% if scan_log.status == "COMPLETED" and scan_log.tenable_scan_run_uuid %}
+                        <button class="btn btn-sm btn-outline-success mb-1 me-2"
+                                hx-get="{% url 'tracker:htmx_fetch_tenable_scan_results' scan_log.id %}"
+                                hx-target="#fetch-status-{{ scan_log.id.hex }}"
+                                hx-swap="innerHTML"
+                                hx-indicator="#fetch-spinner-{{ scan_log.id.hex }}"
+                                title="Fetch and save the latest vulnerability data for this scan run from Tenable.io. This may overwrite a previously fetched report for this log entry and will re-parse the data.">
+                            <i class="fas fa-cloud-download-alt me-1"></i>Fetch & Parse Results
+                            <span class="spinner-border spinner-border-sm ms-1" role="status" aria-hidden="true" id="fetch-spinner-{{ scan_log.id.hex }}" style="display: none;"></span>
+                        </button>
+                    {% else %}
+                        <button class="btn btn-sm btn-outline-secondary mb-1 me-2" disabled title="Scan must be COMPLETED and have a Scan Run UUID to fetch results.">
+                            <i class="fas fa-cloud-download-alt me-1"></i>Fetch & Parse Results
+                        </button>
+                    {% endif %}
                 </div>
+                <div id="fetch-status-{{ scan_log.id.hex }}" class="mt-2 text-end"></div>
+
 
                 <div class="collapse mt-2" id="scan-summary-collapse-{{ scan_log.id.hex }}">
                     <div id="scan-summary-{{ scan_log.id.hex }}" class="p-2 border rounded bg-white">
-                        {# Content will be loaded here by HTMX #}
                         <small class="text-muted">Click "View/Refresh Summary" to load details.</small>
                     </div>
                 </div>
@@ -110,7 +156,7 @@
         {% endfor %}
       </div>
     {% else %}
-      <div class="card-body"> {# Add padding back if no logs #}
+      <div class="card-body">
         <p class="text-muted mb-0">No Tenable scans have been logged for this assessment yet.</p>
       </div>
     {% endif %}

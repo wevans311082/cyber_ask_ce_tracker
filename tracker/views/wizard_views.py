@@ -19,9 +19,18 @@ from django.core.exceptions import ValidationError
 from formtools.wizard.views import SessionWizardView
 
 
+from tracker.mixin import (
+AssessorRequiredMixin,
+AssessorOrAdminRequiredMixin,
+AdminRequiredMixin,
+UserPassesTestMixin,
+ClientRequiredMixin,
+
+)
+
 
 # Assuming your models are in .models relative to this views file
-from .models import Assessment, WorkflowStepDefinition, AssessmentWorkflowStep, UserProfile, Client
+from tracker.models import Assessment, WorkflowStepDefinition, AssessmentWorkflowStep, UserProfile, Client
 
 
 # Helper function for user access tests

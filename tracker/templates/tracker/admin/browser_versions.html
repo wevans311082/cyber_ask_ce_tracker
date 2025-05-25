@@ -1,0 +1,60 @@
+{% extends "tracker/base.html" %}
+{% load static tz i18n tracker_tags %}
+
+{% block title %}Current Browser Versions{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <h2 class="mb-4 fw-bold text-center">🧭 Current Browser Versions</h2>
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for browser in browsers %}
+        <div class="col">
+            <div class="card h-100 border-0 shadow-lg rounded-4 overflow-hidden position-relative">
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                        <h5 class="card-title mb-0 fw-semibold">{{ browser.name }}</h5>
+                        {% with icon_url=icon_map|get_item:browser.name %}
+    {% if icon_url %}
+    <img src="{{ icon_url }}"
+         alt="{{ browser.name }} logo"
+         height="32"
+         class="rounded shadow-sm"
+         style="background-color: white; padding: 4px;"
+         onerror="this.style.display='none';">
+    {% endif %}
+{% endwith %}
+                    </div>
+                    <ul class="list-unstyled mb-3 small text-muted">
+                        <li><strong>Version:</strong> {{ browser.version }}</li>
+                        <li><strong>Released:</strong> {{ browser.release_date|date:"M j, Y" }}</li>
+                        <li><strong>Engine:</strong> {{ browser.engine }} {{ browser.engine_version }}</li>
+                    </ul>
+
+                    {% if browser.status %}
+                        {% if browser.status == 'current' %}
+                            <span class="badge bg-success mb-2">🟢 {{ browser.status|title }}</span>
+                        {% elif browser.status == 'deprecated' %}
+                            <span class="badge bg-danger mb-2">🔴 {{ browser.status|title }}</span>
+                        {% else %}
+                            <span class="badge bg-warning text-dark mb-2">⚠️ {{ browser.status|title }}</span>
+                        {% endif %}
+                    {% endif %}
+
+                    {% if browser.manually_added %}
+                        <span class="badge bg-secondary mb-2">Custom Entry</span>
+                    {% endif %}
+
+                    {% if browser.release_notes %}
+                    <div class="d-grid mt-3">
+                        <a href="{{ browser.release_notes }}" target="_blank" class="btn btn-outline-primary btn-sm rounded-pill fw-semibold">
+                            🔗 View Release Notes
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

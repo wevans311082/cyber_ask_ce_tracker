@@ -1,0 +1,324 @@
+{% extends "tracker/base.html" %} {# Or your client-specific base template, e.g., client/base.html #}
+{% load static humanize tz tracker_tags %}
+
+{% block title %}{{ title|default:"Parsed Scan Results" }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'tracker:client_dashboard' %}">Dashboard</a></li>
+            {% if assessment %}
+            <li class="breadcrumb-item"><a href="{% url 'tracker:client_assessment_detail' assessment.pk %}">Assessment {{ assessment.assessment_id_display|default_if_none:assessment.pk|slice:":8" }}</a></li>
+            {% endif %}
+            <li class="breadcrumb-item active" aria-current="page">{{ title|default:"Parsed Scan Results" }}</li>
+        </ol>
+    </nav>
+
+    <h2 class="mb-3">{{ title|default:"Parsed Scan Results" }}</h2>
+
+    {% if error_message %}
+        <div class="alert alert-warning" role="alert">
+            <h5 class="alert-heading">Notice</h5>
+            <p class="mb-0">{{ error_message }}</p>
+        </div>
+    {% endif %}
+
+    {% if scan_log %}
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-light">
+            <h5 class="mb-0 d-flex justify-content-between align-items-center">
+                Scan Log Summary
+                <small class="text-muted">ID: {{ scan_log.id.hex|slice:":8" }}...</small>
+            </h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>Scan Name:</strong> {{ scan_log.scan_name|default:"N/A" }}</p>
+                    <p class="mb-1"><strong>Status:</strong> {{ scan_log.status|default:"N/A" }}</p>
+                    <p class="mb-1"><strong>Tenable Scan Run UUID:</strong> <code class="small">{{ scan_log.tenable_scan_run_uuid|default:"N/A" }}</code></p>
+                </div>
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>Report File:</strong> <code>{{ scan_log.saved_report_path|default:"N/A" }}</code></p>
+                    <p class="mb-1"><strong>Report Saved:</strong> {{ scan_log.report_last_saved_at|date:"d M Y H:i"|default:"N/A" }} ({{ scan_log.report_last_saved_at|naturaltime }})</p>
+                    <p class="mb-1"><strong>Data Parsed:</strong> {{ scan_log.data_parsed_at|date:"d M Y H:i"|default:"N/A" }} ({{ scan_log.data_parsed_at|naturaltime }})</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not asset_snapshots and not error_message %}
+        <div class="alert alert-info" role="alert">
+            No asset data snapshots were found for this scan log, or the data could not be processed.
+            If results were recently fetched, parsing might still be in progress or may have encountered an issue.
+        </div>
+    {% endif %}
+
+    <div class="accordion" id="assetSnapshotsAccordionMaster">
+        {% for snapshot in asset_snapshots %}
+            <div class="accordion-item mb-3 shadow-sm">
+                <h2 class="accordion-header" id="heading-snapshot-{{ snapshot.id.hex }}">
+                    <button class="accordion-button collapsed fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-snapshot-{{ snapshot.id.hex }}" aria-expanded="false" aria-controls="collapse-snapshot-{{ snapshot.id.hex }}">
+                        <i class="fas fa-desktop me-2"></i> Asset: {{ snapshot.scoped_item.identifier|default:"Unknown Identifier" }}
+                        <small class="ms-2 text-muted">({{ snapshot.scoped_item.get_item_type_display|default:"N/A" }})</small>
+                        {% if snapshot.ce_plus_assessment_failures_json %}
+                            <span class="badge bg-danger ms-auto me-2 animate-pulse">CE+ Failures: {{ snapshot.ce_plus_assessment_failures_json|length }}</span>
+                        {% else %}
+                            <span class="badge bg-success ms-auto me-2">CE+ Checks OK</span>
+                        {% endif %}
+                    </button>
+                </h2>
+                <div id="collapse-snapshot-{{ snapshot.id.hex }}" class="accordion-collapse collapse" aria-labelledby="heading-snapshot-{{ snapshot.id.hex }}" data-bs-parent="#assetSnapshotsAccordionMaster">
+                    <div class="accordion-body p-4">
+
+                        {# Scoped Item vs Parsed Data Overview #}
+                        <div class="row mb-4 g-3">
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-secondary text-white small">Scoped Item Details (Manual/Pre-Scan Entry)</div>
+                                    <ul class="list-group list-group-flush small">
+                                        <li class="list-group-item"><strong>Type:</strong> {{ snapshot.scoped_item.get_item_type_display|default:"N/A" }}</li>
+                                        <li class="list-group-item"><strong>Identifier:</strong> <code>{{ snapshot.scoped_item.identifier|default:"N/A" }}</code></li>
+                                        <li class="list-group-item"><strong>OS (Manual):</strong> {{ snapshot.scoped_item.operating_system.name|default:"Not Set" }}</li>
+                                        <li class="list-group-item"><strong>Make/Model (Manual):</strong> {{ snapshot.scoped_item.make_model|default:"Not Set" }}</li>
+                                        <li class="list-group-item"><strong>Network:</strong> {{ snapshot.scoped_item.network.name|default:"N/A" }}</li>
+                                        <li class="list-group-item"><strong>Role:</strong> {{ snapshot.scoped_item.role_function|truncatewords:10|default:"N/A" }}</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="card h-100">
+                                    <div class="card-header bg-info text-dark small">Scan Discovered Details (Primary)</div>
+                                    <ul class="list-group list-group-flush small">
+                                        <li class="list-group-item">
+                                            <strong>OS (Parsed):</strong> {{ snapshot.parsed_operating_system|default:"Not Found" }}
+                                            {% if snapshot.scoped_item.operating_system and snapshot.parsed_operating_system and snapshot.scoped_item.operating_system.name|lower not in snapshot.parsed_operating_system|lower and snapshot.parsed_operating_system|lower not in snapshot.scoped_item.operating_system.name|lower %}
+                                                <span class="badge bg-warning text-dark ms-1" title="Manual OS: {{ snapshot.scoped_item.operating_system.name }}. Parsed: {{ snapshot.parsed_operating_system }}"><i class="fas fa-exclamation-triangle me-1"></i>OS Mismatch</span>
+                                            {% elif not snapshot.scoped_item.operating_system and snapshot.parsed_operating_system %}
+                                                 <span class="badge bg-light text-dark border ms-1">New OS Info</span>
+                                            {% endif %}
+                                        </li>
+                                        <li class="list-group-item"><strong>Last Reboot:</strong> {{ snapshot.last_reboot_time|date:"d M Y H:i"|default:"Not Found" }}</li>
+                                        <li class="list-group-item"><strong>Hardware Mfr:</strong> {{ snapshot.hardware_info_json.manufacturer|default:"N/A" }}</li>
+                                        <li class="list-group-item">
+                                            <strong>Hardware Model:</strong> {{ snapshot.hardware_info_json.model|default:"N/A" }}
+                                            {% if snapshot.scoped_item.make_model and snapshot.hardware_info_json.model and snapshot.scoped_item.make_model|lower not in snapshot.hardware_info_json.model|lower and snapshot.hardware_info_json.model|lower not in snapshot.scoped_item.make_model|lower %}
+                                                <span class="badge bg-warning text-dark ms-1" title="Manual Make/Model: {{ snapshot.scoped_item.make_model }}. Parsed: {{ snapshot.hardware_info_json.model }}"><i class="fas fa-exclamation-triangle me-1"></i>Model Mismatch</span>
+                                            {% endif %}
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        {# Inner Accordion for Detailed Sections #}
+                        <div class="accordion mt-3" id="assetDetailsAccordion-{{ snapshot.id.hex }}">
+
+                            {% if snapshot.hardware_info_json %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-hw-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-hw-{{ snapshot.id.hex }}"><i class="fas fa-microchip me-2"></i>Hardware Information</button></h2>
+                                <div id="collapse-hw-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body small">
+                                        <p><strong>Manufacturer:</strong> {{ snapshot.hardware_info_json.manufacturer|default:"N/A" }}</p>
+                                        <p><strong>Model:</strong> {{ snapshot.hardware_info_json.model|default:"N/A" }}</p>
+                                        <p><strong>BIOS Version:</strong> {{ snapshot.hardware_info_json.bios_version|default:"N/A" }}</p>
+                                        <p><strong>BIOS Release Date:</strong> {{ snapshot.hardware_info_json.bios_release_date|default:"N/A" }}</p>
+                                        {% if snapshot.hardware_info_json.tpm_info %}
+                                            <h6>TPM Details:</h6>
+                                            {% for tpm in snapshot.hardware_info_json.tpm_info %}
+                                                <ul class="list-unstyled ps-3">
+                                                    <li>Manufacturer ID: {{ tpm.manufacturerid|default:"N/A" }}</li>
+                                                    <li>Version: {{ tpm.manufacturerversion|default:"N/A" }}</li>
+                                                    <li>Spec: {{ tpm.specversion|default:"N/A" }}</li>
+                                                    <li>Activated: {{ tpm.isactivated_initialvalue|default:"N/A" }}</li>
+                                                    <li>Enabled: {{ tpm.isenabled_initialvalue|default:"N/A" }}</li>
+                                                    <li>Owned: {{ tpm.isowned_initialvalue|default:"N/A" }}</li>
+                                                </ul>
+                                            {% empty %} <p class="text-muted">No TPM details found.</p>
+                                            {% endfor %}
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.installed_software.all %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-sw-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-sw-{{ snapshot.id.hex }}"><i class="fas fa-compact-disc me-2"></i>Installed Software ({{ snapshot.installed_software.count }})</button></h2>
+                                <div id="collapse-sw-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body p-0">
+                                        <ul class="list-group list-group-flush small" style="max-height: 300px; overflow-y: auto;">
+                                        {% for sw in snapshot.installed_software.all %}
+                                            <li class="list-group-item">{{ sw.name }} (Version: {{ sw.version|default:"N/A" }}, Publisher: {{ sw.publisher|default:"N/A" }})</li>
+                                        {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.antivirus_products.all %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-av-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-av-{{ snapshot.id.hex }}"><i class="fas fa-shield-virus me-2"></i>Antivirus Products ({{ snapshot.antivirus_products.count }})</button></h2>
+                                <div id="collapse-av-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body small">
+                                        {% for av in snapshot.antivirus_products.all %}
+                                            <div class="mb-2 p-2 border rounded bg-light-subtle">
+                                                <strong>{{ av.product_name|default:"N/A" }}</strong>
+                                                <ul class="list-unstyled ps-3 mb-0">
+                                                    <li>Version: {{ av.product_version|default:"N/A" }}</li>
+                                                    <li>Engine: {{ av.engine_version|default:"N/A" }}</li>
+                                                    <li>Signatures: {{ av.signature_version|default:"N/A" }}</li>
+                                                    <li>Sigs. Updated: {{ av.signatures_last_updated_dt|date:"d M Y H:i"|default:av.signatures_last_updated_text|default:"N/A" }} ({{av.signatures_last_updated_dt|naturaltime}})</li>
+                                                </ul>
+                                            </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.listening_services.all %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-ls-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-ls-{{ snapshot.id.hex }}"><i class="fas fa-network-wired me-2"></i>Listening Services ({{ snapshot.listening_services.count }})</button></h2>
+                                <div id="collapse-ls-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body p-0">
+                                        <ul class="list-group list-group-flush small" style="max-height: 300px; overflow-y: auto;">
+                                        {% for service in snapshot.listening_services.all %}
+                                            <li class="list-group-item">{{ service.protocol }}/{{ service.port }} - {{ service.process_name|default:service.service_display_name|default:"Unknown" }} {% if service.pid %}(PID: {{service.pid}}){% endif %}</li>
+                                        {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.network_config_json %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-net-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-net-{{ snapshot.id.hex }}"><i class="fas fa-ethernet me-2"></i>Network Configuration</button></h2>
+                                <div id="collapse-net-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body small">
+                                        {% if snapshot.network_config_json.mac_addresses %}
+                                            <p><strong>MAC Addresses:</strong> {{ snapshot.network_config_json.mac_addresses|join:", " }}</p>
+                                        {% endif %}
+                                        {% if snapshot.network_config_json.dns_servers %}
+                                            <p><strong>DNS Servers:</strong> {{ snapshot.network_config_json.dns_servers|join:", " }}</p>
+                                        {% endif %}
+                                        {% if snapshot.network_config_json.gateways %}
+                                            <p><strong>Gateways:</strong> {{ snapshot.network_config_json.gateways|join:", " }}</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.user_accounts_summary_json %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-usr-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-usr-{{ snapshot.id.hex }}"><i class="fas fa-users-cog me-2"></i>User Accounts & Policy</button></h2>
+                                <div id="collapse-usr-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body small">
+                                        {% if snapshot.user_accounts_summary_json.password_policy %}
+                                            <h6>Password Policy:</h6>
+                                            <ul class="list-unstyled ps-3">{% for key, val in snapshot.user_accounts_summary_json.password_policy.items %}<li>{{key}}: {{val}}</li>{% endfor %}</ul>
+                                        {% endif %}
+                                        {% if snapshot.user_accounts_summary_json.admin_group_members %}
+                                            <h6 class="mt-2">Admin Group Members:</h6>
+                                            <ul class="list-unstyled ps-3">{% for member in snapshot.user_accounts_summary_json.admin_group_members %}<li>{{member.name}} ({{member.type}})</li>{% endfor %}</ul>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.system_hardening_json %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-hrd-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-hrd-{{ snapshot.id.hex }}"><i class="fas fa-user-shield me-2"></i>System Hardening ({{ snapshot.system_hardening_json|length }})</button></h2>
+                                <div id="collapse-hrd-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body p-0">
+                                        <ul class="list-group list-group-flush small" style="max-height: 300px; overflow-y: auto;">
+                                        {% for check in snapshot.system_hardening_json %}
+                                            <li class="list-group-item"><strong>{{ check.check_name }}:</strong> {{ check.status_detail }} <em class="text-muted small">(Plugin: {{check.plugin_id_source}})</em></li>
+                                        {% endfor %}
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.smb_shares_json %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-smb-{{ snapshot.id.hex }}"><button class="accordion-button collapsed small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-smb-{{ snapshot.id.hex }}"><i class="fas fa-folder-open me-2"></i>SMB Shares ({{ snapshot.smb_shares_json|length }})</button></h2>
+                                <div id="collapse-smb-{{ snapshot.id.hex }}" class="accordion-collapse collapse" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body small">
+                                        <ul class="list-unstyled ps-3">{% for share in snapshot.smb_shares_json %}<li>{{ share.share_name }}</li>{% endfor %}</ul>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                            {% if snapshot.ce_plus_assessment_failures_json %}
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-ceplus-{{ snapshot.id.hex }}">
+                                    <button class="accordion-button {% if snapshot.ce_plus_assessment_failures_json %}text-danger fw-bold{% else %}collapsed{% endif %} small py-2" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-ceplus-{{ snapshot.id.hex }}">
+                                        <i class="fas fa-exclamation-triangle me-2 {% if not snapshot.ce_plus_assessment_failures_json %}text-success{% else %}text-danger{% endif %}"></i>CE+ Automated Check Summary ({{ snapshot.ce_plus_assessment_failures_json|length }} potential issues)
+                                    </button>
+                                </h2>
+                                <div id="collapse-ceplus-{{ snapshot.id.hex }}" class="accordion-collapse collapse {% if snapshot.ce_plus_assessment_failures_json %}show{% endif %}" data-bs-parent="#assetDetailsAccordion-{{ snapshot.id.hex }}">
+                                    <div class="accordion-body small">
+                                        {% if snapshot.ce_plus_assessment_failures_json %}
+                                            <ul class="list-group">
+                                            {% for failure in snapshot.ce_plus_assessment_failures_json %}
+                                                <li class="list-group-item list-group-item-danger">{{ failure }}</li>
+                                            {% endfor %}
+                                            </ul>
+                                        {% else %}
+                                            <p class="text-success mb-0"><i class="fas fa-check-circle me-1"></i>No automated CE+ check failures identified for this asset based on available data.</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+
+                        </div> </div> {# /.accordion-body for main asset snapshot #}
+                </div> {# /.accordion-collapse for main asset snapshot #}
+            </div> {# /.accordion-item for main asset snapshot #}
+        {% empty %}
+            {% if not error_message %}
+            <div class="alert alert-info mt-3" role="alert">
+                No detailed asset snapshots are available for this scan log. The scan might not have found any matching assets, or the data parsing step did not yield results.
+            </div>
+            {% endif %}
+        {% endfor %}
+    </div> <div class="mt-4">
+        {% if assessment %}
+        <a href="{% url 'tracker:client_assessment_detail' assessment.pk %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i> Back to Assessment Details
+        </a>
+        {% endif %}
+    </div>
+</div>
+
+<style>
+    /* Optional: Custom styles for better readability or emphasis */
+    .accordion-button.fw-semibold {
+        font-size: 1.1rem; /* Make asset identifier slightly larger */
+    }
+    .accordion-button.small {
+        font-size: 0.9rem; /* Make inner accordion headers smaller */
+    }
+    .badge.animate-pulse {
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    }
+    .bg-light-subtle { /* Custom class if not in your Bootstrap version */
+        background-color: #f8f9fa !important;
+    }
+</style>
+
+{% endblock %}

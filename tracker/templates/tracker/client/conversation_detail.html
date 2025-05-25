@@ -1,0 +1,101 @@
+{% extends "tracker/base.html" %}
+{% load i18n static tracker_tags %}
+
+{% block title %}
+    {% translate "Conversation for Assessment" %} #{{ conversation.assessment.id }}
+{% endblock %}
+
+{% block extra_head %}
+    {{ block.super }}
+    <style>
+        .chat-log { max-height: 500px; overflow-y: auto; border: 1px solid #dee2e6; padding: 1rem; border-radius: 0.25rem; margin-bottom: 1rem; background-color: #f8f9fa; }
+        .message-item { margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px dashed #e0e0e0; }
+        .message-item:last-child { border-bottom: none; margin-bottom: 0; }
+        .message-sender { font-weight: 600; color: var(--bs-primary); }
+        .message-timestamp { font-size: 0.75rem; color: #6c757d; }
+        .message-content { margin-top: 0.25rem; white-space: pre-wrap; word-wrap: break-word; }
+        .message-form .form-control { resize: vertical; }
+        .message-form button { min-width: 100px; }
+        .unread-badge { font-size: 0.7em; vertical-align: middle; }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fas fa-comments me-2 text-primary"></i>{% translate "Conversation" %}</h4>
+            <a href="{% url 'tracker:client_assessment_detail' pk=conversation.assessment.pk %}" class="btn btn-sm btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i>{% translate "Back to Assessment" %}
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <p class="mb-1"><strong>{% translate "Assessment ID:" %}</strong> #{{ conversation.assessment.id }}</p>
+                    <p class="mb-1"><strong>{% translate "Assessment Type:" %}</strong> {{ conversation.assessment.get_assessment_type_display }}</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="mb-1">
+                        <strong>{% translate "Participants:" %}</strong>
+                        {{ conversation.client.get_full_name|default:conversation.client.username }} (Client),
+                        {{ conversation.assessor.get_full_name|default:conversation.assessor.username }} (Assessor)
+                    </p>
+                </div>
+            </div>
+
+            <div id="chatLog" class="chat-log mb-3">
+                {% if messages_list %}
+                    {% for msg in messages_list %}
+                    <div class="message-item {% if msg.sender == request.user %}text-end{% else %}text-start{% endif %}">
+                        <div class="d-inline-block p-2 rounded {% if msg.sender == request.user %}bg-primary text-white{% else %}bg-light border{% endif %}" style="max-width: 75%;">
+                            <small class="message-sender">
+                                {% if msg.sender == request.user %}{% translate "You" %}{% else %}{{ msg.sender.get_full_name|default:msg.sender.username }}{% endif %}
+                            </small>
+                            <div class="message-content">{{ msg.content|linebreaksbr }}</div>
+                            <div class="message-timestamp text-end mt-1 {% if msg.sender == request.user %}text-light opacity-75{% else %}text-muted{% endif %}">
+                                {{ msg.timestamp|date:"H:i, d M Y" }}
+                                {# CHANGES BEGIN — 2025-05-22 22:20:00 #}
+                                {% if msg.sender == request.user %}
+                                    {% if msg.is_read_by_recipient %}
+                                        <i class="fas fa-check-double text-info ms-1" title="{% translate 'Read by recipient' %}"></i>
+                                    {% elif request.user in msg.read_by.all %}
+                                        {# Optional: Single check for "sent & self-read" (if needed) #}
+                                        {# <i class="fas fa-check ms-1" title="{% translate 'Sent' %}"></i> #}
+                                    {% endif %}
+                                {% endif %}
+                                {# CHANGES END — 2025-05-22 22:20:00 #}
+                            </small>
+                        </div>
+                        {% if msg.sender != request.user and request.user not in msg.read_by.all %}
+                            <span class="badge bg-info unread-badge ms-2">{% translate "New" %}</span>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-center text-muted">{% translate "No messages in this conversation yet. Start by typing a message below." %}</p>
+                {% endif %}
+            </div>
+
+            <form method="POST" class="message-form">
+                {% csrf_token %}
+                {% if form.non_field_errors %}<div class="alert alert-danger">{% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}</div>{% endif %}
+                <div class="mb-3">
+                    {{ form.content }}
+                    {% if form.content.errors %}<div class="invalid-feedback d-block">{% for error in form.content.errors %}<span>{{ error }}</span>{% endfor %}</div>{% endif %}
+                </div>
+                <div class="text-end">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-paper-plane me-1"></i>{% translate "Send" %}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const chatLog = document.getElementById('chatLog');
+        if (chatLog) { chatLog.scrollTop = chatLog.scrollHeight; }
+    });
+</script>
+{% endblock %}

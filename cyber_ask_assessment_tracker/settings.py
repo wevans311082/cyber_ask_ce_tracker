@@ -25,6 +25,9 @@ SECRET_KEY = 'django-insecure-%w&4&8q0+n-7qr^vmwfv58580f2s7rhinj1ymm(_j)gv$6*rzs
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
+OPENAI_API_KEY = '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'
+
+
 ALLOWED_HOSTS = []
 
 
@@ -42,6 +45,7 @@ INSTALLED_APPS = [
     'constance',
     'constance.backends.database',
     'django_celery_results',
+    'django_htmx',
 
 ]
 
@@ -56,6 +60,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django_htmx.middleware.HtmxMiddleware',
 ]
 
 ROOT_URLCONF = 'cyber_ask_assessment_tracker.urls'
@@ -235,7 +240,7 @@ LOGGING = {
 }
 
 
-
+TIDYCAL_API_KEY = 'eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9.eyJhdWQiOiIxIiwianRpIjoiOWM3N2U0ZDg1NjI3N2YxMWVlN2Q1MTVhY2MxMjVmMzhjMGQyYzQwOTIzMThhZGEwMGFmMzVhZjU0ZjA3NjRmN2Q5NGU1OTRiODYyMTM2ODkiLCJpYXQiOjE3NDgxNjcwMTAuMTU1Mjg3LCJuYmYiOjE3NDgxNjcwMTAuMTU1Mjg5LCJleHAiOjQ5MDM4NDA2MTAuMTQ2MzczLCJzdWIiOiIxNTQ4ODIiLCJzY29wZXMiOltdfQ.ZSOI6WgCzz1nTHwTc6vhH0Qqsn68VcPrkvfsQliwQTf9wBQQNka2Dcy-wx3tyOH95Okgg3ryDh07ITPyCZI0fk70oHV1Dg1mYEb0HB_6lecY-SWkcxqaSF0o0tE_bildxAhNTJec_70tPPfEPKniy4PvN7WAzyxs26BUhud9AM5dIUz6GPS1YP4amHm72zwizk8flIgQLMjPJsoCWEapyXrnQ-LsweUZw-sK-21hWgkrzq0tu3Mnc629cE2JG_DprMe-tqw1d0qEG5DIWd2e402MN4iuklYlQ5eST0Pxn7Aet4RrjxAlAuiSwRvzPbo-hC60qUKXL9YGzaHNmveMo4DidPqvtIY57cHJKE8Gw_u3Pc7XRGyOr8rlwmeaiAlREgG1QYxYX7ODid_y6DzgS9knWRgPxyl6WIFR5YM4JrNlucQEFgYczb0Tvl-trutgIW14Pb4uO72i_GiN5TDMD3bohkacopBldIl4f3ACOCUAsDd8pjGmeUzgLyU_mRxurw31bmUZkcLAzn970qFkJx-RUNK-OYzinlf5FfW4ugNutJT8S37ef61q4Nvbc7DixzfA7m0SdFL5wvHUiVkVsFJTslr0-_EUdgICmcvGXd0xgEdDJ_Ly4ZoOTGICX4dJlDSMpTEtrEcNEGxnjzjymIMGKLOafSdf8Fv0pdBHhgU'
 
 
 CELERY_BROKER_URL = 'redis://10.0.0.131:30036/0'

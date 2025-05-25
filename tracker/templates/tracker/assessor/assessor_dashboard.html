@@ -1,45 +1,49 @@
 {% extends "tracker/base.html" %}
+{% load i18n static tracker_tags %} {# Ensure tracker_tags is loaded for get_item filter #}
 
 {% block title %}Assessor Dashboard{% endblock %}
 
 {% block content %}
 <h2>Assessor Dashboard</h2>
-<p>Welcome, {{ request.user.first_name }} {{ request.user.last_name }} You have {{ assessment_count }} assessment(s) assigned.</p>
+<p>Welcome, {{ request.user.first_name|default:request.user.username }} {{ request.user.last_name|default:"" }}. You have {{ assessment_count }} assessment(s) assigned.</p>
 
 
-    <div class="mt-4">
-
+<div class="mt-4">
+    {# This div is empty in your provided template, can be removed or used for other content #}
 </div>
 
  <div class="card mb-4">
     <div class="card-header">Data Management</div>
     <div class="card-body">
-
         <a href="{% url 'tracker:os_list' %}" class="btn btn-info">Manage Operating Systems</a>
         <a href="{% url 'tracker:upload_extract_report' %}" class="btn btn-success">
             <i class="fa-solid fa-file-arrow-up me-1"></i> Upload & Extract CE Report
         </a>
+        {# Add other data management links if needed #}
     </div>
-     </div>
+ </div>
 
-    <div class="col-md-4"> {# Or adjust layout #}
-    <div class="card {% if pending_approval_count > 0 %}border-warning{% endif %}">
-         <div class="card-header">Cloud Services</div>
-         <div class="card-body">
-            {% if pending_approval_count > 0 %}
-                 <p class="card-text text-warning">
-                     <i class="fa-solid fa-triangle-exclamation"></i>
-                     {{ pending_approval_count }} service{{ pending_approval_count|pluralize }} pending approval.
-                 </p>
-            {% else %}
-                 <p class="card-text text-success">
-                     <i class="fa-solid fa-check-circle"></i>
-                     All suggested services approved.
-                 </p>
-            {% endif %}
-            <a href="{% url 'tracker:cloud_service_definition_list' %}" class="btn btn-primary btn-sm">Manage Definitions</a>
+ <div class="row mb-4"> {# Added a row for better layout of this card if it's meant to be alongside others, or remove .row and .col-md-4 if it's full width #}
+    <div class="col-md-4"> {# Or adjust layout, e.g., col-md-12 for full width #}
+        <div class="card {% if pending_approval_count > 0 %}border-warning{% endif %}">
+            <div class="card-header">Cloud Services</div>
+            <div class="card-body">
+                {% if pending_approval_count > 0 %}
+                    <p class="card-text text-warning">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        {{ pending_approval_count }} service{{ pending_approval_count|pluralize }} pending approval.
+                    </p>
+                {% else %}
+                    <p class="card-text text-success">
+                        <i class="fa-solid fa-check-circle"></i>
+                        All suggested services approved.
+                    </p>
+                {% endif %}
+                <a href="{% url 'tracker:cloud_service_definition_list' %}" class="btn btn-primary btn-sm">Manage Definitions</a>
+            </div>
         </div>
     </div>
+    {# You can add other summary cards in this row if needed #}
 </div>
 
 
@@ -59,36 +63,60 @@
             </tr>
         </thead>
         <tbody>
-            {% for assessment in assessments %}
+            {% for assessment_item in assessments %} {# Changed loop var to assessment_item for clarity #}
             <tr>
-                <td>{{ assessment.id }}</td>
-                <td>{{ assessment.client.name }}</td>
-                <td>{{ assessment.get_assessment_type_display }}</td>
-                <td><span class="badge bg-info">{{ assessment.get_status_display }}</span></td>
-                <td>{{ assessment.date_target_end|date:"Y-m-d"|default:"-" }}</td>
+                <td>{{ assessment_item.id }}</td>
+                <td>{{ assessment_item.client.name }}</td>
+                <td>{{ assessment_item.get_assessment_type_display }}</td>
+                <td>
+                    {# Assuming you have a get_status_badge_class filter or similar in tracker_tags #}
+                    <span class="badge bg-{{ assessment_item.status|get_status_badge_class|default:'secondary' }}">{{ assessment_item.get_status_display }}</span>
+                </td>
+                <td>{{ assessment_item.date_target_end|date:"Y-m-d"|default:"-" }}</td>
                  <td>
-                    {% if assessment.final_outcome == 'Pass' %}
-                        <span class="badge bg-success">{{ assessment.get_final_outcome_display }}</span>
-                    {% elif assessment.final_outcome == 'Fail' %}
-                         <span class="badge bg-danger">{{ assessment.get_final_outcome_display }}</span>
+                    {% if assessment_item.final_outcome == 'Pass' %}
+                        <span class="badge bg-success">{{ assessment_item.get_final_outcome_display|default:"Pass" }}</span>
+                    {% elif assessment_item.final_outcome == 'Fail' %}
+                         <span class="badge bg-danger">{{ assessment_item.get_final_outcome_display|default:"Fail" }}</span>
                     {% else %}
                          -
                     {% endif %}
                 </td>
                 <td class="action-buttons">
-                    <a href="{% url 'tracker:assessor_assessment_detail' assessment.pk %}" class="btn btn-sm btn-outline-primary">View Details</a>
+                    <a href="{% url 'tracker:assessor_assessment_detail' pk=assessment_item.pk %}" class="btn btn-sm btn-outline-primary mb-1">View Details</a>
+
+                    {# CHANGES BEGIN — 2025-05-22 22:35:00 #}
+                    {% with conversation=assessment_conversations_map|get_item:assessment_item.pk %}
+                        {% if conversation %}
+                            <a href="{% url 'tracker:conversation_detail' pk=conversation.pk %}" class="btn btn-sm btn-outline-info position-relative mb-1">
+                                <i class="fas fa-comments"></i> {% translate "Messages" %}
+                                {# Placeholder for unread message count badge for assessor #}
+                                {# You would need a custom template tag like get_unread_messages_for_user(conversation, request.user) #}
+                                {# {% get_unread_messages_for_user conversation request.user as unread_count %} #}
+                                {# {% if unread_count > 0 %} #}
+                                {# <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"> #}
+                                {# {{ unread_count }} #}
+                                {# <span class="visually-hidden">unread messages</span> #}
+                                {# </span> #}
+                                {# {% endif %} #}
+                            </a>
+                        {% else %}
+                            {# Optional: Show a disabled button or a message if no conversation #}
+                            {# This might occur if the client_user for the assessment's client could not be determined #}
+                             <button class="btn btn-sm btn-outline-secondary mb-1" disabled title="{% translate 'Messaging not available (e.g., client user not fully set up or no assessor assigned initially)' %}">
+                                <i class="fas fa-comments"></i> {% translate "Messages" %}
+                            </button>
+                        {% endif %}
+                    {% endwith %}
+                    {# CHANGES END — 2025-05-22 22:35:00 #}
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
-
-
-
 {% else %}
 <p>You have no assessments currently assigned.</p>
 {% endif %}
-
 
 {% endblock %}

@@ -151,10 +151,22 @@ Ask which specific task or small chunk to tackle first, or pose any clarifying q
 
 
 
+more context information
+1. we been using htmx recently - improving on just html and css
 
+2. we skipping tests atm
 
+3. celery is used to do all the tenable tasks like create, launch confgure tags and perform background updates of browser versions etc
 
+4. pdf_file_extractor_v2.py is being used atm but it's a mess and we need to rework it at some point - perhaps with openai intergration
 
+5. not really sure about this
+
+6. no there is no views.py - we replaced it with the folder with the __init__.py so moved to suubdirectory
+it's very important to develop step by step
+when doing html and css - need to be professional, stylish and stick to the general theme - when doing these elements consider the over all style and theme but also be creative, use light touch animations and act as expert UI designer
+
+be a lot more concise in your explinations and non-code output - I am not really reading it - clear simple, instructions - cut and paste this code to this file - edit this line - don't explain unless i ask
 
 
 

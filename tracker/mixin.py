@@ -11,6 +11,23 @@ is_admin,
 )
 
 
+class ConversationParticipantRequiredMixin(LoginRequiredMixin):
+    """
+    Mixin to ensure the user is either the client or the assessor
+    for the conversation they are trying to access.
+    """
+
+    def dispatch(self, request, *args, **kwargs):
+        # It's generally better to perform the check after get_object in DetailView,
+        # but for a generic mixin, this is one way.
+        # We'll rely more on get_queryset in the view itself for DetailView.
+        if not request.user.is_authenticated:
+            return self.handle_no_permission()
+
+        # The actual check will be in get_queryset of the DetailView
+        return super().dispatch(request, *args, **kwargs)
+
+
 class AdminRequiredMixin(LoginRequiredMixin, UserPassesTestMixin):
     def test_func(self):
         return is_admin(self.request.user)

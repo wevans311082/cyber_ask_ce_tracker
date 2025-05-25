@@ -31,110 +31,38 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Min, ProtectedError, Value, CharField, Q
 from django.db.models.functions import Coalesce, Concat
 from django.forms import modelformset_factory
-from django.http import (
-    FileResponse,
-    Http404,
-    HttpResponseForbidden,
-    HttpResponseRedirect,
-    JsonResponse,
-)
+from django.http import FileResponse, Http404, HttpResponseForbidden, HttpResponseRedirect, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.views import View
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST
-from django.views.generic import (
-    CreateView,
-    DeleteView,
-    DetailView,
-    FormView,
-    ListView,
-    UpdateView, TemplateView,
-)
+from django.views.generic import *
 from django.views import View
 from django.shortcuts import render
 from constance import config
 
 
 # Local app imports
-from .forms import (
-    AssessmentCloudServiceAssessorForm,
-    AssessmentCloudServiceForm,
-    AssessmentCloudServiceUpdateForm,
-    AssessmentCreateForm,
-    AssessmentStatusUpdateForm,
-    ClientForm,
-    CustomUserChangeForm,
-    CustomUserCreationForm,
-    EvidenceForm,
-    ExternalIPForm,
-    ExternalIPScanUpdateForm,
-    NetworkForm,
-    OperatingSystemForm,
-    ScopedItemForm,
-    ScopedItemUpdateForm,
-    UploadReportForm,
-    CloudServiceDefinitionForm,
-)
-from .models import (
-    Assessment,
-    AssessmentCloudService,
-    AssessmentLog,
-    AssessmentWorkflowStep,
-    Client,
-    CloudServiceDefinition,
-    Evidence,
-    ExternalIP,
-    Network,
-    OperatingSystem,
-    ScopedItem,
-    UploadedReport,
-    UserProfile,
-    NessusAgentURL
-)
-from .pdf_extractor import extract_ce_data_from_pdf
-from .tasks import apply_tenable_tag_to_assets, create_or_update_tenable_client_tag
-
-from .tasks import (
-    sync_client_with_tenable, apply_tenable_tag_to_assets, # Use the new/renamed tasks
-    scrape_nessus_agent_urls, validate_agent_urls # Keep others if needed
-)
-from .tenable_client import get_tenable_io_client
-
-
-
-from .utils import (
-
-check_and_fail_assessment_for_eol,
-check_os_match,
-is_admin_or_assessor,
-is_client,
-is_assessor,
-is_admin,
-calculate_sample_size,
-user_can_edit_assessment_external_ips,
-user_can_manage_assessment_external_ips,
-user_can_manage_assessment_networks,
-
-
-)
-
-from .mixin import (
-ClientRequiredMixin,
-AdminRequiredMixin,
-AssessorRequiredMixin,
-AssessorOrAdminRequiredMixin
-
-)
+from tracker.forms import *
+from tracker.models import *
+from tracker.pdf_extractor import extract_ce_data_from_pdf
+from tracker.tasks import apply_tenable_tag_to_assets, create_or_update_tenable_client_tag
+from tracker.tasks import *
+from tracker.tenable_client import get_tenable_io_client
+from tracker.utils import *
+from tracker.mixin import *
 
 logger = logging.getLogger(__name__)
 
 
 
+
+
 class CloudServiceDefinitionListView(AssessorOrAdminRequiredMixin, ListView):
     model = CloudServiceDefinition
-    template_name = 'tracker/cloud_service_mgmt/definition_list.html' # Template to create
+    template_name = 'tracker/cloud_service_mgmt/definition_list.html'  # Template to create
     context_object_name = 'definitions'
     paginate_by = 20
     queryset = CloudServiceDefinition.objects.order_by('vendor', 'name')
@@ -149,7 +77,7 @@ class CloudServiceDefinitionListView(AssessorOrAdminRequiredMixin, ListView):
 class CloudServiceDefinitionCreateView(AssessorOrAdminRequiredMixin, CreateView):
     model = CloudServiceDefinition
     form_class = CloudServiceDefinitionForm
-    template_name = 'tracker/cloud_service_mgmt/definition_form.html' # Template to create
+    template_name = 'tracker/cloud_service_mgmt/definition_form.html'  # Template to create
     success_url = reverse_lazy('tracker:cloud_service_definition_list')
 
     def form_valid(self, form):
@@ -189,7 +117,7 @@ class CloudServiceDefinitionUpdateView(AssessorOrAdminRequiredMixin, UpdateView)
         return context
 class CloudServiceDefinitionDeleteView(AdminRequiredMixin, DeleteView): # Only Admins can delete definitions? Or Assessor too? Decide permission.
     model = CloudServiceDefinition
-    template_name = 'tracker/cloud_service_mgmt/definition_confirm_delete.html' # Template to create
+    template_name = 'tracker/cloud_service_mgmt/definition_confirm_delete.html'  # Template to create
     context_object_name = 'definition'
     success_url = reverse_lazy('tracker:cloud_service_definition_list')
 

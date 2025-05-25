@@ -1,0 +1,76 @@
+{% load i18n static tracker_tags %}
+
+<tr id="workflow-step-row-{{ step_item.pk }}"
+    class="{% if step_item.status == status_choices.HELP_NEEDED %}table-warning{% elif step_item.status == status_choices.IN_PROGRESS and step_item.can_update_by_current_user %}table-info{% endif %}">
+
+  <td class="text-center ps-3">{{ step_item.step_definition.step_order }}</td>
+
+  <td>
+    <a href="#"
+       class="text-decoration-none"
+       data-bs-toggle="modal"
+       data-bs-target="#stepDetailModal-{{ step_item.step_definition.pk }}">
+      <strong>{{ step_item.step_definition.name }}</strong>
+    </a>
+    <p class="text-muted small mb-0">{{ step_item.step_definition.description|linebreaksbr }}</p>
+
+    {# Modal for this step item - this needs to be outside the row or handled carefully if row is replaced #}
+    {# For simplicity of row replacement, modals might be better placed outside the table in workflow_checklist_card.html #}
+    {# Or ensure modal IDs are unique and they are re-included if the row is swapped. #}
+    {# Let's assume for now modals are handled at a higher level or re-rendered with the row correctly. #}
+    <div class="modal fade" id="stepDetailModal-{{ step_item.step_definition.pk }}" tabindex="-1"
+         aria-labelledby="stepDetailModalLabel-{{ step_item.step_definition.pk }}" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="stepDetailModalLabel-{{ step_item.step_definition.pk }}">
+              <i class="fas fa-info-circle me-2"></i>{% translate "Step Details" %}: {{ step_item.step_definition.name }}
+            </h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="{% translate 'Close' %}"></button>
+          </div>
+          <div class="modal-body">
+            {% if step_item.step_definition.detailed_guidance %}
+              {{ step_item.step_definition.detailed_guidance|safe }}
+            {% else %}
+              <p class="text-muted">{% translate "No detailed guidance available for this step." %}</p>
+            {% endif %}
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">{% translate "Close" %}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </td>
+
+  <td class="text-center">
+      <span class="badge rounded-pill
+          {% if step_item.step_definition.assignee_type == 'Applicant' %} bg-secondary
+          {% elif step_item.step_definition.assignee_type == 'Assessor' %} bg-primary opacity-75
+          {% else %} bg-dark opacity-75 {% endif %}">
+          {{ step_item.step_definition.get_assignee_type_display }}
+      </span>
+  </td>
+
+  <td class="text-center" id="workflow-status-{{ step_item.pk }}">
+    <span class="badge fs-08rem rounded-pill
+                 {% if step_item.status == status_choices.COMPLETE %}bg-success
+                 {% elif step_item.status == status_choices.IN_PROGRESS %}bg-info text-dark
+                 {% elif step_item.status == status_choices.HELP_NEEDED %}bg-warning text-dark
+                 {% elif step_item.status == status_choices.SKIPPED %}bg-light text-dark border
+                 {% else %}bg-light text-dark border{% endif %}">
+      {% if step_item.status == status_choices.HELP_NEEDED %}<i class="fa-solid fa-triangle-exclamation me-1"></i>{% endif %}
+      {{ step_item.get_status_display }}
+    </span>
+    {% if step_item.completed_by %}
+      <small class="d-block text-muted mt-1" id="workflow-completion-{{ step_item.pk }}">
+        by {{ step_item.completed_by.username }}
+        {% if step_item.completed_at %}on {{ step_item.completed_at|date:"d M Y" }}{% endif %}
+      </small>
+    {% endif %}
+  </td>
+
+  <td id="workflow-actions-{{ step_item.pk }}" class="pe-3">
+    {% include "tracker/partials/step/common_step_actions.html" with assessment_pk=assessment.pk step_pk=step_item.pk workflow_step=step_item can_update_step=step_item.can_update_by_current_user status_choices=status_choices %}
+  </td>
+</tr>

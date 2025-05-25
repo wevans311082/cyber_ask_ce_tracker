@@ -1,5 +1,8 @@
+import json
+
 from django import forms
 from django.contrib.auth.forms import UserCreationForm, UserChangeForm
+from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth.models import User
 # Ensure ValidationError is imported if needed, though forms.ValidationError works
@@ -8,13 +11,51 @@ import ipaddress
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.core.exceptions import ValidationError
-from .models import (
-    Client, UserProfile, Assessment, ScopedItem, Evidence, AssessmentLog,
-    OperatingSystem, Network, CloudServiceDefinition, AssessmentCloudService, ExternalIP, UploadedReport, AssessmentDateOption, AssessorAvailability  # Ensure this is imported
-)
+from .models import *
 
 
 User = get_user_model()
+
+
+
+
+
+
+
+class BrowserForm(forms.ModelForm):
+    class Meta:
+        model = Browser
+        fields = ['name', 'version', 'release_date', 'release_notes', 'status', 'engine', 'engine_version']
+
+
+
+
+
+class AssessmentInfoFormRefined(forms.ModelForm): # Or your exact form class name
+    class Meta:
+        model = Assessment
+        fields = [ # Ensure this list contains at least one valid field from your Assessment model
+            'scope_description',
+            # 'ce_self_assessment_ref', # Keep a minimal valid field list for this test
+        ]
+        # You can comment out widgets for this minimal test if you suspect them
+
+    def __init__(self, *args, **kwargs):
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("!!! ENTERED AssessmentInfoFormRefined.__init__ IN tracker/forms.py !!!")
+        print(f"!!! ARGS: {args}")
+        print(f"!!! KWARGS: {kwargs}")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
+        # Pop user *after* printing kwargs if you want to see it in kwargs
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+
+        # For now, comment out ALL other logic in __init__ to isolate the print
+        # self.fields.clear() # Example: if you want to force a blank form for testing this __init__ call
+        print(f"--- Form fields after super init & any clearing: {list(self.fields.keys())} ---")
+
+
 
 
 class AccountSettingsForm(forms.ModelForm):
@@ -741,66 +782,123 @@ class UploadReportForm(forms.ModelForm):
 
 # --- NEW Assessment Date Option Form ---
 class AssessmentDateOptionForm(forms.ModelForm):
+    # Keep your existing DateInput widget and other field definitions
     proposed_date = forms.DateField(
-        widget=forms.DateInput(attrs={'type': 'date', 'class': 'form-control'}),
-        label="Suggest Assessment Date"
+        widget=forms.DateInput(
+            attrs={
+                'type': 'date',
+                'class': 'form-control',
+                'min': timezone.now().strftime('%Y-%m-%d')  # Example: min date today
+            }
+        ),
+        help_text=_("Select a date for the assessment.")
     )
 
     class Meta:
         model = AssessmentDateOption
-        fields = ['proposed_date', 'notes'] # Include the notes field
+        fields = ['proposed_date', 'notes']
         widgets = {
-            'notes': forms.Textarea(attrs={'rows': 2, 'class': 'form-control', 'placeholder': 'Optional: Add a reason for this date suggestion'}),
+            'notes': forms.Textarea(attrs={'rows': 3, 'class': 'form-control'}),
         }
 
     def __init__(self, *args, **kwargs):
-        # Pop assessment from kwargs to store it on the form instance
+        # Pop custom kwargs before calling super().__init__()
         self.assessment = kwargs.pop('assessment', None)
+        self.user = kwargs.pop('user', None)  # Accept and pop the 'user' kwarg
+
         super().__init__(*args, **kwargs)
+
         if not self.assessment:
-            # This should ideally not happen if the view passes it correctly
-            print("Warning: AssessmentDateOptionForm initialized without assessment object.")
+            # This should ideally not happen if the form is always instantiated with an assessment
+            # but it's a good safeguard.
+            self.fields['proposed_date'].disabled = True
+            self.add_error(None, _("Assessment context is missing for this form."))
+            return
+
+        # Set min_date dynamically based on today or CE+ pass date
+        min_date_val = timezone.now().date()
+        if self.assessment.assessment_type == 'CE+' and self.assessment.date_ce_passed:
+            # For CE+, proposed date cannot be before the CE pass date.
+            min_date_val = max(min_date_val, self.assessment.date_ce_passed)
+
+        self.fields['proposed_date'].widget.attrs['min'] = min_date_val.strftime('%Y-%m-%d')
+
+        # Disable dates if the assessor has marked them as unavailable (if assessor is known)
+        # This part is more for display/client-side validation; server-side validation is still key.
+        unavailable_dates_str = []
+        if self.assessment.assessor:
+            unavailable_dates = AssessorAvailability.objects.filter(
+                assessor=self.assessment.assessor
+            ).values_list('unavailable_date', flat=True)
+            unavailable_dates_str = [d.strftime('%Y-%m-%d') for d in unavailable_dates]
+
+        # This data attribute can be used by a JavaScript date picker to disable dates
+        self.fields['proposed_date'].widget.attrs['data-unavailable-dates'] = json.dumps(unavailable_dates_str)
 
     def clean_proposed_date(self):
-        """Validate the proposed date."""
         proposed_date = self.cleaned_data.get('proposed_date')
         today = timezone.now().date()
 
-        if not proposed_date:
-            # Let required=True handle this, but double-check
-            return proposed_date # Skip further checks if no date
+        if not proposed_date:  # Should be caught by field 'required' but good to check
+            raise ValidationError(_("Proposed date is required."))
 
-        # 1. Check if date is in the past
         if proposed_date < today:
-            raise ValidationError("Proposed assessment date cannot be in the past.")
+            raise ValidationError(_("Proposed date cannot be in the past."))
 
-        # 2. Check against assessor availability (if assessment and assessor are known)
-        if self.assessment and self.assessment.assessor:
-            assessor = self.assessment.assessor
-            if AssessorAvailability.objects.filter(assessor=assessor, unavailable_date=proposed_date).exists():
-                raise ValidationError(f"The assigned assessor ({assessor.username}) is unavailable on this date.")
+        if self.assessment:  # Ensure assessment context is available
+            if self.assessment.assessment_type == 'CE+':
+                if self.assessment.date_ce_passed:
+                    if proposed_date < self.assessment.date_ce_passed:
+                        raise ValidationError(
+                            _("For CE+ assessments, the proposed date cannot be before the CE Self-Assessment pass date (%(ce_pass_date)s).") % {
+                                'ce_pass_date': self.assessment.date_ce_passed.strftime('%Y-%m-%d')}
+                        )
 
-        # 3. Check CE+ 90-day window (if applicable)
-        if self.assessment and self.assessment.assessment_type == 'CE+':
-            if not self.assessment.date_ce_passed:
-                # Cannot validate window if CE pass date is missing
-                # We might want to allow proposing dates anyway, but add a warning?
-                # Or block it entirely? Let's block for now.
-                raise ValidationError("Cannot propose CE+ date: The CE Self-Assessment Pass Date is missing for this assessment.")
-            else:
-                window_start_date = self.assessment.date_ce_passed
-                window_end_date = self.assessment.ce_plus_window_end_date # Use the property
+                    # Check against 90-day window end date
+                    ce_plus_deadline = self.assessment.ce_plus_window_end_date
+                    if ce_plus_deadline and proposed_date > ce_plus_deadline:
+                        raise ValidationError(
+                            _("For CE+, proposed date must be within 90 days of CE pass date (by %(deadline)s).") % {
+                                'deadline': ce_plus_deadline.strftime('%Y-%m-%d')}
+                        )
+                else:
 
-                if not (window_start_date <= proposed_date <= window_end_date):
-                    raise ValidationError(f"CE+ assessment date must be within 90 days of the CE pass date ({window_start_date.strftime('%Y-%m-%d')}). This date must be between {window_start_date.strftime('%Y-%m-%d')} and {window_end_date.strftime('%Y-%m-%d')}.")
+                    pass
 
-        # Note: The unique_together check ('assessment', 'proposed_date')
-        # is handled by Django at the database level or during full form validation,
-        # but could be added here explicitly if desired.
-        # if self.assessment and AssessmentDateOption.objects.filter(assessment=self.assessment, proposed_date=proposed_date).exists():
-        #    raise ValidationError("This date has already been proposed for this assessment.")
+                    # Check if assessor is unavailable on the proposed date
+            if self.assessment.assessor:
+                if AssessorAvailability.objects.filter(assessor=self.assessment.assessor,
+                                                       unavailable_date=proposed_date).exists():
+                    raise ValidationError(
+                        _("The assigned assessor is unavailable on %(date)s. Please choose another date.") % {
+                            'date': proposed_date.strftime('%Y-%m-%d')}
+                    )
 
-        return proposed_date # Return the valid date
+        # Check if this exact date has already been proposed for this assessment
+        # (unique_together on model handles DB level, this gives cleaner form error)
+        # Exclude self if instance is being updated
+        # query = AssessmentDateOption.objects.filter(assessment=self.assessment, proposed_date=proposed_date)
+        # if self.instance and self.instance.pk:
+        #     query = query.exclude(pk=self.instance.pk)
+        # if query.exists():
+        #     raise ValidationError(_("This date has already been proposed for this assessment."))
+
+        return proposed_date
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        if self.assessment:
+            instance.assessment = self.assessment
+        if self.user and not instance.pk:  # Set proposed_by only on creation and if user is provided
+            instance.proposed_by = self.user
+
+        # Default status if not already set (though model has default)
+        if not instance.status:
+            instance.status = AssessmentDateOption.Status.SUGGESTED
+
+        if commit:
+            instance.save()
+        return instance
 
 # --- NEW Assessor Availability Form ---
 class AssessorAvailabilityForm(forms.ModelForm):
@@ -826,3 +924,170 @@ class AssessorAvailabilityForm(forms.ModelForm):
         return date_to_block
 
 
+class MessageForm(forms.ModelForm):
+    class Meta:
+        model = Message
+        fields = ['content']
+        widgets = {
+            'content': forms.Textarea(
+                attrs={
+                    'class': 'form-control',  # Standard Bootstrap class
+                    'rows': 3,
+                    'placeholder': _('Type your message...'),  # Make placeholder translatable
+                    'aria-label': _('Message content')  # For accessibility
+                }
+            )
+        }
+        labels = {
+            'content': ''  # Hide the label, placeholder is used
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields['content'].required = True
+
+
+class AssessmentInfoForm(forms.ModelForm):
+    class Meta:
+        model = Assessment
+        # These fields will be dynamically set in __init__ based on user role
+        fields = []
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)  # Get the user passed from the view
+        assessment = kwargs.get('instance', None)  # Get the assessment instance
+
+        super().__init__(*args, **kwargs)
+
+        # Define fields that are generally editable
+        common_fields = [
+            'scope_description',
+            'ce_self_assessment_ref',
+            'primary_contact_name',
+            'primary_contact_email',
+            'primary_contact_phone',
+        ]
+
+        assessor_admin_fields = [
+            # Add fields only assessors/admins can edit from this card, e.g.:
+            # 'scheduled_date',
+            # 'date_target_end',
+            # 'status', # Be careful with status changes, might need separate workflow
+            # 'final_outcome',
+            # 'assessor', # Assigning an assessor
+            # Ensure these fields exist on your Assessment model
+        ]
+
+        # Determine which fields to show based on user role
+        # This assumes user.userprofile.role exists
+        profile = getattr(user, 'userprofile', None)
+
+        if profile and profile.role in ['Assessor', 'Admin']:
+            self.Meta.fields = common_fields + assessor_admin_fields
+        elif profile and profile.role == 'Client' and assessment and profile.client == assessment.client:
+            self.Meta.fields = common_fields
+        else:
+            # No fields if user has no permission or role, or form is misused
+            # Or raise an error, or only show read-only if that's a state.
+            # For now, an empty field list means no fields will be rendered by {{ form }}.
+            self.Meta.fields = []
+
+        # Apply widget attributes for Bootstrap styling (optional, but good for consistency)
+        for field_name in self.fields:
+            field = self.fields[field_name]
+            # Add a general class for styling
+            current_class = field.widget.attrs.get('class', '')
+            field.widget.attrs['class'] = f'{current_class} form-control form-control-sm'.strip()
+
+            if isinstance(field.widget, forms.Textarea):
+                field.widget.attrs['rows'] = 3
+            if isinstance(field.widget, forms.DateInput):
+                field.widget.attrs['type'] = 'date'  # Ensure HTML5 date picker
+            # Add more specific widget customizations if needed
+            # Example: field.widget.attrs['placeholder'] = _('Enter details...')
+
+        # Ensure all specified fields actually exist on the Assessment model
+        # This helps catch errors if model fields change.
+        model_field_names = [f.name for f in Assessment._meta.get_fields()]
+        valid_fields = [f for f in self.Meta.fields if f in model_field_names]
+        self.Meta.fields = valid_fields
+
+        # Re-initialize fields with the final list
+        # This is important because self.fields is populated based on Meta.fields at super().__init__
+        # If Meta.fields is changed after super().__init__, self.fields might not reflect it
+        # unless we re-initialize or directly manipulate self.fields.
+        # A cleaner way is to determine Meta.fields *before* super().__init__ if possible,
+        # or to explicitly define all possible fields in Meta.fields and then remove unwanted ones from self.fields.
+
+        # Let's refine: define all possible fields in Meta and remove unwanted ones.
+        # This is generally safer with ModelForms.
+
+
+
+
+
+
+# Refined Form (Alternative __init__ approach):
+class AssessmentInfoFormRefined44(forms.ModelForm):  # Or your exact form class name
+    class Meta:
+        model = Assessment
+        fields = [  # Keep this as it was, with correct fields
+            'scope_description', 'ce_self_assessment_ref',
+            'primary_contact_name', 'primary_contact_email', 'primary_contact_phone',
+            'date_start',
+            'date_target_end',
+            'date_actual_end',
+            'date_ce_passed',
+            'date_cert_issued',
+            'date_cert_expiry',
+        ]
+        # Keep widgets as they were
+        widgets = {
+            'scope_description': forms.Textarea(attrs={'rows': 3}),
+            'date_start': forms.DateInput(attrs={'type': 'date'}),
+            'date_target_end': forms.DateInput(attrs={'type': 'date'}),
+            'date_actual_end': forms.DateInput(attrs={'type': 'date'}),
+            'date_ce_passed': forms.DateInput(attrs={'type': 'date'}),
+            'date_cert_issued': forms.DateInput(attrs={'type': 'date'}),
+            'date_cert_expiry': forms.DateInput(attrs={'type': 'date'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        # --- TEMPORARY SUPER SIMPLE DEBUG ---
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        print("!!! ASSESSMENT INFO FORM __INIT__ WAS DEFINITELY CALLED !!!")
+        print(
+            f"!!! User passed to form: {kwargs.get('user', 'User kwarg not found')} !!!")  # Note: user was popped before super
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+
+        user_arg = kwargs.pop('user', None)  # Pop user here for super()
+        super().__init__(*args, **kwargs)  # Call super AFTER the print for this test
+
+        # For this test, comment out ALL other logic in __init__
+        # to ensure nothing else interferes or raises an error before prints.
+
+        # client_editable_fields = [
+        #     'scope_description',
+        #     # ...
+        # ]
+        # profile = getattr(user_arg, 'userprofile', None)
+        # # ... (all your field filtering logic commented out for now) ...
+
+        # print(f"FINAL self.fields after (disabled) filtering: {list(self.fields.keys())}")
+
+        # Just to make sure form has some fields for rendering if __init__ is called
+        if not self.fields:
+            print("!!! WARNING: self.fields is empty even after commenting out filtering. Check Meta.fields.")
+
+        # Apply widget attributes for Bootstrap styling
+        for field_name, field in self.fields.items():
+            current_class = field.widget.attrs.get('class', '')
+            new_classes = 'form-control form-control-sm'
+            field.widget.attrs['class'] = f'{current_class} {new_classes}'.strip()
+            if isinstance(field.widget, forms.Textarea):
+                field.widget.attrs['rows'] = 3
+            if isinstance(field.widget, forms.DateInput) and 'type' not in field.widget.attrs:
+                field.widget.attrs['type'] = 'date'
+            if not field.required:
+                field.label_suffix = mark_safe(
+                    f'{field.label_suffix or ""} <span class="text-muted small">({_("optional")})</span>')
